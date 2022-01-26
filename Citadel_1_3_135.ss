@@ -11,7 +11,7 @@
 IS_EXE:		equ	0
 
 ; build version, set to date+release for each deployed version
-VERSION: 	SET	$22012502
+VERSION: 	SET	$22012601
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
 ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
@@ -7089,6 +7089,7 @@ cc_cache:
 		bra.s	cc_NoKey
 .cc_c2:	SCROLL2	txt_cache_off	; cache off
 ;		bra.s	cc_NoKey
+
 
 cc_cont2:
 
