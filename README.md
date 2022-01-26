@@ -1,4 +1,4 @@
-# Citadel 1.3
+# Amiga Citadel 1.3
 
 ## Introduction
 
