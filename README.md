@@ -9,7 +9,7 @@ This is a 2022 update of the original Citadel from 1995.
 - Graphics in most levels has been significantly updated including textures and enemies
 - Many levels were corrected or re-designed for better playing experience, fast-paths added in huge levels etc.
 - FPS counter added
-- Speed issues fixed on both fast machines: overclocked CPUs, Vampire, Warp 1260 and other accelerators, full speed WinUAE etc.
+- Speed issues fixed on fast machines: 030/040, overclocked CPUs, Vampire, Warp 1260 and other accelerators, full speed WinUAE etc.
 - Manual has been re-written with an extended back-story and updated content
 
 ## System Requirements

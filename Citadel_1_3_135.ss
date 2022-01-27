@@ -1,5 +1,5 @@
 ;	*****************************************************
-;	*		CITADEL - main game code (v1.3).   			*
+;	*		CITADEL - main game code (v1.3)   			*
 ;	*	Copyrigt (C) Pawel Matusz (Kane) 1995,2022		*
 ;	* 	Version 1.3 coded 11.02.1994-xx.04.1995 		*
 ;	* 	Version 1.3 coded 08.01.2022-20.01.2022			*
@@ -10,8 +10,9 @@
 ; for development set to 0. For deployment set to 1
 IS_EXE:		equ	0
 
-; build version, set to date+release for each deployed version
-VERSION: 	SET	$22012601
+; release version, set to date+build for each deployed version
+VERSION: 	SET	$220126
+BUILD:		SET	$01
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
 ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
@@ -27,7 +28,7 @@ select_cache:	equ	0			;TODO: remove. 1-user selects cache
 BASEF1:		equ	$40400000			; Z3 fast. First 0.5MB memory. Hopefully Fast 
 BASEF2:		equ	BASEF1+$80000		; Z3 fast. Second 0.5MB memory. Hopefully Fast
 
-CODESTART:	equ	$0000			; this is where the code is placed w.r.t. allocated memory start. CANNOT BE $1000 (???)
+CODESTART:	equ	$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
 
 	IFEQ		IS_EXE
 BASEC:		equ	$100000			; free 0.5 meg chip(A1200). If assembled on a machine with less than 1MB chip then change to 0
@@ -51,6 +52,11 @@ VBLANK:		MACRO
 		bne.s	*-6
 		cmpi.b	#$ff,6(a0)
 		beq.s	*-6
+		ENDM
+VBLANKR:	MACRO		; \1 - repetitions
+		move	#\1-1,d0
+.s1\@:	VBLANK
+		dbf		d0,.s1\@
 		ENDM
 SCROLL:		MACRO		; \1 - offset of text
 		movem.l	d0/a1,-(sp)
@@ -203,7 +209,7 @@ s:
 		ENDC
 
 		bra.s	.s2
-		dc.b	0,"V1.30 BUILD ",VERSION>>28&$f+48, VERSION>>24&$f+48, ".", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48,0
+		dc.b	0,"V1.30 BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48, 0
 		even
 .s2:	lea		lc_FastMem1(pc),a2
 		move.l	MEMORY,(a2)
@@ -264,8 +270,8 @@ start:
 		movec	CACR,d0			; switch on and clear cache
 		lea		lc_cacr_copy(pc),a1
 		move.l	d0,(a1)
-        tst.w   d0            	;movec does not affect carry codes
-        bmi.s   .cic_040       	;A 68040 with enabled cache!
+;        tst.w   d0            	;movec does not affect carry codes
+;        bmi.s   .cic_040       	;A 68040 with enabled cache!
 		; do nto enable instruction burst as it actually slows the average speed down
         ;ori.w   #$0009,d0		; instruction cache enable + clear
         ;ori.w   #$0909,d0		; instruction cache enable + clear, 030 data cache enable + clear
@@ -274,9 +280,9 @@ start:
         ;ori.l   #$40003909,d0		; instruction cache enable + clear, 030 data cache enable + clear, 030 burst and writethrough enable, sync
         ori.w   #$0909,d0		; instruction cache enable + clear, 030 data cache enable + clear
 		movec	d0,CACR
-		bra.s   .cic_exit
-.cic_040: dc.w    $f4b8         ;CPUSHA (IC)
-.cic_exit:
+;		bra.s   .cic_exit
+;.cic_040: dc.w    $f4b8         ;CPUSHA (IC)
+;.cic_exit:
 		bra.s	.InitStruct
 
 .NoCache:	; this is a plain 68000 so no cache etc.
@@ -292,9 +298,9 @@ start:
 
 .InitStruct:
 		move.l	lc_Structure(pc),a1
-		move	(a1),sv_size
-		move	(a1),sv_size+2
-		move	(a1),cc_requesttab+2
+		move	(a1),sv_size			; actual window size (determining the nr of bytes): 2-6
+		move	(a1),sv_size+2			; user selected window size, cannot be set to stretched at start
+		move	(a1),cc_requesttab+2	; TODO: is this needed since no key is pressed? maybe can be zero at start
 		move	2(a1),sv_Floor
 		move	4(a1),sv_Details
 		move	6(a1),sv_Energy
@@ -326,7 +332,7 @@ start:
 		bra.s	.fix_s
 .fe:
 
-		lea	sv_UserMap,a1		;clr user map
+		lea		sv_UserMap,a1		;clr user map
 		moveq	#127,d0
 .ClrMap: move.l	#0,(a1)+
 		dbf	d0,.ClrMap
@@ -375,11 +381,11 @@ start:
 		divu	#1024,d0
 		divu	#1024,d1
 		mulu	#512,d1
-		lsl	#3,d0
+		lsl		#3,d0
 		addi	#7,d0
-		add	d0,d1
+		add		d0,d1
 		move.b	#0,(a2,d1.w)
-.sv_u1:		lea	16*4(a1),a1
+.sv_u1:	lea	16*4(a1),a1
 		dbf	d7,.sv_UsunEn
 
 		lea		sv_levelDATA,a1
@@ -431,107 +437,104 @@ start:
 		move.l	(a1)+,(a2)+
 		dbf	d7,.sv_SavWindow
 
-		lea	sv_ScrollArea-34,a1	;clear scroll area
+		lea		sv_ScrollArea-34,a1	;clear scroll area
 		moveq	#0,d0
 		moveq	#6,d1
 .sc_c0: moveq	#7,d2
 .sc_Clear: move.l	d0,(a1)+
 		dbf		d2,.sc_Clear
 		move	d0,(a1)+
-		lea	[5*40]-34(a1),a1
-		dbf	d1,.sc_c0
+		lea		[5*40]-34(a1),a1
+		dbf		d1,.sc_c0
 
-		lea	sv_ObjectTab,a1		;clr objects
+		lea		sv_ObjectTab,a1		;clr objects
 		moveq	#29,d1
 .sc_Clear2:	move	#0,(a1)
-		lea	12(a1),a1
-		dbf	d1,.sc_Clear2
+		lea		12(a1),a1
+		dbf		d1,.sc_Clear2
 
 
-		lea	sv_Counter1,a1		;save counters
-		lea	sv_Counter2,a2
-		lea	sv_C1Save,a3
+		lea		sv_Counter1,a1		;save counters
+		lea		sv_Counter2,a2
+		lea		sv_C1Save,a3
 		cmpi.l	#"KANE",18*6*5(a3)		; do not save counters if they have already been saved. Required by the server which does not reload all gfx.
 		beq.w	.sc_NoSave
-		lea	sv_C2Save,a4
+		lea		sv_C2Save,a4
 		moveq	#[18*5]-1,d0
 .sc_sc0: moveq	#5,d1
 .sc_SaveCou:
 		move.b	(a1)+,(a3)+
 		move.b	(a2)+,(a4)+
 		dbf		d1,.sc_SaveCou
-		lea	40-6(a1),a1
-		lea	40-6(a2),a2
-		dbf	d0,.sc_sc0
+		lea		40-6(a1),a1
+		lea		40-6(a2),a2
+		dbf		d0,.sc_sc0
 		move.l	#"KANE",(a3)
 
-		lea	sv_Weapon,a1
-		lea	sv_ItemSav,a2
+		lea		sv_Weapon,a1
+		lea		sv_ItemSav,a2
 		move	#[27*5]-1,d0
 .sc_SavItem:	move.b	(a1),(a2)+		;save Item
 		move.b	1(a1),(a2)+
 		move.b	2(a1),(a2)+
 		move.b	3(a1),(a2)+
-		lea	row(a1),a1
-		dbf	d0,.sc_SavItem
+		lea		row(a1),a1
+		dbf		d0,.sc_SavItem
 
-		lea	sv_Compas,a1
-		lea	sv_CompasSav,a2
+		lea		sv_Compas,a1
+		lea		sv_CompasSav,a2
 		moveq	#26,d0
 .sc_SavComp:	move.l	(a1),(a2)+		;save compass
 		move.l	row(a1),(a2)+
 		move.l	2*row(a1),(a2)+
 		move.l	3*row(a1),(a2)+
 		move.l	4*row(a1),(a2)+
-		lea	5*row(a1),a1
-		dbf	d0,.sc_SavComp
+		lea		5*row(a1),a1
+		dbf		d0,.sc_SavComp
 
-		lea	sv_CardCnt,a1
-		lea	sv_CardSav,a2
+		lea		sv_CardCnt,a1
+		lea		sv_CardSav,a2
 		moveq	#23,d0
 .sc_SavCard:	move.b	(a1),(a2)+		;save card counter
 		move.b	row(a1),(a2)+
 		move.b	2*row(a1),(a2)+
 		move.b	3*row(a1),(a2)+
 		move.b	4*row(a1),(a2)+
-		lea	5*row(a1),a1
-		dbf	d0,.sc_SavCard
+		lea		5*row(a1),a1
+		dbf		d0,.sc_SavCard
 
-		lea	sv_Heart,a1
-		lea	sv_HeartSav,a2
+		lea		sv_Heart,a1
+		lea		sv_HeartSav,a2
 		moveq	#[12*5]-1,d0
 .sc_SavHt:	move.b	(a1)+,(a2)+		;save Heart backgnd
 		move.b	(a1)+,(a2)+
 		move.b	(a1)+,(a2)+
 		move.b	(a1)+,(a2)+
 		move.b	(a1)+,(a2)+
-		lea	row-5(a1),a1
-		dbf	d0,.sc_SavHt
+		lea		row-5(a1),a1
+		dbf		d0,.sc_SavHt
 .sc_NoSave:
 
-		lea	sv_C2Save,a1		;zero counter first
-		lea	sv_Counter2,a2
+		lea		sv_C2Save,a1		;zero counter first
+		lea		sv_Counter2,a2
 		moveq	#[18*5]-1,d0
 .ci_ResCou:	move.l	(a1)+,(a2)+
 		move.w	(a1)+,(a2)+
-		lea	40-6(a2),a2
-		dbf	d0,.ci_ResCou
+		lea		40-6(a2),a2
+		dbf		d0,.ci_ResCou
 
-		lea	sv_ItemSav,a1
-		lea	sv_Weapon,a2
+		lea		sv_ItemSav,a1
+		lea		sv_Weapon,a2
 		move	#[27*5]-1,d0
 .sc_ResItem:	move.b	(a1)+,(a2)		;zero Item
 		move.b	(a1)+,1(a2)
 		move.b	(a1)+,2(a2)
 		move.b	(a1)+,3(a2)
-		lea	row(a2),a2
-		dbf	d0,.sc_ResItem
+		lea		row(a2),a2
+		dbf		d0,.sc_ResItem
 
 		lea		start(pc),a1		;copy copper to chip
 		addi.l	#copper-start,a1
-;		move.l	#copper-start,d0
-;		lea	(a1,d0.l),a1
-;		lea	copper(pc),a1		;copy copper to chip
 		lea		RealCopper,a2
 		move	#[[EndCopper-Copper]/2]-1,d0
 .sc_CopyCop:	move	(a1)+,(a2)+
@@ -539,21 +542,18 @@ start:
 
 		lea		start(pc),a1		;copy offsets to chip
 		addi.l	#st_offsets-start,a1
-;		move.l	#st_offsets-start,d0
-;		lea	(a1,d0.l),a1
 		lea		sv_Offsets,a2
 		move	#[[End_offsets-st_Offsets]/2],d0
 .sc_CopyOff:	move	(a1)+,(a2)+
 		dbf		d0,.sc_CopyOff
 
-
 		bsr		make_PLANES_pass
-		bsr		sv_SetWindowSize_pass	;Window prefs
-		move	#$fd,d0				; hand
-		bsr		ci_NewWeapon		;set hand
-		bsr		tc_DrawCardCnt
+		bsr		sv_SetWindowSize_pass	; recalculate windows related parameters and set window size
+		move	#$fd,d0					; hand
+		bsr		ci_NewWeapon			; set hand
+		bsr		tc_DrawCardCnt			; draw card counters
 
-		lea	$dff000,a0
+		lea		$dff000,a0
 		move	#$7fff,$96(a0)
 		move	#$8240,$96(a0)		;DMACON blitter on
 		lea		sv_OldMouse,a1
@@ -612,7 +612,6 @@ MAIN_LOOP:
 ;-------------------------------------------------------------------------------------------------
 		lea		$dff000,a0
 		lea		lc_variables(pc),a6
-;		move	#0,lc_fps(a6)				; reset fps count
 		move	#0,lc_updateFrame(a6)		; clear logic update flag
 		cmpi	#UPDATE_TIME,lc_updateTimer(a6)
 		bmi.s	.sv_noActionUpdate0
@@ -622,13 +621,13 @@ MAIN_LOOP:
 		addi	#UPDATE_TIME,lc_updateTimer(a6)
 .sv_noActionUpdate0:
 
-		lea		cc_RequestTab,a1
-		tst		(a1)			;was ESC pressed?
+		lea		cc_RequestTab,a1	; this table contains "requests" to do things, coming from other places such as keypresses which could not be fully handled in the interrupt
+		tst		(a1)				; was ESC pressed?
 		beq.s	ml2
 		moveq	#0,d0
 		bra.w	sv_quit
 ml2:
-		; this is (I think) to detect release of RMB before next press
+		; this is (I think) to detect release of RMB before reacting to another press otherwise all the time RMB etc is held, the press routines would be called
 		tst		8(a1)			; rf2 flag? used ONLY here
 		beq.s	.nl_4
 		btst.b	#2,$16(a0)		; right mouse/joy buttons
@@ -637,20 +636,20 @@ ml2:
 		beq.s	.nl_5
 		tst		cc_MoveTab+12	; enter / fire from keyboard
 		bne.s	.nl_5
-		move	#0,8(a1)
+		move	#0,8(a1)		; rf2 flag (right joystick fire? / keyboard fire)
 		bra.s	.nl_5
-.nl_4:	btst.b	#2,$16(a0)		;pressed?
+.nl_4:	btst.b	#2,$16(a0)		; RMB pressed?
 		beq.s	.nl_6
-		tst		cc_MoveTab+12
+		tst		cc_MoveTab+12	; ENTER etc. pressed?
 		bne.s	.nl_6
 		btst.b	#7,$bfe001
 		bne.s	.nl_5
 .nl_6:	move	#1,6(a1)		; RMB flag
-		move	#1,8(a1)
+		move	#1,8(a1)		; rf2 flag (fire?)
 .nl_5:
 
-		tst		sv_MapOn
-		bne		ServeMap		;if map initialized
+		tst		sv_MapOn		; is map currently being displayed?
+		bne		ServeMap		; if map initialized
 
 		tst		sv_PAUSE
 		beq.s	NOT_Paused
@@ -689,8 +688,8 @@ sv_SizeNoStr:
 		move	sv_NtscPal,sv_NtscPal+2
 sv_sns:	move	d0,sv_Size
 		move	d1,sv_StrFlag		;do screen stretch?
-		beq.s	sv_Sizeok0
-		move	d1,sv_StrFlag+2		;change request
+;		beq.s	sv_Sizeok0
+;		move	d1,sv_StrFlag+2		;change request
 sv_SizeOk0:	
 		bsr		sv_SetWindowSize_pass			; change window size if requested
 		move	sv_NtscPal+2,$dff1dc
@@ -781,7 +780,7 @@ sv_startFrame:
 		beq.s	.sv_NoSpace
 		bsr		Check_RMB		;if space - hand used
 		bra.s	.sv_NotRMB
-.sv_NoSpace:	tst.l	cc_RequestTab+6
+.sv_NoSpace:	tst.l	cc_RequestTab+6		; RMB or RF2
 		beq.s	.sv_NotRMB
 		bsr		Check_RMB		;shots, etc.
 .sv_NotRMB:	
@@ -1108,14 +1107,14 @@ swapScreen:
 ; shoot, use weapons
 check_RMB:	movem.l	ALL,-(sp)
 		move	#1,sv_HitFlag
-		lea	sv_Items,a1
+		lea		sv_Items,a1
 		move	(a1),d0					; selected item (*6)
-		tst	sv_SpaceOn
+		tst		sv_SpaceOn
 		bne.s	rm_HandUsed
 		cmpi	#3*6,d0					; is it machine gun?
 		bne.s	RMB_other
 		move	#0,cc_RequestTab+6
-		bra	rm_MachineGun
+		bra		rm_MachineGun
 
 RMB_other:	tst	cc_RequestTab+6
 		beq.s	RMB_End
@@ -1123,21 +1122,21 @@ RMB_other:	tst	cc_RequestTab+6
 		tst	d0
 		beq.s	rm_HandUsed
 		cmpi	#6,d0
-		beq	rm_HandGunUsed
+		beq		rm_HandGunUsed
 		cmpi	#2*6,d0
-		beq	rm_ShotGunUsed
+		beq		rm_ShotGunUsed
 		cmpi	#4*6,d0
-		beq	rm_FlamerUsed
+		beq		rm_FlamerUsed
 		cmpi	#5*6,d0
-		beq	rm_BolterUsed
+		beq		rm_BolterUsed
 		cmpi	#6*6,d0
-		beq	rm_LauncherUsed
+		beq		rm_LauncherUsed
 		cmpi	#7*6,d0
-		beq	rm_CardUsed
+		beq		rm_CardUsed
 		cmpi	#8*6,d0
-		beq	rm_CardUsed
+		beq		rm_CardUsed
 		cmpi	#9*6,d0
-		beq	rm_CardUsed
+		beq		rm_CardUsed
 
 RMB_End:	move	#0,sv_HitFlag
 		movem.l	(sp)+,ALL
@@ -5823,6 +5822,20 @@ shZ_M16both:	move.b	d1,(a6)
 		dbf	d3,shZ_M16both
 		bra.s	shZ_M16Pix
 
+
+
+;-------------------------------------------------------------------
+clearCPUCache:
+		move.l	d0,-(sp)
+		move	lc_isCache(pc),d0
+		beq.s	.noCache
+		movec	CACR,d0
+        ori.w   #$0808,d0		; clear data and instruction cache
+		movec	d0,CACR
+.noCache:
+		move.l	(sp)+,d0
+		rts
+
 ;-------------------------------------------------------------------
 ; JUMP EXTENSIONS
 ;-------------------------------------------------------------------
@@ -5932,7 +5945,8 @@ txt_cache_on:			dc.b	"CPU CACHE: ON",0
 txt_cache_off:			dc.b	"CPU CACHE: OFF",0
 txt_c2p_cpu:			dc.b	"C2P: CPU",0
 txt_c2p_blitter:		dc.b	"C2P: BLITTER",0
-txt_version:			dc.b	"V1.30 BUILD ",VERSION>>28&$f+48, VERSION>>24&$f+48, ".", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48,0
+txt_version:			dc.b	"V1.30 BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48,0
+
 even
 
 EVEN
@@ -6968,7 +6982,7 @@ cc_F1_F8:		cmpi.b	#$60,d0			;F1-F5 - window size (F6,F7,F8 stretched)
 		andi	#$fffe,d0
 		neg	d0
 		lsr	d0
-		move	d0,2(a1)
+		move	d0,2(a1)		; handle size change in main loop
 		bra		cc_NoKey
 cc_1_0:	cmpi.b	#$fe,d0			;1-0 - weapons + cards
 		bpl.s	cc_f
@@ -7145,26 +7159,26 @@ cc_KeyTab:	dc.w	$67,$65,$61,$63,$df,$dd,$db
 
 ;-------------------------------------------------------------------
 cc_FixKeys:	
-		lea	cc_RequestTab,a1
-		lea	cc_MoveTab,a2		;fix move keys pressed
+		lea		cc_RequestTab,a1
+		lea		cc_MoveTab,a2		;fix move keys pressed
 		move	10(a1),d1		;up
-		or	20(a1),d1
+		or		20(a1),d1
 		move	d1,(a2)+
 		move	12(a1),d1		;dn
-		or	26(a1),d1
+		or		26(a1),d1
 		move	d1,(a2)+
 		move	14(a1),d1		;turn l.
-		or	18(a1),d1
+		or		18(a1),d1
 		move	d1,(a2)+
 		move	16(a1),d1		;turn r.
-		or	22(a1),d1
+		or		22(a1),d1
 		move	d1,(a2)+
 		move	24(a1),(a2)+		;left
 		move	28(a1),(a2)+		;right
 		move	30(a1),d1		;fire
-		or	32(a1),d1
-		or	34(a1),d1
-		or	36(a1),d1
+		or		32(a1),d1
+		or		34(a1),d1
+		or		36(a1),d1
 		move	d1,(a2)
 		rts
 
@@ -7180,9 +7194,9 @@ EndLevel:
 		tst		sv_EndLEvel
 		bmi.s	sv_Death
 ; survived exit
-		move	cc_RequestTab+2,d0	;anything pressed?
+		move	cc_RequestTab+2,d0	; screen size change key pressed?
 		cmpi	#7,d0
-		bmi.s	.NoStr			;if <1,6>
+		bmi.s	.NoStr			;if <2,6>
 		move.l	sv_screen,a2
 		lea		[sv_Upoffset*5*row](a2),a2
 		moveq	#0,d0
@@ -7192,6 +7206,7 @@ EndLevel:
 		ENDR
 		dbf		d7,.Clrscr
 		bra.s	.E2
+
 .NoStr:		lea	sv_WindowSav,a1
 		move.l	sv_screen,a2
 		addi.l	#[sv_Upoffset*5*row],a2
@@ -9574,28 +9589,29 @@ db_4:	andi	#$f000,(a2)
 		rts
 
 ;-------------------------------------------------------------------
-;Make code for copying columns to bit-table... Kane/SCT, 09.02.1994
+; Make code for copying columns to bit-table... Kane/SCT, 09.02.1994
+; This is used in case of no cache
 ;No input...
 mc_MakeCode:
 		movem.l	ALL,-(sp)
 		move.l	lc_FastMem1(pc),a1
 ;		lea	(a1),a5
 		addi.l	#mc_code,a1		;addr table
-		lea	[mc_MaxHeigth*4](a1),a2	;code table
+		lea		[mc_MaxHeigth*4](a1),a2	;code table
 ;		addi.l	#mc_Htab,a5		;Heigth table
-		lea	mc_Htab,a5		;Heigth table
-		lea	[mc_MaxHeigth*4](a5),a6
+		lea		mc_Htab,a5		;Heigth table
+		lea		[mc_MaxHeigth*4](a5),a6
 		move.l	a2,(a1)+		;fix zero
 		move	#$4e75,(a2)+		;rts
 		move.l	a6,(a5)+
 		move.b	#-1,(a6)+
-		lea	sv_LineTab,a3
+		lea		sv_LineTab,a3
 
 		moveq	#0,d4			;down offset
 		move	sv_ViewWidth,d3
-		lsl	#3,d3			;view window width
+		lsl		#3,d3			;view window width
 		move	d3,d2
-		neg	d2			;up offset
+		neg		d2			;up offset
 		move	d2,d1			;store offsets
 		move	d4,d5
 		moveq	#1,d7			;linii
@@ -9606,14 +9622,14 @@ mc_loop32:
 		move.l	a6,(a5)+
 		moveq	#31,d6
 mc_cl32loop:	move.b	#0,(a6)+		;clear Htab cell
-		dbf	d6,mc_cl32loop
+		dbf		d6,mc_cl32loop
 		move.b	#-1,(a6)+		;end cell
 		move.l	-4(a5),a6
 
 		moveq	#1,d6			;n
-mc_l322:	moveq	#0,d0
+mc_l322: moveq	#0,d0
 		move	d6,d0
-		lsl	#5,d0
+		lsl		#5,d0
 		divu	d7,d0
 
 		subq	#1,d0
@@ -9622,40 +9638,39 @@ mc_l322:	moveq	#0,d0
 		move	d0,(a2)+		; X1 X2
 		move	d4,(a2)+		;down - Y1 Y2
 		addq	#1,d0
-		neg	d0
+		neg		d0
 		move	#$1569,(a2)+
 		move	d0,(a2)+
 		move	d2,(a2)+		;up
-		add	d3,d4
-		sub	d3,d2
+		add		d3,d4
+		sub		d3,d2
 
 		addq	#1,d6
-		cmp	d6,d7
+		cmp		d6,d7
 		bpl.s	mc_l322
 
-		lea	33(a6),a6		;set to next cell
+		lea		33(a6),a6		;set to next cell
 		move	#$4e75,(a2)+		;rts
 		addq	#1,d7
 		cmpi	#32,d7
 		bne.s	mc_loop32
 
-
 ;---------------Bigger than 32 lines...
 ;		moveq	#32,d7			;linii
 		move	sv_ViewHeigth,d1
-		lsr	d1
+		lsr		d1
 mc_loopMore:
-		lea	sv_LineTab,a3
+		lea		sv_LineTab,a3
 		moveq	#0,d5			;line lumber
 		moveq	#0,d4			;how many these?
 		moveq	#1,d2			;wall lines
 		moveq	#0,d6			;n
-mc_lM2:		moveq	#0,d0
+mc_lM2:	moveq	#0,d0
 		move	d6,d0
-		lsl	#5,d0
+		lsl		#5,d0
 		divu	d7,d0
 
-		cmp	d0,d5
+		cmp		d0,d5
 		bne.s	mc_M3
 		addq	#1,d4
 		bra.s	mc_M4
@@ -9664,36 +9679,36 @@ mc_M3:
 		moveq	#1,d4
 		move	d0,d5
 		addq	#1,d2			;next wall line
-mc_M4:		addq	#1,d6
-		cmp	d6,d1
+mc_M4:	addq	#1,d6
+		cmp		d6,d1
 		beq.s	mc_M5
-		cmp	d6,d7
+		cmp		d6,d7
 		bne.s	mc_lM2
-mc_M5:		move	d4,(a3)+
+mc_M5:	move	d4,(a3)+
 		move	#-1,(a3)		;end of tab
 
 
 		move.l	a2,(a1)+		;code part addr
 		move.l	a6,(a5)+		;H cell addr
 		move	d2,d0
-		neg	d0
+		neg		d0
 		cmpi	#mc_maxHeigth-90,d7
 		bpl.s	.mc_1
 		move	#$43e9,(a2)+		;lea x(a1),a1
 		move	d0,(a2)+
-.mc_1:		move	d6,d0
+.mc_1:	move	d6,d0
 		mulu	d3,d0
-		neg	d0			;SVGA first offset
+		neg		d0			;SVGA first offset
 		subq	#1,d2
 mc_c2loop:	move	-(a3),d6
 		move	d6,-(sp)
-mc_c21:		subq	#1,d6
+mc_c21:	subq	#1,d6
 		beq.s	mc_m6
 		cmpi	#mc_maxHeigth-90,d7
 		bpl.s	.mc_2
 		move	#$1551,(a2)+		;move	(a1),y(a2)
 		move	d0,(a2)+
-.mc_2:		add	d3,d0
+.mc_2:	add	d3,d0
 		bra.s	mc_c21
 mc_M6:
 		move	(sp)+,d6
@@ -9702,20 +9717,20 @@ mc_M6:
 		bsr.w	mc_optim
 		move	#$1559,(a2)+		;move	(a1)+,y(a2)
 		move	d0,(a2)+
-.mc_3:		add	d3,d0
-		dbf	d2,mc_c2loop
+.mc_3:	add		d3,d0
+		dbf		d2,mc_c2loop
 
 mc_c2loop2:	move	(a3)+,d6
 		bmi.s	mc_M8
 		move.b	d6,(a6)+		;set row repeats in cell
 		move	d6,-(sp)
-mc_c22:		subq	#1,d6
+mc_c22:	subq	#1,d6
 		beq.s	mc_m7
 		cmpi	#mc_maxHeigth-90,d7
 		bpl.s	.mc_4
 		move	#$1551,(a2)+		;move	(a1),y(a2)
 		move	d0,(a2)+
-.mc_4:		add	d3,d0
+.mc_4:	add		d3,d0
 		bra.s	mc_c22
 mc_M7:
 		move	(sp)+,d6
@@ -9724,14 +9739,13 @@ mc_M7:
 		bsr.s	mc_optim
 		move	#$1559,(a2)+		;move	(a1)+,y(a2)
 		move	d0,(a2)+
-.mc_5:		add	d3,d0
-		bra	mc_c2loop2
+.mc_5:	add		d3,d0
+		bra		mc_c2loop2
 
-mc_M8:
-		cmpi	#mc_maxHeigth-90,d7
+mc_M8:	cmpi	#mc_maxHeigth-90,d7
 		bpl.s	.mc_6
 		move	#$4e75,(a2)+		;rts
-.mc_6:		move.b	#-1,(a6)+		;end cell
+.mc_6:	move.b	#-1,(a6)+		;end cell
 
 
 		move.l	-4(a1),a3		;compress code
@@ -9743,9 +9757,9 @@ mc_M8:
 		subq	#1,d6			;nr of words
 		move.l	-8(a1),a4
 mc_check1:	move	(a4)+,d0
-		cmp	(a3)+,d0
+		cmp		(a3)+,d0
 		bne.s	mc_notequ		;if not the same
-		dbf	d6,mc_check1
+		dbf		d6,mc_check1
 		move.l	-4(a1),a2
 		move.l	-8(a1),-4(a1)
 		move.l	-4(a5),a6		;remove last cell
@@ -9754,7 +9768,7 @@ mc_notequ:	addq	#1,d7
 		cmpi	#mc_maxHeigth,d7
 		bne.L	mc_loopMore
 
-;move.l	a2,ddd
+;move.l	a2,ddd		;where does this code end?
 		movem.l	(sp)+,ALL
 		rts
 
@@ -9764,13 +9778,13 @@ mc_optim:
 		bmi.s	.mc_o1
 		subq	#2,d6
 		lea	(a2),a4
-.mc_s4:		move	-(a4),2(a4)
+.mc_s4:	move	-(a4),2(a4)
 		move	#$1547,(a4)
 		lea	-2(a4),a4
 		dbf	d6,.mc_s4
 		lea	2(a2),a2
 		move.l	#$1e111547,(a4)		;m.(a1)+,d7   m.d7,x(a1)
-.mc_o1:		rts
+.mc_o1:	rts
 
 ;ddd:	dc.l	0
 ;-------------------------------------------------------------------
@@ -9779,8 +9793,8 @@ make_PLANES:
 		movem.l	ALL,-(sp)
 		move.l	lc_FastMem1(pc),a1
 		addi.l	#sv_PLANES,a1			;addr table
-		lea	260(a1),a2			;plane table
-		lea	(a2),a3				;p.t. 2
+		lea		260(a1),a2			;plane table
+		lea		(a2),a3				;p.t. 2
 		move	#350,d6				;y' (max)
 		move.l	#500*[2^SHLeft],d7
 		divu	d6,d7				;z min(365)
@@ -9791,7 +9805,7 @@ mp_loop1:
 		divu	d6,d5				;z'
 		addq	#1,d5
 		move	d5,d1				;save Z odl
-		sub	d7,d5				;dZ
+		sub		d7,d5				;dZ
 
 		move.l	a2,(a1)+			;save addr
 		moveq	#0,d3				;first x''
@@ -9801,7 +9815,7 @@ mp_loop2:
 		mulu	d0,d4
 		lsr.l	#6,d4				;dZ*[a/64]
 		move	d1,d2
-		sub	d4,d2				;z'
+		sub		d4,d2				;z'
 		move	#1000,d4
 		mulu	d0,d4
 		lsr.l	#6,d4				;x'
@@ -9833,8 +9847,8 @@ mp_Shorter:	neg	d0
 		subq	#1,d0
 		move	#$3f,d2
 mp_AddCloop:	move.b	d2,(a2)+			;if <700
-		dbf	d0,mp_AddCloop			;add $3f...
-mp_LenOK:	lea	(a2),a3
+		dbf		d0,mp_AddCloop			;add $3f...
+mp_LenOK: lea	(a2),a3
 		subq	#4,d6
 		cmpi	#90,d6
 		bne.s	mp_loop1
@@ -9863,33 +9877,34 @@ mk_DCD2:move.w	(a3)+,(a2)+
 
 		bsr		sv_MakeWidthTab		;make sv_width_tables
 
-		lea	sv_ConstTab,a1
+		; --- calculate several constants for later ---
+		lea		sv_ConstTab,a1
 		move.l	sv_ChunkyBuffer,a2
 		move	sv_ViewWidth,d1
 		move	d1,d2
-		lsr	d2
+		lsr		d2
 		subq	#1,d2
 		move	d2,28(a1)		;width/16 - 1
-		add	d1,d1
+		add		d1,d1
 		move	d1,30(a1)		;width/4 - 1
 		subi	#1,30(a1)
-		add	d1,d1			;*4
+		add		d1,d1			;*4
 		move	d1,(a1)			;width/2
-		add	d1,d1			;*8
+		add		d1,d1			;*8
 		move	d1,6(a1)		;width
 
-		lea	shZ_WmulTab(pc),a3
+		lea		shZ_WmulTab(pc),a3		; width mul table
 		moveq	#15,d0
 		move	d1,d2
-mk_Wmt2:	move	d2,(a3)+
-		add	d1,d2
-		dbf	d0,mk_Wmt2
+mk_Wmt2: move	d2,(a3)+
+		add		d1,d2
+		dbf		d0,mk_Wmt2
 		move	sv_ViewHeigth,d2
-		lsr	#1,d2
+		lsr		#1,d2
 		mulu	d2,d1
-		lea	(a2,d1.w),a2		;SCR tab middle
+		lea		(a2,d1.w),a2		;SCR tab middle
 		move.l	a2,8(a1)
-		lea	64*192(a2),a3		;zero wall tab start
+		lea		64*192(a2),a3		;zero wall tab start
 		move.l	a3,44(a1)
 
 		move	sv_WallHeigth,d1
@@ -9899,13 +9914,13 @@ mk_Wmt2:	move	d2,(a3)+
 		lsl.l	#SHLeft,d1		;*256
 		move.l	d1,2(a1)
 
-		; make statis floor perspective tab
-		lea	sv_FloorTab,a3
-		lea	2(a3),a4
+		; --- make static floor perspective tab
+		lea		sv_FloorTab,a3
+		lea		2(a3),a4
 		moveq	#-1,d0
 		move	sv_ViewHeigth,d2
-		lsr	#1,d2
-mk_FlTab:	move.l	d1,d3			;Floor perspective tab
+		lsr		#1,d2
+mk_FlTab: move.l	d1,d3			;Floor perspective tab
 		divu	d2,d3
 		addi	#[2^SHLeft],d3
 		cmpi	#max_Distance,d3
@@ -9918,28 +9933,28 @@ mk_FlTab:	move.l	d1,d3			;Floor perspective tab
 		move	d3,(a4)+
 		subq	#1,d2
 		bne.s	mk_FlTab
-mk_FTend:	move	d0,(a3)
+mk_FTend: move	d0,(a3)
 
 
 		move.l	lc_FastMem1(pc),a3
-		lea	(a3),a4
-		lea	(a3),a5
+		lea		(a3),a4
+		lea		(a3),a5
 		addi.l	#co_Walls,a3
 		move.l	a3,12(a1)
-		lea	(a4),a3
+		lea		(a4),a3
 		addi.l	#mc_code,a4
 		move.l	a4,16(a1)
 		addi.l	#sv_PLANES,a5
 		move.l	a5,20(a1)
 ;		addi.l	#mc_Htab,a3
-		lea	mc_Htab,a3
+		lea		mc_Htab,a3
 		move.l	a3,24(a1)
 
 		lea		sv_DeltaTab+[600*4],a2
 		lea		(a2),a3
 		moveq	#0,d7			;calosc
 		move	6(a1),d2		;wybierz
-mk_DelTab:	move.l	d7,d3			;make DELTA const tab
+mk_DelTab: move.l	d7,d3			;make DELTA const tab
 		divu	d2,d3			; (for floor)
 		move	d3,d1			;C
 		move	#0,d3
@@ -9947,7 +9962,7 @@ mk_DelTab:	move.l	d7,d3			;make DELTA const tab
 		bne.s	mk_DT2
 		addq	#1,d3			;R can't be 0
 
-mk_DT2:		move	d3,(a3)+
+mk_DT2:	move	d3,(a3)+
 		move	d1,(a3)+
 		neg		d1
 		subq	#1,d1
@@ -9961,7 +9976,6 @@ mk_DT2:		move	d3,(a3)+
 		lea		sv_DeltaTab+[600*4],a2	;fix 0 error
 		move.l	4(a2),(a2)
 		move.l	-8(a2),-4(a2)
-
 
 		lea		sv_WallOffsets,a2	;remove zero wall bytes
 		move.l	wall_floor1(a2),d0
@@ -9985,9 +9999,7 @@ mk_DT2:		move	d3,(a3)+
 		lea		(a2,d1.w),a2
 		move.l	a2,40(a1)		;SVGA end addr - store in constants
 
-		bsr		mk_FixFloorMod		;set fl. pixel offsets
-
-		lea		fl_Dcont(pc),a2		;floor row modulos - SELF MODIFYING CODE!!
+		lea		fl_Dcont(pc),a2		;floor row modulos - SELF MODIFYING CODE!! (SMC)
 		lea		flc_Dcont(pc),a3
 		move	6(a1),d0		;width (a1=sv_ConstTab)
 		move	d0,6(a2)
@@ -9997,7 +10009,7 @@ mk_DT2:		move	d3,(a3)+
 		asl		d0				; * 2 to go 2 lines back
 		move	d0,2(a3)
 
-		lea		sv_RotTable,a2
+		lea		sv_RotTable,a2		; rotation table
 		cmpi.l	#$50100,(a2)
 		bne.s	mk_NotFR
 		move.l	a2,d2
@@ -10009,22 +10021,22 @@ mk_FixRot:	move.l	(a2),d1
 		dbf		d0,mk_FixRot
 mk_NotFR:
 
-;eliminate zero-line collumn & enemy drawing
+		; --- eliminate zero-line collumn & enemy drawing
 		lea		sv_CollumnOffsets,a2
 		move.l	(a2),d0
 		move.l	sv_Consttab+12,a2
 		lea		(a2,d0.l),a2		;first col.addr
 		move	#[8*32]-1,d7		;collumn nr.
-		bsr	mk_coll1
+		bsr		mk_coll1
 
 		move.l	sv_Consttab+12,a2	;same with enemy
 		addi.l	#40*65*64,a2		;enemy 1 addr
 		move	#[24*32]-1,d7
-		bsr	mk_coll1
+		bsr		mk_coll1
 		move.l	sv_Consttab+12,a2	;same with enemy 2
 		addi.l	#105*65*32,a2		;enemy 2 addr
 		move	#[24*32]-1,d7
-		bsr	mk_coll1
+		bsr		mk_coll1
 
 		lea		sv_BloodOffsets,a2	;blood not zero-wall! - clear zero wall indicators
 		move.l	(a2),d0
@@ -10035,8 +10047,8 @@ mk_fixblood:	move.b	#0,64(a2)
 		lea		65(a2),a2
 		dbf		d7,mk_fixblood
 
-		lea	sv3_DoubleTab(pc),a2	;double table for stretch
-		lea	sv4_DoubleTab(pc),a3
+		lea		sv3_DoubleTab(pc),a2	;double table for stretch
+		lea		sv4_DoubleTab(pc),a3
 		moveq	#0,d0
 mk_DoublT:	move	d0,d1
 		moveq	#0,d2
@@ -10066,6 +10078,9 @@ mk_DouT2:	dbf	d3,mk_DTloop
 		cmpi.b	#"@",(a2)
 		bne.s	.MTO1
 
+		; --- set fl. pixel offsets in floor generating code (used if no cache)
+		; also clears CPU cache
+		bsr		mk_FixFloorMod	
 		movem.l	(sp)+,ALL
 		rts
 
@@ -10158,6 +10173,8 @@ mk_DCoffsets:
 		move	a2,d0
 		lea		mk_BraPos(pc),a2
 		move	d0,(a2)
+
+		bsr		clearCPUCache		; clear cache at the end to avoid issues after SMC and table re-calc
 		rts
 
 mk_BraPos:	dc.w	0
@@ -10225,13 +10242,17 @@ sv_SWS2:
 		move.b	#$c9,cop_cont		;panel pos
 		move.b	#$ca,cop_cont2
 		move.b	#$f2,cop_cont2+8
-		tst		sv_StrFlag
-		beq		sv_SWS7
-		tst		sv_StrFlag+2		;last was stretched?
-		beq		.sv_lastnot		;no
+		tst		sv_StrFlag			; is current screen stretched?
+		beq		sv_SWS7				; no - omit this section
+
+		move	#1,sv_StrFlag+2		; mark last screen as stretched
+;		tst		sv_StrFlag+2		; yes - was last stretched?
+;		beq.s	.sv_lastnot		;no
+; -------- handle stretched screen ----------------
 		VBLANK
-		move.l	#copper0,$80(a0)
+		move.l	#copper0,$80(a0)	; when going from normal to stretched then set copper0
 		move	#0,$88(a0)		
+		VBLANKR 2
 .sv_lastnot:
 		waitblt				;clear big screen
 		move	#$8040,$96(a0)		;blitter NASTY & DMA on
@@ -10357,7 +10378,7 @@ mk_cop4:	addi.l	#$01000000,d0
 		move.l	d3,(a2)+
 		move.l	d4,(a2)+
 
-		lea	cop2_area+4,a1		;fix first double
+		lea		cop2_area+4,a1		;fix first double
 		move.l	d1,(a1)+
 		move.l	d2,(a1)
 
@@ -10373,11 +10394,19 @@ mk_cop4:	addi.l	#$01000000,d0
 ;		move.l	a4,$80(a0)
 		bra.w	sv_SWS5
 
-
-sv_SWS7:	tst	sv_StrFlag+2		;last was stretched?
-		beq	sv_SWS9
+; -------- handle non-stretched screen ----------------
+; the code enters here if the current screen is not stretched
+sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
+		beq		sv_SWS9				; no - omit this section
 		move	#0,sv_StrFlag+2
 
+		lea		$dff000,a0
+		VBLANK
+		move.l	#copper0,$80(a0)	; when going from normal to stretched then set copper0
+		move	#0,$88(a0)		
+		VBLANKR	2
+
+		; if the previous screen was stretched then copy borders back
 		lea		sv_WindowSav,a1
 		move.l	sv_Screen,a2
 		addi.l	#[sv_Upoffset*5*row],a2
@@ -10403,12 +10432,12 @@ sv_SWS8:	move.l	(a2)+,(a1)+		;copy it to scr 2
 		move.l	(a2)+,(a1)+
 		move.l	(a2)+,(a1)+
 		move.l	(a2)+,(a1)+
-		dbf	d0,sv_SWS8
+		dbf		d0,sv_SWS8
 		move.l	#$90f2c4,cop_borders
 		bra.s	sv_SWS5
 
 sv_SWS9:	
-		lea	$dff000,a0
+		lea		$dff000,a0
 		waitblt
 		move	#$8040,$96(a0)		;blitter NASTY & DMA on
 		move.l	#-1,$44(a0)
@@ -10428,19 +10457,22 @@ sv_SWS9:
 sv_SWS5:
 		lea		$dff000,a0
 		waitblt
-		VBLANK
 
 		lea		cop_ACTUAL,a1
-		move.l	#copper1_std,d0				; cop_screen is the usual non-stretched copperlist
+		move.l	#copper1_std,d1				; cop_screen is the usual non-stretched copperlist
 		tst		sv_StrFlag
 		beq.s	sv_SWS3
-		move.l	#copper2_str,d0				; if screen stretched then use this one
+		move.l	#copper2_str,d1				; if screen stretched then use this one
 sv_SWS3:
-		move	d0,6(a1)
-		swap	d0
-		move	d0,2(a1)
+		VBLANK
+		bsr		clearCPUCache
+		VBLANKR	2
+		move	d1,6(a1)
+		swap	d1
+		move	d1,2(a1)
 		move.l	#RealCopper,$80(a0)
 		move	#0,$88(a0)
+		VBLANKR 2
 		movem.l	(sp)+,ALL
 		rts
 
@@ -10791,8 +10823,8 @@ sv_LastPos:	dc.w	0,0			;last X,Y pos
 cc_MoveTab:	dc.w	0,0,0,0,0,0,0		;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
 
 cc_RequestTab:	dc.w	0,6,0,0,0		; 5*2 = 10 bytes
-;0 quit, 2 sv_Size, 4 blit_use, 6 RMB_flag, 8 Rf2
-		dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys
+;0 quit, 2 window size key pressed, 4 c2p preference changed (blit_use), 6 RMB pressed (RMB_flag), 8 Rf2
+		dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys (up/down etc.)
 
 oc_HitPos:	dc.w	0,0,0,0, 0,0,0,0	;flag,Xpos,Ypos,Offset
 
