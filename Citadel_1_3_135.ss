@@ -11,7 +11,7 @@
 IS_EXE:		equ	0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET	$220126
+VERSION: 	SET	$220128
 BUILD:		SET	$01
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
@@ -251,20 +251,13 @@ start:
 
 		move	lc_CpuType(pc),d0
 		beq.s	.NoCache
-		lea		lc_isCache(pc),a1
-		move	#1,(a1)				; mark that there is a CPU cache present - will always be used
-		lea		lc_c2pType(pc),a1
-		move	#1,(a1)				; 1 = CPU C2P
-		lea		lc_c2pTypePreferred(pc),a1
-		move	#1,(a1)				; 1 = CPU C2P
-
+		lea		lc_variables(pc),a6
+		move	#1,lc_isCache(a6)				; mark that there is a CPU cache present - will always be used
+		move	#1,lc_c2pType(a6)				; 1 = CPU C2P
+		move	#1,lc_c2pTypePreferred(a6)		; 1 = CPU C2P
 		move.l	lc_FastMem2(pc),d0
 		addi.l	#F2_ChunkyBufF,d0
 		move.l	d0,sv_ChunkyBuffer
-
-;		move	#1,sv_Mode		; cache draw_mode
-		move	#1,sv_Buse		; buse and buse+2 : blitter off
-		move	#1,sv_Buse+2
 
 		clr.l	d0
 		movec	CACR,d0			; switch on and clear cache
@@ -286,14 +279,10 @@ start:
 		bra.s	.InitStruct
 
 .NoCache:	; this is a plain 68000 so no cache etc.
-		lea		lc_isCache(pc),a1
-		move	#0,(a1)				; mark that there is no CPU cache present
-		lea		lc_c2pType(pc),a1
-		move	#0,(a1)				; 0 = blitter C2P
-		lea		lc_c2pTypePreferred(pc),a1
-		move	#0,(a1)				; 0 = blitter C2P
-;		move	#0,sv_Mode		; cache draw_mode
-		move.l	#0,sv_Buse		; buse and buse+2 : blitter on
+		lea		lc_variables(pc),a6
+		move	#0,lc_isCache(a6)				; mark that there is no CPU cache present
+		move	#0,lc_c2pType(a6)				; 0 = blitter C2P
+		move	#0,lc_c2pTypePreferred(a6)		; 0 = blitter C2P
 		move.l	#sv_ChunkyBufC,sv_ChunkyBuffer	; use chip chunky buffer with blitter
 
 .InitStruct:
@@ -318,10 +307,8 @@ start:
 .GunCop: move	(a1)+,(a2)+
 		dbf	d0,.GunCop
 
-		lea		lc_ledChange(pc),a1		; mark leds to be updated
-		st		(a1)
-
-		bsr		SeedRandom
+		st		lc_ledChange(a6)		; mark leds to be updated
+		bsr		SeedRandom				; initialise random seed
 
 		lea	lc_soundList(pc),a3		;fix sounds- put a 0 on the first word
 .fix_s:	move.l	(a3)+,d0
@@ -662,79 +649,62 @@ ml2:
 		SCROLL	41				;"game is paused"
 		bra		MAIN_LOOP
 
-NOT_Paused:	
-		move	cc_RequestTab+2,d0	;window size button (F1-F8) pressed? Returns 2..6 for (F1-F5) and 7..9 for (F6-F8)
+;--------------------------------
+NOT_Paused:
+		lea		lc_variables(pc),a6
+		lea		cc_RequestTab,a1
+		move	2(a1),d0			;window size button (F1-F8) pressed? Returns 2..6 for (F1-F5) and 7..9 for (F6-F8)
+		beq		sv_NoScrChange
+		clr		2(a1)
 		cmp		sv_Size+2,d0		; is it the same as current size?
-		beq.w	sv_SizeOk
-		move	d0,sv_Size+2		; size can be 1-8. 6,7 and 8 are stretched. Note that size 1-> sv_size=2 , size 5 -> sv_size=6
-		moveq	#0,d1				; by default no screen stretch
+		beq.w	sv_NoScrChange
+ 		move	d0,sv_Size+2		; size can be 1-8. 6,7 and 8 are stretched. Note that size 1-> sv_size=2 , size 5 -> sv_size=6
 		cmpi	#7,d0
-		bmi.s	sv_SizeNoStr		;if <1,6>
-		cmpi	#7,d0
-		bne.s	.scr7
-		move	sv_NtscPal,sv_NtscPal+2	; this is for scr 7
-		bra.s	.scr8
-.scr7:	move	#32,sv_NtscPal+2	;force pal on scr 6
+		bmi.s	sv_SizeNoStr		;if <2,6> screen is not stretched
 
-.scr8:	move	#1,sv_Buse			; if stretching in place then do not use blitter
-		move	#-2,cc_RequestTab+4	; blitter use - prepare to fix later
-		eori	#1,sv_Buse+2
-		bsr		sv_MakeWidthTab_pass
-		bsr		mk_FixFloorMod_pass
-		moveq	#5,d0		; size 5
-		moveq	#1,d1		; stretch on
-		bra.s	sv_sns
+		move	#5,sv_Size			; bit-size for non-stretched is always 5 (which is same as F4, 20 bytes)
+		st		sv_StrFlag			; mark screen as not stretched
+		move	#1,lc_c2pType(a6)	; on stretched screens use CPU C2P
+		bra.s	sv_cont1
 sv_SizeNoStr:
-		move	sv_NtscPal,sv_NtscPal+2
-sv_sns:	move	d0,sv_Size
-		move	d1,sv_StrFlag		;do screen stretch?
-;		beq.s	sv_Sizeok0
-;		move	d1,sv_StrFlag+2		;change request
-sv_SizeOk0:	
-		bsr		sv_SetWindowSize_pass			; change window size if requested
-		move	sv_NtscPal+2,$dff1dc
-		move	cc_RequestTab+2,d0
+		move	d0,sv_Size			; user screen size same as bit-size for non-stretched
+		clr		sv_StrFlag			; mark screen as not stretched
+		move	lc_c2pTypePreferred(a6),lc_c2pType(a6)	; on non-stretched screens use preferred C2P
+sv_cont1:
+		st		lc_ledChange(a6)	; re-draw debug LEDs
+		bsr		sv_SetWindowSize_pass		; change window size
+		move	sv_size,d0
 		addi	#21,d0
-		SCROLL1							; "window size X"
+		SCROLL1						; "window size X"
 		TIMESTAMP	d0
-		move.l	d0,lc_fps+4(a6)					; refresh - get and store new fps start timestamp after screen change
+		move.l	d0,lc_fps+4(a6)		; refresh - get and store new fps start timestamp after screen change
+		bra.s	sv_cont2
 
-sv_SizeOk:	
-		tst		sv_StrFlag				; if stretching happening then blitter cannot be used
-		bne.w	sv_BlitUok
-		move	cc_RequestTab+4,d0		; user triggered blitter on/off change - allow user to change blitter use
-		beq.w	sv_BlitUoK
-		move	#0,cc_RequestTab+4
-		eori	#1,sv_Buse+2
-		tst		d0
-		bmi.s	.sv_SO2					;no scroll
-		tst		sv_Buse+2
-		beq.s	.sv_SO1
-		SCROLL	36
-		bra.s	.sv_SO2
-.sv_SO1:	SCROLL	35
-.sv_SO2:	move	sv_Buse+2,sv_Buse		; execute blitter use change
-;		move	lc_CpuType(pc),d1
-;		beq.s	.sv_no20
-;		move	#1,sv_Buse		;blitter off if not 020+to force using code tabs
-;		move	#1,sv_Buse+2
-;.sv_no20:
-		bsr		sv_MakeWidthTab_pass
-		bsr		mk_FixFloorMod_pass
+sv_NoScrChange:
+		move	4(a1),d0			; user triggered c2p mode change
+		beq.s	sv_cont2
+		tst		sv_StrFlag			; C2P can only be changed on a non-stretched screen
+		bne.s	sv_cont2
+		clr		4(a1)
+		move	lc_c2pTypePreferred(a6),lc_c2pType(a6)	; on non-stretched screens use preferred C2P
+		st		lc_ledChange(a6)	; re-draw debug LEDs
+		bsr		sv_SetWindowSize_pass		; refresh window size
 
-sv_BlitUoK:	
+sv_cont2:
+		; --- change weapon if required
 		move	sv_flag+6,d0
 		beq.s	.noNewWeapon
 		clr		sv_flag+6
 		bsr		ci_NewWeapon
 .noNewWeapon:
 
-		tst		sv_WalkSpeed+6		;max speed if potion !
+		; --- adjust walking speed if required
+		tst		sv_WalkSpeed+6		;max speed if potion taken
 		beq.s	sv_NotSpeed
 		move	sv_WalkSpeed+2,sv_WalkSpeed
-		subi	#1,sv_WalkSpeed+6
+		subi	#1,sv_WalkSpeed+6	; decrease time of potion effect left
 		bne.s	sv_NotSpeed
-		move	sv_WalkSpeed+4,sv_WalkSpeed+2
+		move	sv_WalkSpeed+4,sv_WalkSpeed+2	; back to normal speed after potion runs out
 		bra.s	sv_startframe
 sv_NotSpeed:
 		lea		sc_PosTab(pc),a1	;speed & exhaust
@@ -743,7 +713,7 @@ sv_NotSpeed:
 		move	sv_WalkSpeed+2,d1
 		mulu	d0,d1
 		lsr.l	#8,d1
-		lsr	d1						;/512
+		lsr		d1						;/512
 		move	d1,sv_WalkSpeed
 		
 ;---------------------------------------------------------
@@ -857,7 +827,7 @@ sv_Cloop0:	rept	4			;clear row map.
 	CNTSTART 9
 		move.l	sv_Screen,a1					; always draw on the first screen (second is displayed)
 		add.l	sv_offset,a1					; start of the draw window - offset Y*5 + X
-		bsr		sv_C2PCcopy						; C2P copy to screen
+		bsr		c2p_Copy						; C2P copy to screen
 	CNTSTOP 9
 
 		; calculate FPS
@@ -995,8 +965,8 @@ sv_quit:
 ;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
-NewLev3:	movem.l ALL,-(sp)
-
+NewLev3:	
+		movem.l ALL,-(sp)
 		move	$dff01e,d0				; INTREQQ - which L3 interrupt was raised?
 		andi	#$20,d0
 		bne.s	interruptL3Vertb
@@ -1099,7 +1069,6 @@ swapScreen:
 .c1c:	move	d0,6(a1)				; only modify copper jump addresses (this is faster and more "atomic" than changing all addresses)
 		swap	d0
 		move	d0,2(a1)
-		
 		rts
 
 ;-------------------------------------------------------------------
@@ -1138,7 +1107,8 @@ RMB_other:	tst	cc_RequestTab+6
 		cmpi	#9*6,d0
 		beq		rm_CardUsed
 
-RMB_End:	move	#0,sv_HitFlag
+RMB_End:	
+		move	#0,sv_HitFlag
 		movem.l	(sp)+,ALL
 		rts
 
@@ -1153,21 +1123,21 @@ rm_HandUsed:	move	#0,sv_SpaceOn		;clr space_used
 		bpl.s	.rm_FindDir
 		andi	#3,d1
 
-		lea	sv_Map,a1
+		lea		sv_Map,a1
 		addi	sv_MapPos,d1		;your map location
 		move.b	(a1,d1.w),d0		;wall you're facing
-		bne	rm_FacingWall
+		bne		rm_FacingWall
 		andi	#$fffc,d1		;eliminate direction
 		move.b	7(a1,d1.w),d0
 		beq.s	rm_Item
 		SCROLL	70			;enemy
-		bra	rm_HandEnd
-rm_item:	move.b	6(a1,d1.w),d0
+		bra		rm_HandEnd
+rm_item: move.b	6(a1,d1.w),d0
 		andi	#31,d0
 		beq.s	rm_Trup
 		SCROLL	43			;item
-		bra	rm_HandEnd
-rm_Trup:	move.b	5(a1,d1.w),d0
+		bra	 	rm_HandEnd
+rm_Trup: move.b	5(a1,d1.w),d0
 		andi	#$e0,d0
 		beq.s	rm_Column
 		SCROLL	46			;trup
@@ -1178,11 +1148,11 @@ rm_Column:	move.b	5(a1,d1.w),d0
 		cmpi	#3,d0
 		bpl.s	rm_Column2
 		SCROLL	45			;non-passable column
-		bra	rm_HandEnd
+		bra		rm_HandEnd
 rm_Column2:	SCROLL	44			;normal column
-		bra	rm_HandEnd
+		bra		rm_HandEnd
 rm_Nothing:	SCROLL	49			;nothing here
-		bra	rm_HandEnd
+		bra		rm_HandEnd
 
 
 rm_FacingWall:	move	d0,d2
@@ -1194,7 +1164,7 @@ rm_FacingWall:	move	d0,d2
 		cmpi	#36,d0
 		bne.s	rm_OpenedDoor
 rm_ClosedDoor:	SCROLL	50			;closed door
-		bra	rm_HandEnd
+		bra		rm_HandEnd
 rm_OpenedDoor:	cmpi	#32,d0
 		beq.s	rm_OpenedDoor1
 		cmpi	#38,d0
@@ -1226,8 +1196,8 @@ rm_ChkBlood:	move	d1,d0
 		move.b	4(a1,d1.w),d3		;get slots
 		not	d0
 		andi	#3,d0
-		add	d0,d0
-		lsr	d0,d3
+		add		d0,d0
+		lsr		d0,d3
 		andi	#3,d3
 		subq	#1,d3			;if 1
 		bne.s	rm_NotSlot1
@@ -1242,32 +1212,35 @@ rm_NotSlot2:
 		beq.s	rm_NoBlood
 		SCROLL	48			;blooded wall
 		bra.s	rm_HandEnd
-rm_NoBlood:	SCROLL	47			;normal wall
-rm_HandEnd:	bra	RMB_End
+rm_NoBlood:	
+		SCROLL	47			;normal wall
+rm_HandEnd:	
+		bra	RMB_End
 
 ;-------------------------------------------------------------------
-rm_ServeSwitch:	tst	sv_DoorFlag1+22		;last prior lasting?
+rm_ServeSwitch:	
+		tst		sv_DoorFlag1+22		;last prior lasting?
 		bne.s	.rm_CantUse
-		tst	sv_DoorFlag2+22
+		tst		sv_DoorFlag2+22
 		bne.s	.rm_CantUse
 		cmpi	#-1,sv_DoorFlag1+26	;is last prior made?
 		bne.s	.rm_CantUse
 		cmpi	#-1,sv_DoorFlag2+26	;door 2 too?
 		beq.s	.rm_DoUse
 .rm_CantUse:	SCROLL	54
-		bra	rm_HandEnd
+		bra		rm_HandEnd
 
 .rm_DoUse:	SCROLL	53
 		SOUND	2,1,63
 		andi.b	#%11000001,(a1,d1.w)
 		ori.b	d0,(a1,d1.w)		;switch in!
-		lea	sv_SwitchData,a2	;command tab
+		lea		sv_SwitchData,a2	;command tab
 .rm_SeekPos:	move	(a2)+,d0
 		cmpi	#-1,d0
 		bne.s	.rm_SeekPos
 		move	(a2)+,d0
 		bmi.w	rm_HandEnd		;not found server
-		cmp	d0,d1			;chk offest
+		cmp		d0,d1			;chk offest
 		bne.s	.rm_SeekPos
 
 		tst	d2
@@ -1275,8 +1248,9 @@ rm_ServeSwitch:	tst	sv_DoorFlag1+22		;last prior lasting?
 rm_SeekOut:	cmp	(a2)+,d2
 		bne.s	rm_SeekOut
 
-rm_DoCommands:	bsr.s	rm_CommandLoop
-		bra	rm_HandEnd
+rm_DoCommands:	
+		bsr.s	rm_CommandLoop
+		bra		rm_HandEnd
 
 ;a2 - command table
 rm_CommandLoop:	move	(a2)+,d0		;get flag_byte
@@ -1470,55 +1444,19 @@ rm_CardEnd:	bra.w	RMB_End
 ;-------------------------------------------------------------------
 ; add crosshairs in the middle of the screen
 drawCrosshairs:
-		; move.l	sv_ChunkyBuffer,a1
-		; move	#0,d0
-		; clr.l	d1
-		; move	sv_ViewWidth,d1				; in bytes = pixes / 8
-		; lsl		#3,d1
-
-		; move	#15,d2
-; .wwww:
-		; rept	4
-		; lea		(a1),a2
-
-		; rept	16
-		; move.b	d0,(a2)+
-		; move.b	d0,(a2)+
-		; move.b	d0,(a2)+
-		; move.b	d0,(a2)+
-		; addq	#1,d0
-		; endr
-
-		; subi	#16,d0
-		; lea		(a1,d1.l),a1
-		; endr
-		; addi	#16,d0
-		; dbf		d2,.wwww
-
 		lea		lc_variables(pc),a6
 		move.l	sv_ChunkyBuffer,a1
 		move	sv_ViewWidth,d1				; in bytes = pixes / 8
 		lsl		#3,d1						; in pixels (48..192)
 		move	d1,d3
 		lsr		#1,d1
-;		clr.l	d4
 		move	d1,d4
 		mulu	sv_ViewHeigth,d1			; results in half the screen
-;		add.l	d4,d1						; move to line middle
 		lea		(a1,d1.l),a1				; screen centre
-
-		; lsl		#3,d1						; in pixels (48..192)
-		; move	d1,d3
-		; lsr		#1,d1
-		; clr.l	d2
-		; move	d1,d2
-		; mulu	sv_ViewHeigth,d1			; results in half the screen
-		; add.l	d2,d1						; move to line middle
-		; lea		(a1,d1.l),a1				; screen centre
 
 		move	d3,d1
 		lsl		#2,d1
-		move	lc_time+2(a6),d2
+		move	lc_time+2(a6),d2			; sinus up/down depending on time spent moving
 		lsl		#4,d2
 		lea		sv_sinus,a2
 		andi	#$1fe,d2
@@ -1543,7 +1481,7 @@ drawCrosshairs:
 		move	#$08,d0						; colour: white
 ;		move	#$50,d0						; colour: red
 
-		tst		sv_Buse						; 1 - blitter not used, 0 - used
+		move	lc_variables+lc_c2pType(pc),d1		; C2P: 0 - blitter, 1 - CPU
 		beq.s	.translateX
 
 		lea		(a1,d4),a1					; move to screen middle
@@ -1619,47 +1557,49 @@ rm_HandGunUsed:					; input: d0 = weapon index: 0 (hand), 6 (handgun) etc.
 		addq	#1,2(a1)			; decrease ammo count
 		SOUND	7,1,63
 
-		lea	sv_ObjectTab,a1		;empty place in tab
+		lea		sv_ObjectTab,a1		;empty place in tab
 		moveq	#29,d0
 .SeekEmpty:	tst	(a1)
 		beq.s	.Efound
-		lea	12(a1),a1
-		dbf	d0,.SeekEmpty
+		lea		12(a1),a1
+		dbf		d0,.SeekEmpty
 		bra.w	rm_HGEnd
 
-.Efound:	move	sv_PosX,6(a1)		;set object structure
+.Efound:
+		move	sv_PosX,6(a1)		;set object structure
 		move	sv_PosY,8(a1)		;pos X,Y
 		move	sv_MapPos,10(a1)
 		movem.l	a1/a2,-(sp)
-		lea	sv_sinus,a1
-		lea	$80(a1),a2
+		lea		sv_sinus,a1
+		lea		$80(a1),a2
 		move	#256,d6
-		sub	sv_angle,d6
+		sub		sv_angle,d6
 		andi	#$1fe,d6
 		moveq	#0,d0
 		move	#400/8,d1		;vector length
-		bsr	sv_Rotate
+		bsr		sv_Rotate
 		movem.l	(sp)+,a1/a2
 		move	d0,2(a1)		;add X,Y
 		move	d1,4(a1)
 		move.b	#1,(a1)
 
-		lea	oc_HitPos,a2
-		lea	sv_MAP,a3
+		lea		oc_HitPos,a2
+		lea		sv_MAP,a3
 		moveq	#19,d7			;up to 8000
 .ChkCollision:	bsr.s	Object_Collision	;seek collision
 		bmi.s	rm_beczka1
 		bne.s	.ColFound
-		dbf	d7,.ChkCollision
+		dbf		d7,.ChkCollision
 		move.b	#0,(a1)
 		bra.s	rm_HGEnd
 
-.ColFound:	move	10(a1),d0
+.ColFound:	
+		move	10(a1),d0
 		ori.b	#%10000000,6(a3,d0.w)	;put object on MAP
 		bsr.s	GetRandom
 		andi	#3<<2,d0		;wys
-		ori	#$0100,d0		;1 - odprysk
-		or	d1,d0
+		ori		#$0100,d0		;1 - odprysk
+		or		d1,d0
 		move	d0,(a1)			;set in structure
 		bra.s	rm_HGEnd
 
@@ -2343,10 +2283,10 @@ PrepareStruct:	move	sv_PosX,6(a1)		;set object structure
 		move	sv_PosY,8(a1)
 		move	sv_MapPos,10(a1)
 		movem.l	a1/a2,-(sp)
-		lea	sv_sinus,a1
-		lea	$80(a1),a2
+		lea		sv_sinus,a1
+		lea		$80(a1),a2
 		move	#256,d6
-		sub	sv_angle,d6
+		sub		sv_angle,d6
 	bsr	GetRandom
 	andi	#6,d0
 	ext	d0
@@ -2354,7 +2294,7 @@ PrepareStruct:	move	sv_PosX,6(a1)		;set object structure
 		andi	#$1fe,d6
 		moveq	#0,d0
 ;		move	#600,d1			;vector length
-		bsr	sv_Rotate
+		bsr		sv_Rotate
 		movem.l	(sp)+,a1/a2
 		move	d0,2(a1)
 		move	d1,4(a1)
@@ -2757,18 +2697,9 @@ me_walk:	move	4(a3),d0		;enemy attack player
 		muls	d0,d0
 		muls	d1,d1
 		add.l	d1,d0
-		bsr	sq_SQRT			;dist. from enemy
-
-	;	move.l	sv_RomAddr,a5
-	;	move	(a5)+,d1
-	;	move.l	a5,d4
-	;	andi.l	#$ffff,d4
-	;	or.l	#$000000,d4		;$f90000
-	;	move.l	d4,sv_RomAddr
+		bsr		sq_SQRT			;dist. from enemy
 		RANDOM	a5,d1
-
 		andi.l	#$1fff,d1		;to 8191
-
 
 		move	d0,d4
 		btst.b	#0,1(a3)
@@ -2872,18 +2803,9 @@ me_w4:		movem.l	a1-a4,-(sp)
 		beq.s	me_w2
 		moveq	#2,d5
 me_RepTurn:
-	
-	;	move.l	sv_RomAddr,a5		;turn if hit
-	;	move	(a5)+,d0
-	;	move	(a5)+,d1
-	;	move.l	a5,d4
-	;	andi.l	#$ffff,d4
-	;	or.l	#$000000,d4		;f90000-fa0000
-	;	move.l	d4,sv_RomAddr
 		RANDOM	a5,d0
 		move.l	d0,d1
 		swap	d1
-
 
 		eor	d0,d1
 		andi	#$fe,d1
@@ -2899,13 +2821,7 @@ me_RepTurn:
 		dbeq	d5,me_RepTurn
 		bra	me_Found
 
-me_w2:	;	move.l	sv_RomAddr,a5		;losowa zmiana kier.
-	;	move	(a5)+,d0
-	;	move	(a5)+,d1
-	;	move.l	a5,d4
-	;	andi.l	#$ffff,d4
-	;	or.l	#$000000,d4		;f90000-fa0000
-	;	move.l	d4,sv_RomAddr
+me_w2:
 		RANDOM	a5,d0
 		move.l	d0,d1
 		swap	d1
@@ -3085,7 +3001,8 @@ me_killed:	cmpi.b	#72,13(a3)
 		bra.w	me_Found
 
 ;-------------------------------------------------------------------
-;a1 - MAP, a3 - ENEMY STRUCTURE, d5 - CNT
+; Move enemy
+;a1 - MAP, a3 - ENEMY STRUCTURE, d5 - CNT (?? does not seem used?)
 me_MOVE:
 ;		movem.l	a2/a4,-(sp)
 		movem	4(a3),d2/d3
@@ -3155,7 +3072,7 @@ me_COLUMN:	move.b	5(a1,d2.w),d4
 		bpl.s	me_PLAYER
 		cmpi	#3,d4
 		beq.s	me_PLAYER
-.br2p:		cmpi	#512-210,d0
+.br2p:	cmpi	#512-210,d0
 		bmi.s	me_PLAYER
 		cmpi	#512-210,d1
 		bmi.s	me_PLAYER
@@ -3293,7 +3210,7 @@ me_ChkDoors:	cmpi	#32,d4			;if door 1
 		cmpi	#38,d4			;if door 2
 		beq.s	.m1
 		cmpi	#54,d4			;if bad door
-.m1:		rts
+.m1:	rts
 
 ;------------------------------------------------------------------------
 ;check if Enemy can shoot... (i.e. if no wall in the way)
@@ -4465,8 +4382,10 @@ AT_loop2:	rept	4
 ;Swap screens and clear tables in preparation for the next frame
 mc_clearScreen:	
 	; ------------- clear screen area, if no textured floor then fill
-		move	lc_CpuType(pc),d2
+;		move	lc_CpuType(pc),d2
+		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
 		beq.s	.NoCache
+
 		move.l	sv_ChunkyBuffer,a1
 		move.l	sv_Fillcols,d0
 		move	sv_ViewWidth,d1				; in bytes = pixes / 8
@@ -5182,7 +5101,7 @@ sh_BorOK1:
 		subq	#1,d0
 
 	IFNE	SELECT_CACHE
-		move	lc_isCache(pc),d7
+		move	lc_variables+lc_isCache(pc),d7
 		beq		sh_Mloop1		;goto no-cache mode (pregenerated code)
 ;		tst	sv_Mode
 ;		beq.w	sh_Mloop1		;goto pre-generated code mode
@@ -5315,7 +5234,7 @@ sh_BorOK2:
 		move	sv_Consttab+6,-(sp)
 
 	IFNE	SELECT_CACHE
-		move	lc_isCache(pc),d7
+		move	lc_variables+lc_isCache(pc),d7
 		beq		sh_Mloop1		;goto no-cache mode (pregenerated code)
 ;		tst	sv_Mode
 ;		beq.w	sh_Mloop2		;goto fast mode
@@ -5827,7 +5746,7 @@ shZ_M16both:	move.b	d1,(a6)
 ;-------------------------------------------------------------------
 clearCPUCache:
 		move.l	d0,-(sp)
-		move	lc_isCache(pc),d0
+		move	lc_variables+lc_isCache(pc),d0
 		beq.s	.noCache
 		movec	CACR,d0
         ori.w   #$0808,d0		; clear data and instruction cache
@@ -5845,6 +5764,7 @@ sv_SetWindowSize_pass:	bra	sv_SetWindowSize
 sv_MakeWidthTab_pass:	bra	sv_MakeWidthTab
 mk_FixFloorMod_pass:	bra	mk_FixFloorMod
 DrawBomb_pass:			bra	DrawBomb
+make_tables_pass:		bra	make_tables
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -5860,11 +5780,7 @@ lc_cputype:				dc.w	0				; 0 - MC68000, 1 - 020 or better
 
 lc_OldLev2:				dc.l	0
 lc_OldLev3:				dc.l	0
-lc_cacr_copy:			dc.l	0
-lc_isCache:				dc.w	0				; 0 - no cache, 1 - cache present
-lc_c2pType:				dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Actual C2P being used at the moment
-lc_c2pTypePreferred:	dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Preferred C2P for the system. This allows to return to the preferred one if the game has to switch e.g. to CPU for stretching
-lc_ledChange:			dc.w	0				; 1 - update debug LED status
+lc_cacr_copy:			dc.l	0				; copy of CACR when starting the engine
 
 ; local variables
 lc_variables:
@@ -5876,10 +5792,17 @@ lc_updateFrame:			dc.w	0				; 0 - no anim/enemy update, 1 - update in this loop
 lc_fps:					dc.l	0,0				; current fps (frames.w, scanlines.w), start frame timestamp used to calculate fps after getting end one
 lc_fpsOn:				dc.w	0				; show fps flag (0-no, 1-yes)
 lc_debugOn:				dc.w	0				; show debug info (averages) flag (0-no, 1-yes)
+lc_isCache:				dc.w	0				; 0 - no cache, 1 - cache present
+lc_c2pType:				dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Actual C2P being used at the moment
+lc_c2pTypePreferred:	dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Preferred C2P for the system. This allows to return to the preferred one if the game has to switch e.g. to CPU for stretching
+lc_ledChange:			dc.w	0				; 1 - update debug LED status
 lc_drunk:				dc.w	0				; 0 - all OK, >0 time left drunk
 lc_momentum:			dc.w	0				; 0 - not moving, >0 moving momentum which builds up to 255 while moving
 lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after shooting
 ENDOFF
+
+lc_TextBuffer:			ds.b	20				; buffer for keys pressed to check for codes. 0.w index, 2.w changed flag, 4.w+16 buffer
+
 
 lc_soundList:	;list of all sounds used. Sound addr.l, length.w, freq.w
 		dc.l	sv_SAMPLES
@@ -5968,9 +5891,9 @@ ShowFloor:
 		sub		sv_angle,d6
 		andi	#$1fe,d6		;d6 - inverted angle
 		lea		fl_Flcoords(pc),a6
-		move	sv_InSquarePos,d2	;player position x
+		move	sv_InSquarePos,d2	;player position x within the current square
 ;		sub	#512,d2			;center floor tile
-		move	sv_InSquarePos+2,d3	;player position y
+		move	sv_InSquarePos+2,d3	;player position y within the current square
 
 		rept	4
 		move	(a6)+,d0		;rotate view coords
@@ -6036,7 +5959,6 @@ fl_MkDeltas:
 		move	d6,(a1)+
 		dbf		d7,fl_MkDeltas
 
-
 ;-----------------------------------------------
 		lea		sv_LineTab,a0		;x0,y0, dx,dy
 		move.l	sv_Consttab+32,a1	;floor addr
@@ -6048,9 +5970,7 @@ fl_MkDeltas:
 		move	(a0)+,d7		;H counter - number of rows to draw
 		lea		-2(sp),sp
 		moveq	#63,d4			;AND mask
-;		tst		sv_Buse
-;		beq.s	fl_DRAW
-		move	lc_CpuType(pc),d0
+		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
 		bne.w	fl_DRAW_CACHE
 
 ; draw floor line by line using pre-generated code. Only use if cache not available
@@ -6177,12 +6097,21 @@ fl_DCodeEnd:
 ; this is a blitter based chunky 2 planar
 ;a1 - screen addr to start
 
-sv_C2PCcopy:
-		move	lc_CpuType(pc),d0
-		bne.w	sv2_copy
-		tst	sv_Buse
-		bne.w	sv2_Copy		;if use CPU only
+c2p_Copy:
+		tst		sv_StrFlag							; blitter can only be used on a non-stretched screen
+		bne.s	.stretched
 
+		move	lc_variables+lc_c2pType(pc),d0		; C2P: 0 - blitter, 1 - CPU
+		bne		c2p_Copy_CPU_noStretch_Cache
+		bra.s	c2p_Copy_Blitter_noStretch
+
+.stretched:
+		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
+		bne		c2p_Copy_CPU_Stretch_Cache
+		bra		c2p_Copy_CPU_Stretch_noCache
+
+		; --- Blitter non-stretched
+c2p_Copy_Blitter_noStretch:
 		movem.l	ALL,-(sp)
 		lea		$dff000,a0
 		move.l	sv_ChunkyBuffer,a6
@@ -6279,16 +6208,17 @@ sv_NextBit:
 ; Tha main loop just about fits in cache: $f4
 ;a1 - screen addr to start
 
-sv2_copy:
-		movem.l	ALL,-(sp)	;use only CPU
-		tst	sv_StrFlag
-		bne.w	sv3_copy		;if stretch
+c2p_Copy_CPU_noStretch_Cache:
+;sv2_copy:
+		movem.l	ALL,-(sp)
+;		tst	sv_StrFlag
+;		bne.w	sv3_copy		;if stretch
 
 		move.l	sv_ChunkyBuffer,a0
-		lea	row(a1),a2
-		lea	row(a2),a3
-		lea	row(a3),a4
-		lea	row(a4),a5
+		lea		row(a1),a2
+		lea		row(a2),a3
+		lea		row(a3),a4
+		lea		row(a4),a5
 
 		move	#5*row,d0
 		sub		sv_ViewWidth,d0
@@ -6307,7 +6237,8 @@ CNOP 0,16		; cache line alignment (16 bytes)
 sv2_Vertical:
 		move	d7,(sp)			;save heigth
 		move	2(sp),d7		;width
-sv2_Horizontal:	move.b	(a0)+,d0		;all 1 or all 0
+sv2_Horizontal:	
+		move.b	(a0)+,d0		;all 1 or all 0
 		move.b	d0,d6
 		smi	d1
 		add.b	d0,d0
@@ -6334,7 +6265,7 @@ sv2_Horizontal:	move.b	(a0)+,d0		;all 1 or all 0
 		move.b	(a0)+,d0
 		cmp.b	d0,d6
 		bne.s	sv2_bit6
-		bra	sv2_bit7_1
+		bra		sv2_bit7_1
 
 ;		move.b	(a0)+,d0
 ;		cmp.b	d0,d6
@@ -6378,17 +6309,17 @@ sv2_bit8:	ConvBits
 		move.b	d3,(a3)+
 		move.b	d4,(a4)+
 		move.b	d5,(a5)+
-		dbf	d7,sv2_Horizontal
-		add	a6,a1			;add modulo
-		add	a6,a2
-		add	a6,a3
-		add	a6,a4
-		add	a6,a5
+		dbf		d7,sv2_Horizontal
+		add		a6,a1			;add modulo
+		add		a6,a2
+		add		a6,a3
+		add		a6,a4
+		add		a6,a5
 		move	(sp),d7
-		dbf	d7,sv2_Vertical
+		dbf		d7,sv2_Vertical
 
 sv2_endloop:
-		lea	4(sp),sp
+		lea		4(sp),sp
 		movem.l	(sp)+,ALL
 		rts
 
@@ -6399,13 +6330,16 @@ sv2_endloop:
 ;CPU C2P copy to Amiga screen + stretch
 ; This version does NOT fit in a 256byte cache
 
-sv3_copy:	move.l	sv_ChunkyBuffer,a0
+c2p_Copy_CPU_Stretch_noCache:
+;sv3_copy:	
+		movem.l	ALL,-(sp)
+		move.l	sv_ChunkyBuffer,a0
 		move.l	sv_screen,a1
-		lea	sv_UpOffset*row*5(a1),a1
-		lea	row(a1),a2
-		lea	row(a2),a3
-		lea	row(a3),a4
-		lea	row(a4),a5
+		lea		sv_UpOffset*row*5(a1),a1
+		lea		row(a1),a2
+		lea		row(a2),a3
+		lea		row(a3),a4
+		lea		row(a4),a5
 
 		move	#4*row,a6		;scr modulo
 		move	sv_ViewWidth,d0
@@ -6415,8 +6349,8 @@ sv3_copy:	move.l	sv_ChunkyBuffer,a0
 		move	sv_ViewHeigth,d7
 		subq	#1,d7
 		lea		-2(sp),sp
-		move	lc_CpuType(pc),d0
-		bne.w	sv4_Copy		;if MC68020+cache
+;		move	lc_CpuType(pc),d0
+;		bne.w	sv4_Copy		;if MC68020+cache
 sv3_Vertical:
 		move	d7,(sp)			;save heigth
 		move	2(sp),d7		;width
@@ -6483,7 +6417,7 @@ sv3_SetByte:	add	d1,d1
 		add	d4,d4
 		move	sv3_DoubleTab(pc,d4.w),(a4)+
 		add	d5,d5
-		move	sv3_DoubleTab(pc,d5.w*2),(a5)+
+		move	sv3_DoubleTab(pc,d5.w),(a5)+
 		dbf	d7,sv3_Horizontal
 		add	a6,a1			;add modulo
 		add	a6,a2
@@ -6503,8 +6437,27 @@ sv3_DoubleTab:	ds.w	256
 ;CPU copy to Amiga screen + stretch... for 20++ and cache only!
 ; Fits in cache: $fa
 
-sv4_Copy:
-sv4_Vertical:	move	d7,(sp)			;save heigth
+;sv4_Copy:
+c2p_Copy_CPU_Stretch_Cache:
+		movem.l	ALL,-(sp)
+		move.l	sv_ChunkyBuffer,a0
+		move.l	sv_screen,a1
+		lea		sv_UpOffset*row*5(a1),a1
+		lea		row(a1),a2
+		lea		row(a2),a3
+		lea		row(a3),a4
+		lea		row(a4),a5
+
+		move	#4*row,a6		;scr modulo
+		move	sv_ViewWidth,d0
+		subq	#1,d0
+		move	d0,-(sp)		;width for dbf
+
+		move	sv_ViewHeigth,d7
+		subq	#1,d7
+		lea		-2(sp),sp
+sv4_Vertical:	
+		move	d7,(sp)			;save heigth
 		move	2(sp),d7		;width
 sv4_Horizontal:	moveq	#0,d1
 		moveq	#0,d2
@@ -6558,16 +6511,16 @@ sv4_SetByte:	move	sv4_DoubleTab(pc,d1.w*2),(a1)+
 		move	sv4_DoubleTab(pc,d3.w*2),(a3)+
 		move	sv4_DoubleTab(pc,d4.w*2),(a4)+
 		move	sv4_DoubleTab(pc,d5.w*2),(a5)+
-		dbf	d7,sv4_Horizontal
-		add	a6,a1			;add modulo
-		add	a6,a2
-		add	a6,a3
-		add	a6,a4
-		add	a6,a5
+		dbf		d7,sv4_Horizontal
+		add		a6,a1			;add modulo
+		add		a6,a2
+		add		a6,a3
+		add		a6,a4
+		add		a6,a5
 		move	(sp),d7
-		dbf	d7,sv4_Vertical
+		dbf		d7,sv4_Vertical
 sv4_endloop:
-		lea	4(sp),sp
+		lea		4(sp),sp
 		movem.l	(sp)+,ALL
 		rts
 
@@ -6674,26 +6627,28 @@ sv_CheckMouse:
 		add		d1,sv_mouseDxy+2
 		rts
 
-sv_MouseMove:	move	sv_mouseDxy,d0
-
+sv_MouseMove:	
+		move	sv_mouseDxy,d0		; x (left/right)
 		moveq	#0,d3
 		btst.b	#6,$bfe001		;LMB - move forward
 		bne.s	sv_RollMouse
-		move	sv_WalkSpeed,d1
+		move	sv_WalkSpeed,d1		; y (forward)
 		bra.s	sv_Mou3
 
-sv_RollMouse:	move	sv_mouseDxy+2,d1
+sv_RollMouse:	
+		move	sv_mouseDxy+2,d1
 		moveq	#1,d3
-		add	d1,d1
-		add	d1,d1
+		add		d1,d1
+		add		d1,d1
 		bpl.s	sv_Mou1
-		neg	d1
+		neg		d1
 		moveq	#0,d3
-sv_Mou1:	move	sv_WalkSpeed,d2
-		cmp	d2,d1
+sv_Mou1:	
+		move	sv_WalkSpeed,d2
+		cmp		d2,d1
 		bmi.s	sv_Mou3
 		move	d2,d1
-sv_Mou3:	
+sv_Mou3:
 		ext.l	d0
 		divs	#16,d0
 		add		d0,d0
@@ -6711,7 +6666,7 @@ sv_Mou3:
 		andi	#$000f,d0
 .sv2:
 		move	d0,sv_MouseDxy
-		move	#0,sv_MouseDxy+2		;zero mouse move		
+		move	#0,sv_MouseDxy+2		;zero mouse y move		
 		bra.s	sv_DoMove_NoMouseCheck
 		
 sv_DoMMove:	
@@ -6781,14 +6736,10 @@ sv_Mou4:
 		beq.s	sv_NoVodka
 		subi	#1,lc_drunk(a6)
 
-	;	move.l	sv_RomAddr,a3		;if drunk...
-	;	move.b	(a3)+,d4
 		RANDOM	a3,d4
 		move.l	d4,d5
 		swap	d5
 
-	
-	;	move.b	30(a3),d5
 		rol.b	#2,d5
 		eor.b	d5,d4
 		andi.b	#127,d4
@@ -6800,8 +6751,6 @@ sv_Mou4:
 		RANDOM	a3,d4
 		move.l	d4,d5
 		swap	d5
-	;	move.b	(a3)+,d4
-	;	move.b	40(a3),d5
 		ror.b	#2,d5
 		eor.b	d5,d4
 		andi.b	#127,d4
@@ -6814,11 +6763,6 @@ sv_Mou4:
 		andi	#$1fe,d6		;angle
 		sub		d4,sv_angle
 		andi	#$1fe,sv_angle
-
-	;	move.l	a3,d4
-	;	andi.l	#$ffff,d4
-	;	or.l	#$000000,d4		;f90000-fa0000
-	;	move.l	d4,sv_RomAddr
 
 sv_NOVodka:	move	d1,sv_LastMove		;save vector length
 		move	d6,sv_LastMove+2	;save angle
@@ -6880,8 +6824,8 @@ NewLev2:
 		movem.l	d0-d4/a1/a2/a6,-(sp)
 		moveq	#0,d0
 		tst.b	$bfed01
-		move.b	$bfec01,d0
-		move	#$0008,$dff09c		;zero interrupt
+		move.b	$bfec01,d0			; WHDLoad searches for this instruction and hooks up here
+		move	#$0008,$dff09c		; INTREQ: clear the interrupt
 		tst.b	d0
 		beq.w	cc_NoSav
 
@@ -6889,8 +6833,8 @@ NewLev2:
 		lea		lc_variables(pc),a6
 		move	d0,-(sp)
 
-		tst	sv_EndLevel		;if killed
-		bmi	cc_NoKey
+		tst		sv_EndLevel		;if killed
+		bmi		cc_NoKey
 
 cc_m:	cmpi.b	#$91,d0			;m - map
 		bne.s	cc_IsMap
@@ -6908,21 +6852,22 @@ cc_p:	cmpi.b	#$cd,d0			;p - pause
 		move	#750,sv_Pause+2
 		bra		cc_NoKey
 cc_p2:	SCROLL	38
-		bra	cc_NoKey
-cc_esc:		cmpi.b	#$75,d0			;esc - quit
+		bra		cc_NoKey
+cc_esc:	cmpi.b	#$75,d0			;esc - quit
 		bne.s	cc_ntsc
 		move	#1,(a1)
 		bra		cc_NoKey
-cc_ntsc:	cmpi.b	#$93,d0			;n - ntsc/pal
-		bne.s	cc_cont
-		cmpi	#8,sv_size+2
-		bpl.s	cc_cont
-		eori	#32,sv_NtscPal
-		move	sv_NtscPal,$dff1dc
-		bra		cc_NoKey
-cc_cont:
+cc_ntsc:
+		; cmpi.b	#$93,d0			;n - ntsc/pal
+		; bne.s	cc_cont
+		; cmpi	#8,sv_size+2
+		; bpl.s	cc_cont
+		; eori	#32,sv_NtscPal
+		; move	sv_NtscPal,$dff1dc
+		; bra		cc_NoKey
+;cc_cont:
 
-cc_pmode:	tst	sv_PAUSE		;don't check if paused
+cc_pmode: tst	sv_PAUSE		;don't check if paused
 		bne.w	cc_NoKey
 
 		moveq	#1,d1			;pressed
@@ -6965,12 +6910,12 @@ cc_d:	cmpi.b	#$b7,d0			;g - details on/off
 		cmpi	#3,sv_DETAILS
 		beq.s	.cc_d4
 		SCROLL	69
-		bra	cc_NoKey
-.cc_d3:		SCROLL	64
-		bra	cc_NoKey
-.cc_d4:		move	#0,sv_DETAILS
-.cc_d2:		SCROLL	63
-		bra	cc_NoKey
+		bra		cc_NoKey
+.cc_d3:	SCROLL	64
+		bra		cc_NoKey
+.cc_d4:	move	#0,sv_DETAILS
+.cc_d2:	SCROLL	63
+		bra		cc_NoKey
 cc_F1_F8:		cmpi.b	#$60,d0			;F1-F5 - window size (F6,F7,F8 stretched)
 		bpl.s	cc_1_0
 		cmpi.b	#$51,d0
@@ -6992,15 +6937,15 @@ cc_1_0:	cmpi.b	#$fe,d0			;1-0 - weapons + cards
 		beq.s	cc_f
 ;		addi	#$9e,d0			;(coz prev. numeric!)
 		move	d0,sv_Flag+6
-		bra	cc_NoKey
+		bra		cc_NoKey
 cc_f:	cmpi.b	#$b9,d0			;f - floor on/off
 		bne.s	cc_TAB
 		eori	#1,sv_Floor
 		beq.s	.cc_f2
 		SCROLL	33				;"on"
-		bra	cc_NoKey
+		bra		cc_NoKey
 .cc_f2:	SCROLL	34				;"off"
-		bra	cc_NoKey
+		bra		cc_NoKey
 
 cc_TAB:	cmpi.b	#$d7,d0			;TAB, T - next weapon
 		beq.s	.cc_t1
@@ -7019,7 +6964,7 @@ cc_r:	cmpi.b	#$d9,d0			;R - previous weapon
 		move	#-6,d3					; search backwards
 		bsr		SelectNextItem
 		bra		cc_NoKey
-cc_minus:	cmpi.b	#$e9,d0			;- window size
+cc_minus: cmpi.b	#$e9,d0			;- window size
 		beq.s	.cc_m2
 		cmpi.b	#$6b,d0
 		bne		cc_plus
@@ -7028,7 +6973,7 @@ cc_minus:	cmpi.b	#$e9,d0			;- window size
 		bne		cc_NoKey
 		move	#2,2(a1)
 		bra		cc_NoKey
-cc_plus:	cmpi.b	#$e7,d0			;+ window size
+cc_plus: cmpi.b	#$e7,d0			;+ window size
 		beq.s	.cc_p2
 		cmpi.b	#$43,d0
 		bne		cc_space
@@ -7037,7 +6982,7 @@ cc_plus:	cmpi.b	#$e7,d0			;+ window size
 		bne		cc_NoKey
 		move	#9,2(a1)
 		bra		cc_NoKey
-cc_SPACE:	cmpi.b	#$7f,d0			;hand use
+cc_SPACE: cmpi.b	#$7f,d0			;hand use
 		bne.s	cc_Tylda
 		move	#1,sv_SpaceOn
 		bra		cc_NoKey
@@ -7048,8 +6993,8 @@ cc_Tylda:
 		beq.s	.cc_t2
 		SCROLL2	txt_fps_on
 		bsr		ClearBomb
-		lea		lc_ledChange(pc),a2		; mark leds to be updated
-		st		(a2)
+		lea		lc_variables(pc),a6
+		st		lc_ledChange(a6)		; mark leds to be updated
 		bra		cc_NoKey
 .cc_t2:	SCROLL2	txt_fps_off
 		move	#0,db_napisz		; do not print any bomb info
@@ -7058,11 +7003,11 @@ cc_Tylda:
 		bra		cc_NoKey
 cc_Backspace:	
 		cmpi.b	#$7d,d0				; backspace - debug info (only when fps is on)
-		bne		cc_Version
+		bne.s	cc_Version
 		tst		lc_debugOn(a6)
 		bne.s	.cc_b1
 		tst		lc_fpsOn(a6)		; only when fps display on
-		beq.s	cc_Version
+		beq		cc_NoKey
 .cc_b1:	eori	#1,lc_debugOn(a6)
 		beq.s	.cc_b2
 		bsr		DebugCntClearArea
@@ -7073,31 +7018,32 @@ cc_Version:
 		cmpi.b	#$97,d0				; v - build version info (only when fps is on)
 		bne		cc_b
 		tst		lc_fpsOn(a6)
-		beq.s	cc_b
+		beq		cc_NoKey
 		SCROLL2	txt_version
 		bra		cc_NoKey
 cc_b:
-		cmpi.b	#$95,d0			;b - c2p mode: cpu or blitter (only when fps is on)
+		cmpi.b	#$c9,d0			;] (old b) - c2p mode: cpu or blitter (only when fps is on)
 		bne.s	cc_cache
 		tst		lc_fpsOn(a6)
-		beq.s	cc_cache
+		beq.s	cc_NoKey
+		tst		sv_StrFlag			; C2P can only be changed on a non-stretched screen
+		bne.s	cc_NoKey
 		move	#1,4(a1)		; cc_RequestTab+4 - notify the main loop that the change happened 
-		lea		lc_c2pTypePreferred(pc),a2
-		eori	#1,(a2)
+		lea		lc_variables(pc),a6
+		eori	#1,lc_c2pTypePreferred(a6)		; chenge preferred C2P mode
 		beq.w	.cc_b2
 		SCROLL2	txt_c2p_cpu		; cpu c2p
 		bra.s	cc_NoKey
 .cc_b2:	SCROLL2	txt_c2p_blitter	; blitter c2p
 		bra.s	cc_NoKey
 cc_cache:
-		cmpi.b	#$b5,d0			;c - cache mode: (only when fps is on)
+		cmpi.b	#$cb,d0			;[ (old c) - cache mode: (only when fps is on)
 		bne.s	cc_cont2
 		tst		lc_fpsOn(a6)
-		beq.s	cc_cont2
-		lea		lc_ledChange(pc),a2		; mark leds to be updated
-		st		(a2)
-		lea		lc_isCache(pc),a2
-		eori	#1,(a2)
+		beq.s	cc_NoKey
+		lea		lc_variables(pc),a6
+		st		lc_ledChange(a6)		; mark leds to be updated
+		eori	#1,lc_isCache(a6)
 		beq.w	.cc_c2
 		SCROLL2	txt_cache_on	; cache on
 		bra.s	cc_NoKey
@@ -7108,7 +7054,7 @@ cc_cache:
 cc_cont2:
 
 cc_NoKey:	
-		lea		sv_TextBuffer,a1	;save letter for code
+		lea		lc_TextBuffer(pc),a1	;save letter for code
 		move	(a1),d0
 		move	(sp)+,d1
 		btst	#0,d1
@@ -7117,7 +7063,7 @@ cc_NoKey:
 		addq	#1,d0
 		andi	#15,d0
 		move	d0,(a1)
-		move	#1,2(a1)			; mark buffer as updated
+		st		2(a1)			; mark buffer as updated
 
 cc_NoSav:
 		move.b	#$41,$bfee01
@@ -7148,7 +7094,8 @@ chk_MoveKeys:
 		move	d1,(a1,d3.w)		;set key in table, 0 released, 1 pressed
 		moveq	#-1,d1
 		rts
-chk_KNotFound:	moveq	#0,d1
+chk_KNotFound:	
+		moveq	#0,d1
 		rts
 
 ; requesttab offsets:
@@ -7194,7 +7141,7 @@ EndLevel:
 		tst		sv_EndLEvel
 		bmi.s	sv_Death
 ; survived exit
-		move	cc_RequestTab+2,d0	; screen size change key pressed?
+		move	sv_Size+2,d0	; current user screen size 
 		cmpi	#7,d0
 		bmi.s	.NoStr			;if <2,6>
 		move.l	sv_screen,a2
@@ -7281,8 +7228,8 @@ sv_Death2:	move	#4,sv_EndLevel+2
 
 DeathTab:	blk.w	320,0
 ;-------------------------------------------------------------------
+; Clip player movements
 ;border movements - no passing thru walls, etc... + pos fix
-
 sv_Border:	lea	sv_SquarePos,a1
 		move	sv_PosX,d3		;make in-square pos.
 		move	d3,d2
@@ -7338,10 +7285,8 @@ br_Xl:		cmpi	#min_distance-60,d3
 
 		move	sv_LastMove+2,d5
 		move	#512,d4			;quantant nr
-; --- patch start ---
 		;subi	#256-62,d5
 		subi	#256-7,d5
-; --- patch stop ---		
 		bsr.w	br_BumpWall
 		bra.s	br_Yd
 br_Xr:
@@ -7353,10 +7298,8 @@ br_Xr:
 		move	#1024-min_distance+60,d3
 		move	sv_LastMove+2,d5
 		moveq	#0,d4
-; --- patch start ---
 		;addi	#62,d5
 		addi	#7,d5
-; --- patch stop ---
 		andi	#$1fe,d5
 		bsr.w	br_BumpWall
 br_Yd:
@@ -7368,10 +7311,8 @@ br_Yd:
 		move	#min_distance-60,d0
 		move	sv_LastMove+2,d5
 		move	#378+378,d4
-; --- patch start ---
 		;subi	#378-62,d5
 		subi	#378-7,d5
-; --- patch stop ---
 		bsr.w	br_BumpWall
 		bra.s	br2_COLUMN
 br_Yu:
@@ -7383,10 +7324,8 @@ br_Yu:
 		move	#1024-min_distance+60,d0
 		move	sv_LastMove+2,d5
 		move	#256,d4
-; --- patch start ---
 		;subi	#128-62,d5
 		subi	#128-7,d5
-; --- patch stop ---
 		bsr.w	br_BumpWall
 
 ;---------------
@@ -7414,24 +7353,25 @@ br2_COLUMN:	move.b	7(a1,d1.w),d4		;if hit enemy...
 		SOUND	13,1,63
 		SCROLL	71
 .oc_e3:		move.l	sv_LastPos,sv_PosX
-		lea	sv_SquarePos,a2
+		lea		sv_SquarePos,a2
 		move	sv_PosX,d3		;make in-square pos.
 		move	d3,d2
-		rol	#6,d2			;/1024
+		rol		#6,d2			;/1024
 		andi	#63,d2
-		move	d2,(a2)			;X
+		move	d2,(a2)			;X square
 		andi	#1023,d3
-		move	d3,4(a2)		;insquare
+		move	d3,4(a2)		;insquare pos X
 		move	sv_PosY,d0
 		move	d0,d1
-		rol	#6,d1
+		rol		#6,d1
 		andi	#63,d1
-		move	d1,2(a2)		;Y
+		move	d1,2(a2)		;Y square
 		andi	#1023,d0
-		move	d0,6(a2)
+		move	d0,6(a2)		;insquare pos Y
 		bra	br2_END2
 
-.br2_COLUMN2:	lea	sv_InSquarePos,a6	;if hitable column...
+.br2_COLUMN2:	
+		lea		sv_InSquarePos,a6	;if hitable column...
 		move.b	5(a1,d1.w),d4
 		andi	#31,d4
 		beq.s	br2_UP			;if no column
@@ -7441,8 +7381,11 @@ br2_COLUMN:	move.b	7(a1,d1.w),d4		;if hit enemy...
 		bpl.s	br2_UP			;if not col 1 or 2 or 3
 		cmpi	#3,d4			;column 3 - passable
 		beq.s	br2_UP
-		cmpi	#512-208,d3		;chk if in column
-.br2p:		bmi.s	br2_UP
+; WAS THIS THE BARREL/BECZKA BUG?
+; 		cmpi	#512-208,d3		;chk if in column
+; .br2p:		bmi.s	br2_UP
+.br2p:	cmpi	#512-208,d3		;chk if in column (beczka)
+		bmi.s	br2_UP
 		cmpi	#512-208,d0
 		bmi.s	br2_UP
 		cmpi	#512+208,d3
@@ -7591,15 +7534,11 @@ br_CDok:	rts
 br_BumpWall:	;>0, ^128, <256, v378 (degrees of rotation)
 
 		bmi.w	br_BW1
-; --- patch start ---
 		;cmpi	#124,d5
 		cmpi	#124/8,d5		; bump only if < ~11 deg
-; --- patch stop ---
 		bpl.w	br_BW1
-; --- patch start ---
 		tst		sv_SzumTime			; prevent from this happening too often
 		bne.w	br_BW1
-; --- patch stop ---
 	
 		move	sv_LastMove,d5		;bump into wall
 		cmpi	#120,d5
@@ -7610,16 +7549,12 @@ br_BumpWall:	;>0, ^128, <256, v378 (degrees of rotation)
 		sub	d5,d4
 		andi	#$1fe,d4
 		move	d4,sv_LastMove+6
-; --- patch start ---
 		;move	#2,sv_SzumTime
 		move	#3,sv_SzumTime
-; --- patch stop ---
-; --- patch start ---
 		; do not lose energy on bumping walls
 		;tst	sv_difficult
 		;bne.s	.NieOd
 		;addi	#1,sv_Energy		;loose energy
-; --- patch stop ---
 .NieOd:		SOUND	1,1,63
 		bsr	EXCITE			;quicker beat
 		move	sv_BumpedWall,d5
@@ -7864,17 +7799,6 @@ sc_DoScroll:	movem.l	a1/a2/d0/d7,-(sp)	;Move & print scroll
 		move.l	#0,sc_TextAddr+4
 
 .sc_EndScroll:	
-;do_protect:	equ	0
-;	IFNE	do_protect
-;		PRINTT	," INTERRUPT PROTECTION ON.",
-;		move.l	VBR_base,a1
-;		lea	-20(a1),a1
-;		addi	#3,$24+20+2(a1)
-;		moveq	#7,d7
-;.sc_act1:	addi	#1,$a0+20+2(a1)
-;		lea	4(a1),a1
-;		dbf	d7,.sc_act1
-;	ENDC
 		movem.l	(sp)+,a1/a2/d0/d7
 		rts
 
@@ -7889,19 +7813,20 @@ sc_DoScroll:	movem.l	a1/a2/d0/d7,-(sp)	;Move & print scroll
 		rts
 
 ;-------------------------------------------------------------------
+; Draw the compass
 COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
-		lea	sv_sinus,a1
-		lea	$80(a1),a2		;cosinus
+		lea		sv_sinus,a1
+		lea		$80(a1),a2		;cosinus
 		move	sv_angle,d6
 		andi	#$1fe,d6
 		moveq	#0,d0			;wskazowka
 		moveq	#-11,d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		addi	#16,d0
 		addi	#13,d1
 
-		lea	sv_CompasClr,a1
-		lea	(a1),a2
+		lea		sv_CompasClr,a1
+		lea		(a1),a2
 		moveq	#0,d2
 ;		REPT	27
 		moveq	#26,d3
@@ -8043,6 +7968,7 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 
 .l_octant:	dc.b	1,8+1,16+1,20+1
 ;-------------------------------------------------------------------
+; Test all counters (life etc.) and react accordingly
 TEST_COUNTERS:
 		movem.l	ALL,-(sp)
 		lea		sv_Energy,a1
@@ -8343,7 +8269,10 @@ DebugCntRedrawArea:
 		rts
 
 DebugCntShow:
-		lea		sv_Numbers+[20*18],a1	; small numbers
+		tst		sv_StrFlag
+		beq		.nostr
+		bsr		DebugCntClearArea		; if screen stretched then clear the area
+.nostr:	lea		sv_Numbers+[20*18],a1	; small numbers
 		lea		sv_DebugPos1+[2*40*5]+1,a3
 		lea		sv_DebugPos2+[2*40*5]+1,a4
 		move.l	lc_FastMem2(pc),a5
@@ -8442,11 +8371,11 @@ FPSShow:
 		move	d6,d0
 		bsr.s	CounerAveragePrint
 
-		move	lc_ledChange(pc),d0		; 1 - update LEDs
+		move	lc_variables+lc_ledChange(pc),d0		; 1 - update LEDs
 		beq.s	.noLC
 		bsr.s	StatusLedsShow
-		lea		lc_ledChange(pc),a1
-		clr		(a1)
+		lea		lc_variables(pc),a6
+		clr		lc_ledChange(a6)
 .noLC:
 		rts
 
@@ -8454,14 +8383,14 @@ FPSShow:
 ; show status "LEDs"
 StatusLedsShow:
 		lea		sv_BombPos+[4*40*5]+[25*40*5]+1,a2
-		move	lc_CpuType(pc),d0		; 0 - 68k, 1 - 020+
+		move	lc_CpuType(pc),d0					; 0 - 68k, 1 - 020+
 		bsr.s	StatusLedsShowCol
-		move	lc_isCache(pc),d0		; 0 - no cache, 1 - cache
+		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache
 		bsr.s	StatusLedsShowCol
-		move	lc_c2pType(pc),d0		; 0 - blitter, 1 - cpu
+		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter, 1 - cpu
 		eori	#1,d0
 		bsr.s	StatusLedsShowCol
-		move.l	lc_FastMem1(pc),d0		; memory type
+		move.l	lc_FastMem1(pc),d0					; memory type
 		cmpi.l	#$1ffffff,d0
 		bpl.s	.fast
 		moveq	#0,d0
@@ -9161,12 +9090,14 @@ te_ok1:
 		movem.l	(sp)+,ALL
 		rts
 ;-------------------------------------------------------------------
-CheckCodes:	movem.l	ALL,-(sp)
-		tst		sv_TextBuffer+2		;test only after key
+CheckCodes:	
+		movem.l	ALL,-(sp)
+		lea		lc_TextBuffer(pc),a1
+		tst		2(a1)						;test only after key added to buffer
 		beq.w	cco_End
-		move	#0,sv_TextBuffer+2
+		clr		2(a1)
 
-		lea		sv_TextBuffer+4,a1
+		lea		4(a1),a1					; start of letters
 		lea		EnergyCode,a2
 		bsr		cco_Check
 		bne.s	chk_Ammo
@@ -9297,16 +9228,24 @@ Take_Items:
 		move.b	6(a1,d0.w),d1
 		andi	#31,d1
 		beq.w	ti_NoItem
-		lea	sv_InSquarePos,a2
+		lea		sv_InSquarePos,a2
 		movem	(a2),d2/d3
-		cmpi	#512-220,d2		;chk if in column
+		cmpi	#512-500,d2		;chk if well into field
 		bmi.w	ti_NoItem
-		cmpi	#512-220,d3
+		cmpi	#512-500,d3
 		bmi.w	ti_NoItem
-		cmpi	#512+220,d2
+		cmpi	#512+500,d2
 		bpl.w	ti_NoItem
-		cmpi	#512+220,d3
+		cmpi	#512+500,d3
 		bpl.w	ti_NoItem
+		; cmpi	#512-220,d2		;chk if well into field
+		; bmi.w	ti_NoItem
+		; cmpi	#512-220,d3
+		; bmi.w	ti_NoItem
+		; cmpi	#512+220,d2
+		; bpl.w	ti_NoItem
+		; cmpi	#512+220,d3
+		; bpl.w	ti_NoItem
 
 		andi.b	#$c0,6(a1,d0.w)		;delete item from map
 		move	#5,do_flash		;flash screen
@@ -9396,9 +9335,10 @@ ti_aid:		subq	#3,d1			; medkit
 		bpl.w	ti_NoItem
 		move	#-999,sv_Energy
 		bra.w	ti_NoItem
-ti_power:	subq	#1,d1
+ti_power:								; adrenaline shot taken
+		subq	#1,d1
 		bne.s	ti_Vodka
-		move	sv_WalkSpeed+2,sv_WalkSpeed+4
+		move	sv_WalkSpeed+2,sv_WalkSpeed+4		; save current speed for later
 		move	#300,sv_WalkSpeed+2	;max speed
 		move	#300,sv_WalkSpeed+6	;CNT
 		SCROLL	18
@@ -9768,7 +9708,6 @@ mc_notequ:	addq	#1,d7
 		cmpi	#mc_maxHeigth,d7
 		bne.L	mc_loopMore
 
-;move.l	a2,ddd		;where does this code end?
 		movem.l	(sp)+,ALL
 		rts
 
@@ -9786,9 +9725,8 @@ mc_optim:
 		move.l	#$1e111547,(a4)		;m.(a1)+,d7   m.d7,x(a1)
 .mc_o1:	rts
 
-;ddd:	dc.l	0
 ;-------------------------------------------------------------------
-;Make plane tables ... no input
+;Make plane tables ... no input. This has to be called only once
 make_PLANES:
 		movem.l	ALL,-(sp)
 		move.l	lc_FastMem1(pc),a1
@@ -9822,14 +9760,14 @@ mp_loop2:
 		lsl.l	#SHLeft,d4
 		divu	d2,d4				;x''
 		move	d4,d2				;store
-		sub	d3,d4				;dX''
+		sub		d3,d4				;dX''
 		subq	#1,d0
 		subq	#1,d4
 		move	d0,-(sp)
 ;		add	d0,d0
 ;		add	d0,d0				;*4
 mp_colloop:	move.b	d0,(a2)+			;pixel width
-		dbf	d4,mp_colloop
+		dbf		d4,mp_colloop
 		move	(sp)+,d0
 		move	d2,d3				;new x''
 		addq	#2,d0
@@ -10108,7 +10046,7 @@ mk_FixFloors:
 		lea		1(a2),a3
 		moveq	#62,d0
 mk_FixFloor1:	moveq	#63,d1
-mk_FF1:		move.b	(a3)+,(a2)+			; just move them left by 1 pixel
+mk_FF1:	move.b	(a3)+,(a2)+			; just move them left by 1 pixel
 		dbf		d1,mk_FF1
 		lea		1(a3),a3
 		dbf		d0,mk_FixFloor1
@@ -10117,17 +10055,18 @@ mk_FFquit:
 		rts
 
 ;-------------------------------------------------------------------
-; width table - not that this depends on whether CPU or BLITTER is used for C2P
+; width table - note that this depends on whether CPU or BLITTER is used for C2P
 sv_MakeWidthTab:
+		movem.l	d0-d3/a1-a3,-(sp)
 		lea		sv_WidthTable(pc),a3
 		lea		sv_WidthTable2(pc),a2		; this is required only because otherwise some x(pc,dy) branches exceed 8 bit offset
 		move	sv_ViewWidth,d3
 		moveq	#0,d0
-		tst		sv_Buse
-		bne.s	mk_W2tab		;if CPU use only
+		move	lc_variables+lc_c2pType(pc),d1		; C2P: 0 - blitter, 1 - CPU
+		bne.s	.mk_W2tab		;if CPU use only
 
-; BLITTER version
-mk_Wtab:
+; C2P BLITTER version
+.mk_Wtab:
 		move	d0,d1
 		move	d0,d2
 		lsr		#3,d1			;single add	 - multiples of 8
@@ -10138,21 +10077,24 @@ mk_Wtab:
 		move.b	d2,(a2)+		;for ScrTab2 pos...
 		addq	#1,d0
 		cmpi	#192,d0
-		bne.s	mk_Wtab
-		rts
+		bne.s	.mk_Wtab
+		bra.s	.mk_Exit
 
-; CPU version (straightforward 1:1 - maybe not even needed?)
-mk_W2tab:	
+; C2P CPU version (straightforward 1:1 - maybe not even needed?)
+.mk_W2tab:	
 		move.b	d0,(a3)+		;for ScrTab pos...
 		move.b	d0,(a2)+		;for ScrTab2 pos...
 		addq	#1,d0
 		cmpi	#192,d0
-		bne.s	mk_W2tab
+		bne.s	.mk_W2tab
+.mk_Exit:
+		movem.l	(sp)+,d0-d3/a1-a3
 		rts
 
 ;-------------------------------------------------------------------
 ; fix pixel offsets into the chunky table in the auto-generated floor code 
-mk_FixFloorMod:	
+mk_FixFloorMod:
+		movem.l	d0/d7/a1-a3,-(sp)
 		lea		sv_ConstTab,a1
 		move.l	lc_FastMem1(pc),a2
 		addi.l	#fl_Floors,a2				; floor code
@@ -10175,12 +10117,26 @@ mk_DCoffsets:
 		move	d0,(a2)
 
 		bsr		clearCPUCache		; clear cache at the end to avoid issues after SMC and table re-calc
+		movem.l	(sp)+,d0/d7/a1-a3
 		rts
 
 mk_BraPos:	dc.w	0
 ;-------------------------------------------------------------------
 sv_SetWindowSize:
 		movem.l	ALL,-(sp)
+
+		; start by setting the correct chunky buffer address
+		lea		lc_variables(pc),a6
+		move	lc_c2pType(a6),d0		; 0 - blitter C2P, 1 - CPU C2P
+		beq.s	.sv_cbChip
+		move.l	lc_FastMem2(pc),d0		; CPU C2P uses chunky buf in fast
+		addi.l	#F2_ChunkyBufF,d0
+		move.l	d0,sv_ChunkyBuffer
+		bra.s	sv_cont
+.sv_cbChip:
+		move.l	#sv_ChunkyBufC,sv_ChunkyBuffer	; Blitter C2P uses chunky buf in chip
+sv_cont:
+
 		moveq.l	#0,d0
 		move	sv_Size,d0
 		add		d0,d0
@@ -10279,7 +10235,7 @@ sv_SWS2:
 		bpl.s	sv_SWS6
 		move.l	#$2901ff00,d0			; window 7
 		moveq	#31,d7
-mk_cop2:	addi.l	#$04000000,d0
+mk_cop2: addi.l	#$04000000,d0
 		move.l	d0,(a2)+
 		move.l	d1,(a2)+
 		move.l	d2,(a2)+
@@ -10305,7 +10261,7 @@ sv_SWS6:					;biggest windows (7, 8)
 		beq.s	sv_Big_and_Panel
 
 		moveq	#127,d7
-mk_cop3:	addi.l	#$01000000,d0		;big/no panel
+mk_cop3: addi.l	#$01000000,d0		;big/no panel
 		move.l	d0,(a2)+
 		move.l	d1,(a2)+
 		move.l	d2,(a2)+
@@ -10360,7 +10316,7 @@ mk_cop4:	addi.l	#$01000000,d0
 		move.l	d3,(a2)+
 		move.l	d4,(a2)+
 		ENDR
-		dbf	d7,mk_cop4
+		dbf		d7,mk_cop4
 
 		addi.l	#$01000000,d0
 		move.l	d0,(a2)+
@@ -10434,7 +10390,13 @@ sv_SWS8:	move.l	(a2)+,(a1)+		;copy it to scr 2
 		move.l	(a2)+,(a1)+
 		dbf		d0,sv_SWS8
 		move.l	#$90f2c4,cop_borders
+
+		move	lc_variables+lc_debugOn(pc),d0
+		beq.s	.sv_nodebug
+		bsr		DebugCntClearArea		; if debug on then clear the border area after returning from stretch
+.sv_nodebug:
 		bra.s	sv_SWS5
+
 
 sv_SWS9:	
 		lea		$dff000,a0
@@ -10465,7 +10427,7 @@ sv_SWS5:
 		move.l	#copper2_str,d1				; if screen stretched then use this one
 sv_SWS3:
 		VBLANK
-		bsr		clearCPUCache
+		bsr		clearCPUCache				; flush the caches to avoid any discrepancies after changing copperlists etc.
 		VBLANKR	2
 		move	d1,6(a1)
 		swap	d1
@@ -10731,19 +10693,6 @@ sv_HeartSav:	equ	BASEC+$7f340		;$12c
 sv_CardSav:	equ	BASEC+$7f470		;$78
 sv_ItemSav:	equ	BASEC+$7f4f0		;$21c
 
-;---------------OFFSETS in FAST1:
-basef_data: equ	$f570			; start of data in fast memory, following code
-fl_Floors:	equ	basef_data		; len 30*192 = 5760 ($1680) + 2 for RTD. END: $10bf2
-co_Walls:	equ	$10c00			;[320*4*65]*4=$14500 * 4
-co_Items:	equ	co_Walls+270400	; $52c40. Length 28080 = $6db0. End: $599f0
-sv_PLANES:	equ	$59e40			;$b1bc(700*[260/4]). End: $64ffc
-mc_code:	equ	$65000			;$1af00 - raster code. End $7ff00
-
-; 83200+83200+52000+52000		; all: 270400 = $42040
-
-; $14500 + $14500 + $19640 + $71c0 = $49200
-; wallsA   wallsB   enemy    items
-
 ;-------------------------------------------------------------------
 Oryginal_Data:
 
@@ -10758,8 +10707,6 @@ screenMaxY:	equ		128		; in pixels
 sv_Size:	dc.w	6,6		;actual size value for calculating pixel width: 2-6, user selected value including stretch options 2-9
 ;sv_Size:	dc.w	3,3		;math value, real
 sv_Floor:	dc.w	1		;0-off,  1-floors on
-;sv_Mode:	dc.w	0		;0-fast, 1-slow (cache)
-sv_Buse:	dc.w	0,0		;0-use , 1-not use blitter
 sv_DETAILS:	dc.w	0		;2-low,	 1-medium,  0-high
 sv_DIFFICULT:	dc.w	0		;0-difficult(normal), 1-easy
 
@@ -10830,7 +10777,7 @@ oc_HitPos:	dc.w	0,0,0,0, 0,0,0,0	;flag,Xpos,Ypos,Offset
 
 play_sample:	dc.b	0,0,0,0
 play_volume:	dc.b	63,63,63,63
-sv_TextBuffer:	ds.b	20			;text for code
+;sv_TextBuffer:	ds.b	20			;text for code
 
 sv_ITEMS:	;list of items: item, add ammo, ammo
 		dc.w	1	;which chosen (hand=0)
@@ -10863,7 +10810,7 @@ sv_WalkSpeed:	dc.w	0,50,0,0		;(up to 300),val,buf,CNT
 sv_RotSpeed:	dc.w	12				; nominal for old versions is 12 but it's scaled to fps
 
 sv_SquarePos:	dc.w	0,0			;x,y of 1024-square
-sv_InSquarePos:	dc.w	0,0			;x,y in square
+sv_InSquarePos:	dc.w	0,0			;x,y in square. This MUST be directly after sv_SquarePos.
 
 ;---------------OTHER TABLES:
 
@@ -10883,9 +10830,21 @@ even
 End_OData:
 
 ; --------- STRUCTURE offsets -------------
-STR_DISTURBANCES:	equ	52				; byte, on-creen disturbaces, 0=on, 1=off
-STR_GODMODE:		equ	53				; byte, god mode 0=off, 1=on (hex $35 in Structure)
-STR_CROSSHAIRS:		equ	54				; 0=on, 1=off
+STR_DISTURBANCES:	equ		52				; byte, on-creen disturbaces, 0=on, 1=off
+STR_GODMODE:		equ		53				; byte, god mode 0=off, 1=on (hex $35 in Structure)
+STR_CROSSHAIRS:		equ		54				; 0=on, 1=off
+
+; --------- FAST 1 offsets -------------
+basef_data: 		equ		$f570			; start of data in fast memory, following code
+fl_Floors:			equ		basef_data		; len 30*192 = 5760 ($1680) + 2 for RTS. END: $10bf2
+co_Walls:			equ		$10c00			;[320*4*65]*4=$14500 * 4
+co_Items:			equ		co_Walls+$42040	; start $52c40. Length 28080 = $6db0. End: $599f0
+sv_PLANES:			equ		$59e40			;$b1bc(700*[260/4]). End: $64ffc
+mc_code:			equ		$65000			;$1af00 - raster code. End $7ff00
+
+; 83200+83200+52000+52000					; all: 270400 = $42040
+; $14500 + $14500 + $19640 + $71c0 = $49200
+; wallsA   wallsB   enemy    items
 
 ; --------- FAST 2 offsets -------------
 AVCNTS:		equ		16					; number of average counters
@@ -10924,7 +10883,7 @@ ENDC
 >extern	"Assets/M1A",sv_MAP,-1
 >extern	"Assets/C1A",sc_colors,-1
 
->extern	"Assets/ITEMS01.VIR",BASEF1+co_Walls+270400
+>extern	"Assets/ITEMS01.VIR",BASEF1+co_Items
 >extern	"Assets/WINDOW1.RAW",screen1,-1
 >extern	"Assets/TABLES.DAT",sv_bomba,-1			; chaostab, fonts etc.
 >extern	"Assets/sounds",sv_samples,-1
