@@ -12,7 +12,7 @@ IS_EXE:		equ	0
 
 ; release version, set to date+build for each deployed version
 VERSION: 	SET	$220128
-BUILD:		SET	$01
+BUILD:		SET	$03
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
 ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
@@ -40,6 +40,9 @@ UPDATE_TIME:	equ	6			; minimum period (in frames) between game logic updates. De
 
 	TTL		VIRTUAL_DESIGN_PRODUCTION
 	JUMPPTR		S
+
+	INCDIR 	"Includes/"
+	INCLUDE "custom.i"
 
 ;-----------------------------------------------------------------------------
 ALL:		REG	d0-a6
@@ -318,6 +321,10 @@ start:
 		lea	4(a3),a3		; skip freq/len
 		bra.s	.fix_s
 .fe:
+
+	IFNE	IS_EXE
+		bsr		DecrunchItems_pass	; decrunch new items gfx to the right location
+	ENDC
 
 		lea		sv_UserMap,a1		;clr user map
 		moveq	#127,d0
@@ -677,7 +684,7 @@ sv_cont1:
 		addi	#21,d0
 		SCROLL1						; "window size X"
 		TIMESTAMP	d0
-		move.l	d0,lc_fps+4(a6)		; refresh - get and store new fps start timestamp after screen change
+		move.l	d0,lc_fps+4(a6)		; refresh - get and store new start timestamp after window size change
 		bra.s	sv_cont2
 
 sv_NoScrChange:
@@ -689,6 +696,8 @@ sv_NoScrChange:
 		move	lc_c2pTypePreferred(a6),lc_c2pType(a6)	; on non-stretched screens use preferred C2P
 		st		lc_ledChange(a6)	; re-draw debug LEDs
 		bsr		sv_SetWindowSize_pass		; refresh window size
+		TIMESTAMP	d0
+		move.l	d0,lc_fps+4(a6)		; refresh - get and store new start timestamp after window size change
 
 sv_cont2:
 		; --- change weapon if required
@@ -4382,10 +4391,13 @@ AT_loop2:	rept	4
 ;Swap screens and clear tables in preparation for the next frame
 mc_clearScreen:	
 	; ------------- clear screen area, if no textured floor then fill
-;		move	lc_CpuType(pc),d2
+		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter (buffer in chip), 1 - cpu (buffer in fast)
+		bne.s	.cpuFill							; if buffer in fast then only CPU can be used
+		; TODO: review as even in case of cache, blitter might be faster to use in CHIP
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
-		beq.s	.NoCache
+		beq.s	.blitterFill
 
+.cpuFill:
 		move.l	sv_ChunkyBuffer,a1
 		move.l	sv_Fillcols,d0
 		move	sv_ViewWidth,d1				; in bytes = pixes / 8
@@ -4411,7 +4423,8 @@ mc_clearScreen:
 		rts
 
 		; blitter fill ceiling/floor
-.NoCache:	move	sv_ViewWidth,d2
+.blitterFill:
+		move	sv_ViewWidth,d2
 		add	d2,d2				; width in words. E.g. max 24 scren bytes -> 192 pixels, i.e. 192 bytes in the chunky table
 		move	sv_ViewHeigth,d1
 		tst	sv_Floor
@@ -5759,12 +5772,13 @@ clearCPUCache:
 ; JUMP EXTENSIONS
 ;-------------------------------------------------------------------
 
-make_planes_pass:		bra	make_planes
-sv_SetWindowSize_pass:	bra	sv_SetWindowSize
-sv_MakeWidthTab_pass:	bra	sv_MakeWidthTab
-mk_FixFloorMod_pass:	bra	mk_FixFloorMod
-DrawBomb_pass:			bra	DrawBomb
-make_tables_pass:		bra	make_tables
+make_planes_pass:		bra		make_planes
+sv_SetWindowSize_pass:	bra		sv_SetWindowSize
+sv_MakeWidthTab_pass:	bra		sv_MakeWidthTab
+mk_FixFloorMod_pass:	bra		mk_FixFloorMod
+DrawBomb_pass:			bra		DrawBomb
+make_tables_pass:		bra		make_tables
+DecrunchItems_pass:		bra		DecrunchItems
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -5892,7 +5906,6 @@ ShowFloor:
 		andi	#$1fe,d6		;d6 - inverted angle
 		lea		fl_Flcoords(pc),a6
 		move	sv_InSquarePos,d2	;player position x within the current square
-;		sub	#512,d2			;center floor tile
 		move	sv_InSquarePos+2,d3	;player position y within the current square
 
 		rept	4
@@ -5971,10 +5984,13 @@ fl_MkDeltas:
 		lea		-2(sp),sp
 		moveq	#63,d4			;AND mask
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
-		bne.w	fl_DRAW_CACHE
+		beq.s	fl_Draw_NoCache
+		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter (buffer in chip), 1 - cpu (buffer in fast)
+		bne		fl_Draw_Cache_CPU
+		bra		fl_Draw_Cache_Blitter
 
-; draw floor line by line using pre-generated code. Only use if cache not available
-fl_DRAW:					;MAIN DRAW FLOOR LOOP
+; draw floor line by line using pre-generated code. Only used if cache not available
+fl_Draw_NoCache:
 		move	d7,(sp)			;save H counter
 
 		movem	(a0)+,d0-d3		;d0-x, d1-y  (starting texel x0,y0, vector to move left-> right dx,dy)
@@ -5998,7 +6014,7 @@ fl_D3:	lea		fl_64MulTab(pc),a0	;64 mul tab
 		add		a5,d6
 		addx.b	d2,d0			;inc X
 
-fl_DoJsr:	jsr	0			;draw floor line
+fl_DoJsr: jsr	0			;draw floor line
 
 fl_Dcont:	
 		lea		2(a3),a3	; row size, -192 for size 5. This code is self-modified by make_tables to add the proper width
@@ -6006,17 +6022,16 @@ fl_Dcont:
 
 		move.l	(sp)+,a0
 		move	(sp),d7
-		dbf		d7,fl_DRAW
+		dbf		d7,fl_Draw_NoCache
 
 		lea		2(sp),sp
 		movem.l	(sp)+,ALL
-fl_quit:	rts
+fl_quit: rts
 
-; this floor draw proc is $a0 long so fits in cache
+; CACHE+CPU version. This floor draw proc is $a0 long so fits in cache
 ; This WORKS ONLY with 020+ due to the Dx*y addressing mode beind used
 ;CNOP 0,16  ; do not use here as for some reason it slows things down
-fl_DRAW_CACHE:
-flc_DRAW:	
+fl_Draw_Cache_CPU:
 		move	d7,(sp)
 		movem	(a0)+,d0-d3		;d0-x, d1-y (starting texel x0,y0, vector to move left-> right dx,dy)
 		move.l	a0,-(sp)
@@ -6025,20 +6040,20 @@ flc_DRAW:
 		move	(a0,d2.w),a5		;Rx
 		moveq	#0,d6			;RLx
 		move	2(a0,d2.w),d2		;Cx
-		bpl.s	flc_D2
+		bpl.s	.flc_D2
 		sub		a5,d6
-flc_D2:	move	(a0,d3.w),a6		;Ry
+.flc_D2:	move	(a0,d3.w),a6		;Ry
 		moveq	#0,d7			;RLy
 		move	2(a0,d3.w),d3		;Cy
-		bpl.s	flc_D3
+		bpl.s	.flc_D3
 		sub		a6,d7
-flc_D3:	
+.flc_D3:	
 		lea		fl_64MulTab(pc),a0	;64 mul tab
 		add		a5,d6
 		addx.b	d2,d0			;inc X
 		move	sv_ConstTab+30,d5	;X counter/4 -1 (48 for size 5)
 
-flc_DCode:	
+.flc_DCode:	
 		REPT	4			; iterate over X (row) of the screen
 		add		a6,d7
 		addx	d3,d1			;inc texel Y offset
@@ -6051,21 +6066,64 @@ flc_DCode:
 		move.b	(a2,d1.w),(a4)+	; copy pixel to ceiling
 		ENDC
 		ENDR
-		dbf		d5,flc_DCode
-flc_Dcont:	
+		dbf		d5,.flc_DCode
+flc_Dcont_cpu:	
 		lea		2(a3),a3			; row size, -192 for size 5. This code is self-modified by make_tables to add the proper width
 
 		move.l	(sp)+,a0
 		move	(sp),d7
-		dbf		d7,flc_DRAW
-flc_Endloop:
+		dbf		d7,fl_Draw_Cache_CPU
+
 		lea		2(sp),sp
 		movem.l	(sp)+,ALL
 		rts
 
+; CACHE+BLITTER version (y collumns indexed differently to CPU mode). This floor draw proc is $c0 long so fits in cache
+; This WORKS ONLY with 020+ due to the Dx*y addressing mode beind used
+CNOP 0,16
+fl_Draw_Cache_Blitter:
+		clr		d4				; collumn index from 
+fl_Draw_CB_Loop:
+		move	d7,(sp)
+		movem	(a0)+,d0-d3		;d0-x, d1-y (starting texel x0,y0, vector to move left-> right dx,dy)
+		move.l	a0,-(sp)
 
-fl_Flcoords:	dc.w	-96,512,96,512,-4596,12512,4596,12512
-		dc.w	0,0,0,0,0,0,0,0
+		lea		sv_DeltaTab+[600*4],a0
+		move	(a0,d2.w),a5		;Rx
+		moveq	#0,d6			;RLx
+		move	2(a0,d2.w),d2		;Cx
+		bpl.s	.flc_D2
+		sub		a5,d6
+.flc_D2:	move	(a0,d3.w),a6		;Ry
+		moveq	#0,d7			;RLy
+		move	2(a0,d3.w),d3		;Cy
+		bpl.s	.flc_D3
+		sub		a6,d7
+.flc_D3:	
+		lea		sv_WidthTable(pc),a0	;X index table (for blitter collumn indexing)
+		add		a5,d6
+		addx.b	d2,d0			;inc X
+		move	sv_ConstTab+30,d5	;X counter/4 -1 (48 for size 5)
+
+.flc_DCode:	
+		REPT	4			; iterate over X (row) of the screen
+		add		a6,d7
+		addx	d3,d1			; inc texel Y offset
+		move.b	(a0)+,d4		; get correct X index
+		and		#63,d1			; should not be #63 immediate but no register left
+		add		fl_64MulTab(pc,d0.w*2),d1		;inc texel X offset = d0*64 (cycles: min 10+4=14)
+		add		a5,d6
+		move.b	(a1,d1.w),(a3,d4.w)	; copy pixel to floor
+		addx.b	d2,d0			;inc X in texture
+		IFNE	DRAW_CEILING
+		move.b	(a2,d1.w),(a4,d4.w)	; copy pixel to ceiling
+		ENDC
+		ENDR
+		dbf		d5,.flc_DCode
+flc_Dcont_blitter:	
+		lea		2(a3),a3			; row size, -192 for size 5. This code is self-modified by make_tables to add the proper width
+		lea		4(a4),a4			; +192 for size 5. SMC as above
+		bra		fl_Draw_CB_Cont
 
 fl_64MulTab:
 		REPT	4
@@ -6075,6 +6133,20 @@ VALUE:		SET	0
 VALUE:		SET	VALUE+64
 		ENDR
 		ENDR
+
+CNOP 0,16
+fl_Draw_CB_Cont:
+		move.l	(sp)+,a0
+		move	(sp),d7
+		dbf		d7,fl_Draw_CB_Loop
+
+		lea		2(sp),sp
+		movem.l	(sp)+,ALL
+		rts
+
+
+fl_Flcoords:	dc.w	-96,512,96,512,-4596,12512,4596,12512
+		dc.w	0,0,0,0,0,0,0,0
 
 fl_DCode:	; length: 30 single segment, *192 = 5760 all
 ;		rept	192
@@ -6821,14 +6893,39 @@ SelectNextItem:
 ;interrupt level 2 - test keys
 
 NewLev2:	
-		movem.l	d0-d4/a1/a2/a6,-(sp)
-		moveq	#0,d0
-		tst.b	$bfed01
-		move.b	$bfec01,d0			; WHDLoad searches for this instruction and hooks up here
-		move	#$0008,$dff09c		; INTREQ: clear the interrupt
-		tst.b	d0
-		beq.w	cc_NoSav
+		movem.l	d0-d4/a0-a2/a6,-(sp)
+		lea		CUSTOM,a0
+		moveq	#INTF_PORTS,d0
+		move	INTREQR(a0),d1			;check if is it level 2 interrupt
+		and.w	d0,d1
+		beq.b	.end
 
+		move.b	CIAA+ciaicr,d1			;check if SP cause interrupt, CIAICRF_SP = 8 = INTF_PORTS
+		and.b	d0,d1
+		beq.b	.end
+
+;		move.b	CIAA+ciasdr,d1			;get keycode
+		move.b	$bfec01,d0			; ciasdr. WHDLoad searches for this instruction and hooks up here
+		or.b	#CIACRAF_SPMODE,CIAA+ciacra	;start SP handshaking
+		tst.b	d0
+		beq.s	.handshake
+		bsr.s	InputKeyParse
+.handshake:								;handshake
+		moveq	#3-1,d1
+.wait1:	move.b	VHPOSR(a0),d0
+.wait2:	cmp.b	VHPOSR(a0),d0
+		beq.b	.wait2
+		dbf		d1,.wait1
+
+		and.b	#~(CIACRAF_SPMODE),CIAA+ciacra		;set input mode
+.end:	move.w	#INTF_PORTS,INTREQ(a0)
+		move.w	#INTF_PORTS,INTREQ(a0)
+		nop
+		movem.l	(sp)+,d0-d4/a0-a2/a6
+		rte
+
+		
+InputKeyParse:
 		lea		cc_RequestTab,a1
 		lea		lc_variables(pc),a6
 		move	d0,-(sp)
@@ -6993,7 +7090,6 @@ cc_Tylda:
 		beq.s	.cc_t2
 		SCROLL2	txt_fps_on
 		bsr		ClearBomb
-		lea		lc_variables(pc),a6
 		st		lc_ledChange(a6)		; mark leds to be updated
 		bra		cc_NoKey
 .cc_t2:	SCROLL2	txt_fps_off
@@ -7029,7 +7125,6 @@ cc_b:
 		tst		sv_StrFlag			; C2P can only be changed on a non-stretched screen
 		bne.s	cc_NoKey
 		move	#1,4(a1)		; cc_RequestTab+4 - notify the main loop that the change happened 
-		lea		lc_variables(pc),a6
 		eori	#1,lc_c2pTypePreferred(a6)		; chenge preferred C2P mode
 		beq.w	.cc_b2
 		SCROLL2	txt_c2p_cpu		; cpu c2p
@@ -7041,7 +7136,8 @@ cc_cache:
 		bne.s	cc_cont2
 		tst		lc_fpsOn(a6)
 		beq.s	cc_NoKey
-		lea		lc_variables(pc),a6
+		move	lc_CpuType(pc),d1		; cache can only be controlled on a 020+
+		beq.s	cc_NoKey
 		st		lc_ledChange(a6)		; mark leds to be updated
 		eori	#1,lc_isCache(a6)
 		beq.w	.cc_c2
@@ -7049,8 +7145,6 @@ cc_cache:
 		bra.s	cc_NoKey
 .cc_c2:	SCROLL2	txt_cache_off	; cache off
 ;		bra.s	cc_NoKey
-
-
 cc_cont2:
 
 cc_NoKey:	
@@ -7064,21 +7158,9 @@ cc_NoKey:
 		andi	#15,d0
 		move	d0,(a1)
 		st		2(a1)			; mark buffer as updated
-
 cc_NoSav:
-		move.b	#$41,$bfee01
-		moveq	#2,d0
-.loop1:	move.b	$dff006,d1
-.loop2:	cmp.b	$dff006,d1
-		beq.b	.loop2
-		dbf		d0,.loop1
-;		bclr	#6,$bfee01
+		rts
 
-		move.b	#0,$bfec01
-		move.b	#0,$bfee01
-cc_EndInt2:	
-		movem.l	(sp)+,d0-d4/a1/a2/a6
-		rte
 
 ; a1 - cc_RequestTab
 ; d1: 0 released, 1 pressed
@@ -8229,7 +8311,6 @@ DebugCntClearArea:
 		lea		36(a2),a2
 		dbf		d1,.c1
 
-
 		lea		sv_Numbers+[20*18],a1	; small numbers
 		lea		sv_DebugPos1+[2*40*5]+40*2,a3
 		lea		sv_DebugPos2+[2*40*5]+40*2,a4
@@ -9232,20 +9313,12 @@ Take_Items:
 		movem	(a2),d2/d3
 		cmpi	#512-500,d2		;chk if well into field
 		bmi.w	ti_NoItem
-		cmpi	#512-500,d3
+		cmpi	#512-500,d3		; was: 512-220
 		bmi.w	ti_NoItem
 		cmpi	#512+500,d2
 		bpl.w	ti_NoItem
 		cmpi	#512+500,d3
 		bpl.w	ti_NoItem
-		; cmpi	#512-220,d2		;chk if well into field
-		; bmi.w	ti_NoItem
-		; cmpi	#512-220,d3
-		; bmi.w	ti_NoItem
-		; cmpi	#512+220,d2
-		; bpl.w	ti_NoItem
-		; cmpi	#512+220,d3
-		; bpl.w	ti_NoItem
 
 		andi.b	#$c0,6(a1,d0.w)		;delete item from map
 		move	#5,do_flash		;flash screen
@@ -9938,12 +10011,15 @@ mk_DT2:	move	d3,(a3)+
 		move.l	a2,40(a1)		;SVGA end addr - store in constants
 
 		lea		fl_Dcont(pc),a2		;floor row modulos - SELF MODIFYING CODE!! (SMC)
-		lea		flc_Dcont(pc),a3
+		lea		flc_Dcont_cpu(pc),a3
+		lea		flc_Dcont_blitter(pc),a4
 		move	6(a1),d0		;width (a1=sv_ConstTab)
 		move	d0,6(a2)
+		move	d0,6(a4)
 ;		move	d0,6(a3)
 		neg		d0
 		move	d0,2(a2)
+		move	d0,2(a4)
 		asl		d0				; * 2 to go 2 lines back
 		move	d0,2(a3)
 
@@ -10440,6 +10516,26 @@ sv_SWS3:
 
 
 ;-------------------------------------------------------------------
+; decrunch new items gfx to the right location
+DecrunchItems:
+	IFNE	IS_EXE
+		movem.l	d0/a0/a1,-(sp)
+		lea		lc_items(pc),a0
+		move.l	lc_FastMem1(pc),a1
+		addi.l	#co_Items,a1
+		move.l	#lc_items_end-lc_items,d0
+		bsr		PPDoDecrunch
+		movem.l	(sp)+,d0/a0/a1
+	ENDC
+		rts
+
+;-------------------------------------------------------------------
+; Power packer decruncher
+	IFNE	IS_EXE
+	INCLUDE "ppdecruncher.ss"
+	ENDC
+
+;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
 copper:		;this copper is ORG from RealCoper but put here.
 
@@ -10827,6 +10923,12 @@ even
 				dc.l	0,$01020304
 	ENDOFF
 
+lc_items:
+	IFNE	IS_EXE
+	INCBIN	"Assets/ITEMS01.PP"
+	ENDC
+lc_items_end:
+
 End_OData:
 
 ; --------- STRUCTURE offsets -------------
@@ -10882,8 +10984,9 @@ ENDC
 >extern	"Assets/E1B",BASEF1+co_Walls+83200+83200+52000,-1
 >extern	"Assets/M1A",sv_MAP,-1
 >extern	"Assets/C1A",sc_colors,-1
-
+	IFEQ	IS_EXE
 >extern	"Assets/ITEMS01.VIR",BASEF1+co_Items
+	ENDC
 >extern	"Assets/WINDOW1.RAW",screen1,-1
 >extern	"Assets/TABLES.DAT",sv_bomba,-1			; chaostab, fonts etc.
 >extern	"Assets/sounds",sv_samples,-1
