@@ -11,8 +11,8 @@
 IS_EXE:		equ	0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET	$220128
-BUILD:		SET	$03
+VERSION: 	SET	$220129
+BUILD:		SET	$01
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
 ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
@@ -5998,13 +5998,13 @@ fl_Draw_NoCache:
 
 		lea		sv_DeltaTab+[600*4],a0
 		move	(a0,d2.w),a5		;Rx
-		moveq	#0,d6			;RLx
+		moveq	#0,d6				;RLx
 		move	2(a0,d2.w),d2		;Cx
 		bpl.s	fl_D2
 		sub		a5,d6
 fl_D2:
 		move	(a0,d3.w),a6		;Ry
-		moveq	#0,d7			;RLy
+		moveq	#0,d7				;RLy
 		move	2(a0,d3.w),d3		;Cy
 		bpl.s	fl_D3
 		sub		a6,d7
@@ -6042,7 +6042,7 @@ fl_Draw_Cache_CPU:
 		move	2(a0,d2.w),d2		;Cx
 		bpl.s	.flc_D2
 		sub		a5,d6
-.flc_D2:	move	(a0,d3.w),a6		;Ry
+.flc_D2: move	(a0,d3.w),a6		;Ry
 		moveq	#0,d7			;RLy
 		move	2(a0,d3.w),d3		;Cy
 		bpl.s	.flc_D3
@@ -6152,8 +6152,8 @@ fl_DCode:	; length: 30 single segment, *192 = 5760 all
 ;		rept	192
 		add		a6,d7
 		addx	d3,d1			;inc Y
-		and		d4,d1
 		move	d0,d5
+		and		d4,d1
 		add		d5,d5
 		add		(a0,d5.w),d1		;wall pixel offset
 		add		a5,d6			;here to omit Mem Wait
@@ -6281,11 +6281,7 @@ sv_NextBit:
 ;a1 - screen addr to start
 
 c2p_Copy_CPU_noStretch_Cache:
-;sv2_copy:
 		movem.l	ALL,-(sp)
-;		tst	sv_StrFlag
-;		bne.w	sv3_copy		;if stretch
-
 		move.l	sv_ChunkyBuffer,a0
 		lea		row(a1),a2
 		lea		row(a2),a3
@@ -6304,6 +6300,19 @@ c2p_Copy_CPU_noStretch_Cache:
 		lea		-2(sp),sp
 		bra.s	sv2_Vertical
 
+ConvBits:	macro
+		add.b	d0,d0			;convert bits
+		addx.b	d1,d1
+		add.b	d0,d0
+		addx.b	d2,d2
+		add.b	d0,d0
+		addx.b	d3,d3
+		add.b	d0,d0
+		addx.b	d4,d4
+		add.b	d0,d0
+		addx.b	d5,d5
+		endm
+
 		nop
 CNOP 0,16		; cache line alignment (16 bytes)
 sv2_Vertical:
@@ -6312,18 +6321,18 @@ sv2_Vertical:
 sv2_Horizontal:	
 		move.b	(a0)+,d0		;all 1 or all 0
 		move.b	d0,d6
-		smi	d1
+		smi		d1				; if d6 neg then 11111111 otherwise 00000000 (LSB)
 		add.b	d0,d0
-		smi	d2
+		smi		d2
 		add.b	d0,d0
-		smi	d3
+		smi		d3
 		add.b	d0,d0
-		smi	d4
+		smi		d4
 		add.b	d0,d0
-		smi	d5
+		smi		d5				; MSB - bitplane 5
 
-		move.b	(a0)+,d0		;next bit similar?
-		cmp.b	d0,d6
+		move.b	(a0)+,d0
+		cmp.b	d0,d6			;next bit same?
 		bne.s	sv2_bit2
 		move.b	(a0)+,d0
 		cmp.b	d0,d6
@@ -6337,30 +6346,16 @@ sv2_Horizontal:
 		move.b	(a0)+,d0
 		cmp.b	d0,d6
 		bne.s	sv2_bit6
-		bra		sv2_bit7_1
+		move.b	(a0)+,d0
+		cmp.b	d0,d6
+		bne.s	sv2_bit7
+		bra		sv2_bit8_1
 
-;		move.b	(a0)+,d0
-;		cmp.b	d0,d6
-;		bne.s	sv2_bit7
+		; move.b	(a0)+,d0
+		; cmp.b	d0,d6
+		; bne		sv2_bit8
+		; bra		sv2_bitsok
 
-;		move.b	(a0)+,d0
-;		cmp.b	d0,d6
-;		bne.s	sv2_bit8
-;		bra	sv2_SetByte
-
-ConvBits:	macro
-		add.b	d0,d0			;convert bits
-		addx.b	d1,d1
-		add.b	d0,d0
-		addx.b	d2,d2
-		add.b	d0,d0
-		addx.b	d3,d3
-		add.b	d0,d0
-		addx.b	d4,d4
-		add.b	d0,d0
-		addx.b	d5,d5
-		endm
-		
 sv2_bit2:	ConvBits
 		move.b	(a0)+,d0
 sv2_bit3:	ConvBits
@@ -6373,15 +6368,26 @@ sv2_bit6:	ConvBits
 sv2_bit7_1:	move.b	(a0)+,d0
 sv2_bit7:	ConvBits
 sv2_bit8_1:	move.b	(a0)+,d0
-sv2_bit8:	ConvBits
+sv2_bit8:	;ConvBits
 
-;sv2_SetByte:
+sv2_bitsok:
+		add.b	d0,d0			;convert bits
+		addx.b	d1,d1
+		add.b	d0,d0
 		move.b	d1,(a1)+		;copy to screen
+		addx.b	d2,d2
+		add.b	d0,d0
 		move.b	d2,(a2)+
+		addx.b	d3,d3
+		add.b	d0,d0
 		move.b	d3,(a3)+
+		addx.b	d4,d4
+		add.b	d0,d0
 		move.b	d4,(a4)+
+		addx.b	d5,d5
 		move.b	d5,(a5)+
 		dbf		d7,sv2_Horizontal
+
 		add		a6,a1			;add modulo
 		add		a6,a2
 		add		a6,a3
@@ -6403,7 +6409,6 @@ sv2_endloop:
 ; This version does NOT fit in a 256byte cache
 
 c2p_Copy_CPU_Stretch_noCache:
-;sv3_copy:	
 		movem.l	ALL,-(sp)
 		move.l	sv_ChunkyBuffer,a0
 		move.l	sv_screen,a1
@@ -6421,8 +6426,7 @@ c2p_Copy_CPU_Stretch_noCache:
 		move	sv_ViewHeigth,d7
 		subq	#1,d7
 		lea		-2(sp),sp
-;		move	lc_CpuType(pc),d0
-;		bne.w	sv4_Copy		;if MC68020+cache
+
 sv3_Vertical:
 		move	d7,(sp)			;save heigth
 		move	2(sp),d7		;width
@@ -6433,15 +6437,15 @@ sv3_Horizontal:	moveq	#0,d1
 		moveq	#0,d5
 		move.b	(a0)+,d0		;all 1 or all 0
 		move.b	d0,d6
-		smi	d1
+		smi		d1
 		add.b	d0,d0
-		smi	d2
+		smi		d2
 		add.b	d0,d0
-		smi	d3
+		smi		d3
 		add.b	d0,d0
-		smi	d4
+		smi		d4
 		add.b	d0,d0
-		smi	d5
+		smi		d5
 
 		move.b	(a0)+,d0		;next bit similar?
 		cmp.b	d0,d6
@@ -6461,10 +6465,7 @@ sv3_Horizontal:	moveq	#0,d1
 		move.b	(a0)+,d0
 		cmp.b	d0,d6
 		bne.s	sv3_bit7
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne	sv3_bit8
-		bra	sv3_SetByte
+		bra		sv3_bit8_1
 
 sv3_bit2:	ConvBits
 		move.b	(a0)+,d0
@@ -6477,27 +6478,39 @@ sv3_bit5:	ConvBits
 sv3_bit6:	ConvBits
 		move.b	(a0)+,d0
 sv3_bit7:	ConvBits
-		move.b	(a0)+,d0
-sv3_bit8:	ConvBits
+sv3_bit8_1:		move.b	(a0)+,d0
+sv3_bit8:	;ConvBits
 
-sv3_SetByte:	add	d1,d1
+sv3_SetByte:	
+		add.b	d0,d0
+		addx.b	d1,d1
+		add		d1,d1
 		move	sv3_DoubleTab(pc,d1.w),(a1)+	;copy to screen
-		add	d2,d2
+		add.b	d0,d0
+		addx.b	d2,d2
+		add		d2,d2
 		move	sv3_DoubleTab(pc,d2.w),(a2)+
-		add	d3,d3
+		add.b	d0,d0
+		addx.b	d3,d3
+		add		d3,d3
 		move	sv3_DoubleTab(pc,d3.w),(a3)+
-		add	d4,d4
+		add.b	d0,d0
+		addx.b	d4,d4
+		add		d4,d4
 		move	sv3_DoubleTab(pc,d4.w),(a4)+
-		add	d5,d5
+		add.b	d0,d0
+		addx.b	d5,d5
+		add		d5,d5
 		move	sv3_DoubleTab(pc,d5.w),(a5)+
-		dbf	d7,sv3_Horizontal
-		add	a6,a1			;add modulo
-		add	a6,a2
-		add	a6,a3
-		add	a6,a4
-		add	a6,a5
+		dbf		d7,sv3_Horizontal
+
+		add		a6,a1			;add modulo
+		add		a6,a2
+		add		a6,a3
+		add		a6,a4
+		add		a6,a5
 		move	(sp),d7
-		dbf	d7,sv3_Vertical
+		dbf		d7,sv3_Vertical
 
 		lea	4(sp),sp
 		movem.l	(sp)+,ALL
@@ -6509,7 +6522,6 @@ sv3_DoubleTab:	ds.w	256
 ;CPU copy to Amiga screen + stretch... for 20++ and cache only!
 ; Fits in cache: $fa
 
-;sv4_Copy:
 c2p_Copy_CPU_Stretch_Cache:
 		movem.l	ALL,-(sp)
 		move.l	sv_ChunkyBuffer,a0
@@ -6528,26 +6540,26 @@ c2p_Copy_CPU_Stretch_Cache:
 		move	sv_ViewHeigth,d7
 		subq	#1,d7
 		lea		-2(sp),sp
-sv4_Vertical:	
-		move	d7,(sp)			;save heigth
-		move	2(sp),d7		;width
-sv4_Horizontal:	moveq	#0,d1
+
 		moveq	#0,d2
 		moveq	#0,d3
 		moveq	#0,d4
 		moveq	#0,d5
-		
+sv4_Vertical:	
+		move	d7,(sp)			;save heigth
+		move	2(sp),d7		;width
+sv4_Horizontal:	moveq	#0,d1
 		move.b	(a0)+,d0		;all 1 or all 0
 		move.b	d0,d6
-		smi	d1
+		smi		d1
 		add.b	d0,d0
-		smi	d2
+		smi		d2
 		add.b	d0,d0
-		smi	d3
+		smi		d3
 		add.b	d0,d0
-		smi	d4
+		smi		d4
 		add.b	d0,d0
-		smi	d5
+		smi		d5
 
 		move.b	(a0)+,d0		;next bit similar?
 		cmp.b	d0,d6
@@ -6558,11 +6570,16 @@ sv4_Horizontal:	moveq	#0,d1
 		move.b	(a0)+,d0
 		cmp.b	d0,d6
 		bne.s	sv4_bit4
-;		move.b	(a0)+,d0
-;		cmp.b	d0,d6
-		bra.s	sv4_bit5_1
-;		move.b	(a0)+,d0
-;		bra.s	sv4_bit6
+		move.b	(a0)+,d0
+		cmp.b	d0,d6
+		bne.s	sv4_bit5
+		move.b	(a0)+,d0
+		cmp.b	d0,d6
+		bne.s	sv4_bit6
+		move.b	(a0)+,d0
+		cmp.b	d0,d6
+		bne.s	sv4_bit7
+		bra		sv4_bit8_1
 
 sv4_bit2:	ConvBits
 		move.b	(a0)+,d0
@@ -6575,15 +6592,27 @@ sv4_bit5:	ConvBits
 sv4_bit6:	ConvBits
 		move.b	(a0)+,d0
 sv4_bit7:	ConvBits
-		move.b	(a0)+,d0
-sv4_bit8:	ConvBits
+sv4_bit8_1:	move.b	(a0)+,d0
+sv4_bit8:	;ConvBits
 
-sv4_SetByte:	move	sv4_DoubleTab(pc,d1.w*2),(a1)+
+sv4_SetByte:
+		add.b	d0,d0			;convert bits
+		addx.b	d1,d1
+		add.b	d0,d0
+		move	sv4_DoubleTab(pc,d1.w*2),(a1)+
+		addx.b	d2,d2
+		add.b	d0,d0
 		move	sv4_DoubleTab(pc,d2.w*2),(a2)+
+		addx.b	d3,d3
+		add.b	d0,d0
 		move	sv4_DoubleTab(pc,d3.w*2),(a3)+
+		addx.b	d4,d4
+		add.b	d0,d0
 		move	sv4_DoubleTab(pc,d4.w*2),(a4)+
+		addx.b	d5,d5
 		move	sv4_DoubleTab(pc,d5.w*2),(a5)+
 		dbf		d7,sv4_Horizontal
+
 		add		a6,a1			;add modulo
 		add		a6,a2
 		add		a6,a3
@@ -8464,12 +8493,12 @@ FPSShow:
 ; show status "LEDs"
 StatusLedsShow:
 		lea		sv_BombPos+[4*40*5]+[25*40*5]+1,a2
-		move	lc_CpuType(pc),d0					; 0 - 68k, 1 - 020+
-		bsr.s	StatusLedsShowCol
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache
 		bsr.s	StatusLedsShowCol
 		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter, 1 - cpu
 		eori	#1,d0
+		bsr.s	StatusLedsShowCol
+		move	lc_CpuType(pc),d0					; 0 - 68k, 1 - 020+
 		bsr.s	StatusLedsShowCol
 		move.l	lc_FastMem1(pc),d0					; memory type
 		cmpi.l	#$1ffffff,d0
