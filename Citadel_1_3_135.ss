@@ -258,9 +258,9 @@ start:
 		move	#1,lc_isCache(a6)				; mark that there is a CPU cache present - will always be used
 		move	#1,lc_c2pType(a6)				; 1 = CPU C2P
 		move	#1,lc_c2pTypePreferred(a6)		; 1 = CPU C2P
-		move.l	lc_FastMem2(pc),d0
-		addi.l	#F2_ChunkyBufF,d0
-		move.l	d0,sv_ChunkyBuffer
+		; move.l	lc_FastMem2(pc),d0
+		; addi.l	#F2_ChunkyBufF,d0
+		; move.l	d0,sv_ChunkyBuffer
 
 		clr.l	d0
 		movec	CACR,d0			; switch on and clear cache
@@ -286,7 +286,7 @@ start:
 		move	#0,lc_isCache(a6)				; mark that there is no CPU cache present
 		move	#0,lc_c2pType(a6)				; 0 = blitter C2P
 		move	#0,lc_c2pTypePreferred(a6)		; 0 = blitter C2P
-		move.l	#sv_ChunkyBufC,sv_ChunkyBuffer	; use chip chunky buffer with blitter
+		; move.l	#sv_ChunkyBufC,sv_ChunkyBuffer	; use chip chunky buffer with blitter
 
 .InitStruct:
 		move.l	lc_Structure(pc),a1
@@ -780,8 +780,9 @@ sv_startFrame:
 .sv_noActionUpdate1:
 
 		; Remove markers for all collumns drawn - so that new ones can be drawn
-		move.l	sv_Consttab+8,a4	;scr tab middle
-		lea		64*192(a4),a4
+;		move.l	sv_Consttab+8,a4	;scr tab middle
+;		lea		64*192(a4),a4
+		move.l	sv_Consttab+44,a4	; marker table - behind chunky buffer?
 		move	sv_Consttab+28,d0
 		moveq.l	#-1,d1
 sv_Cloop0:	rept	4			;clear row map.
@@ -799,6 +800,8 @@ sv_Cloop0:	rept	4			;clear row map.
 	CNTSTART 6
 		bsr		DrawAll								; draw walls and all - but not transparent (zero) walls.
 	CNTSTOP 6
+
+; TODO: this is strange, check if zerowalls cannot write something over if it goes too long?
 		move.l	sv_ZeroPtr,d0
 		cmpi.l	#sv_ZeroTab+[14*8*192],d0
 		bmi.s	.NicTo
@@ -1122,7 +1125,9 @@ RMB_End:
 		rts
 
 ;-------------------------------------------------------------------
-rm_HandUsed:	move	#0,sv_SpaceOn		;clr space_used
+; check all possible hand actions
+rm_HandUsed:	
+		move	#0,sv_SpaceOn		;clr space_used
 		move	sv_Angle,d0
 		addi	#64,d0
 		andi	#$1fe,d0
@@ -1203,7 +1208,7 @@ rm_SwitchIN:	cmpi	#46,d0
 rm_ChkBlood:	move	d1,d0
 		andi	#$fffc,d1
 		move.b	4(a1,d1.w),d3		;get slots
-		not	d0
+		not		d0
 		andi	#3,d0
 		add		d0,d0
 		lsr		d0,d3
@@ -1947,6 +1952,7 @@ oc_bla:		move	(sp)+,d0
 		rts
 
 ;-------------------------------------------------------------------
+; Check what to do when enemy hit
 ;a1 - object struct, a4 - enemy struct, a2,a3,d6,d7 - don't touch
 EnemyHitServe:
 ;		cmpi.b	#1,12(a4)		;not if hit,kill,burn.
@@ -1968,7 +1974,7 @@ EnemyHitServe:
 		beq.w	eh_End
 		moveq	#5,d1
 		bra.s	eh_cont1
-.eh1:		cmpi.b	#3,d0			;kula
+.eh1:		cmpi.b	#3,d0			;kula ognia
 		bne.s	.eh2
 		btst	#1,d2
 		beq.w	eh_End
@@ -1984,7 +1990,7 @@ EnemyHitServe:
 		bne.s	eh_cont1
 		btst	#3,d2
 		beq.w	eh_End
-		moveq	#40,d1
+		moveq	#60,d1				; was 40
 
 eh_cont1:	movem	2(a1),d2/d3
 		move.b	d2,14(a4)		;odrzucenie
@@ -1994,7 +2000,7 @@ eh_cont1:	movem	2(a1),d2/d3
 		andi	#$1fe,d0
 		move	d0,8(a4)
 
-		sub	d1,2(a4)
+		sub	d1,2(a4)			; reduce enemy energy
 		bpl	eh_stillOk
 		cmpi	#25,d1
 		beq.w	eh_burning		;if burn
@@ -3738,41 +3744,43 @@ sq_5:		addq	#1,d3
 sq_tab1:	dc.b	0,1,4,9,16,25,36,49,64,81,100,121,144,169,196,225
 
 ;-------------------------------------------------------------------
-sv_DoAnims:	lea	sv_AnimOffsets,a1		;animate walls...
-		lea	sv_WallOffsets,a2
+; move on all animations
+sv_DoAnims:	
+		lea		sv_AnimOffsets,a1		;animate walls...
+		lea		sv_WallOffsets,a2
 		move	2(a1),d0
 		addq	#4,d0
 		cmpi	#8,d0
 		bne.s	sv_DA1
 		moveq	#0,d0
-sv_DA1:		move	d0,2(a1)
+sv_DA1:	move	d0,2(a1)
 		move.l	4(a1,d0.w),23*4(a2)
-		lea	3*4(a1),a1
-		lea	sv_BloodOffsets,a2
+		lea		3*4(a1),a1
+		lea		sv_BloodOffsets,a2
 		move	2(a1),d0
 		addq	#4,d0
 		cmpi	#8,d0
 		bne.s	sv_DA2
 		moveq	#0,d0
-sv_DA2:		move	d0,2(a1)
+sv_DA2:	move	d0,2(a1)
 		move.l	4(a1,d0.w),5*4(a2)
 
-		lea	3*4(a1),a1
-		lea	sv_CollumnOffsets,a2
+		lea		3*4(a1),a1
+		lea		sv_CollumnOffsets,a2
 		moveq	#4*4,d1
 		bsr.s	sv_DAdo
-		lea	5*4(a1),a1
+		lea		5*4(a1),a1
 		moveq	#12*4,d1
 		bsr.s	sv_DAdo
-		lea	5*4(a1),a1
+		lea		5*4(a1),a1
 		moveq	#20*4,d1
 
-sv_DAdo:	move	2(a1),d0
+sv_DAdo: move	2(a1),d0
 		addq	#4,d0
 		cmpi	#4*4,d0
 		bne.s	sv_DA3
 		moveq	#0,d0
-sv_DA3:		move	d0,2(a1)
+sv_DA3:	move	d0,2(a1)
 		move.l	4(a1,d0.w),(a2,d1.w)
 
 		addi	#2,sv_WalkState		;enemy walk anim
@@ -3783,26 +3791,27 @@ sv_DA3:		move	d0,2(a1)
 ;Main draw walls & objects loop - scaning from sv_MAP. No input.
 DrawAll:
 		movem.l	ALL,-(sp)
-		lea	sv_MAP,a0
-		lea	sv_sinus,a1
-		lea	$80(a1),a2		;cosinus
-		lea	sv_RotTable,a3
-		lea	dr_sideWNES(pc),a4
+		lea		sv_MAP,a0
+		lea		sv_sinus,a1
+		lea		$80(a1),a2		;cosinus
+		lea		sv_RotTable,a3
+		lea		dr_sideWNES(pc),a4
 
 		move	sv_angle,d0
 		move	d0,d6			;d6 - angle - this has to remain in D6 throughout this procedure!
 		rept	3
-		sub	#128,d0
+		subi	#128,d0
 		bmi.s	dr_DirSet
-		lea	18(a4),a4
+		lea		18(a4),a4
 		endr
 dr_DirSet:
 		move	d6,d0
 		andi	#127,d0
-		add		d0,d0			;*4
+		add		d0,d0			;angle*4
 		move.l	(a3,d0.w),a3		;good cell addr
 		move	(a3)+,d7		;nr of locs to check
-		
+
+; --- here starts the main loop drawing all vivible walls. Transparent collumns are stored in a table for later	
 dr_ROTLOOP:
 		move	(a4),d4			;dir number
 		move	sv_SquarePos,d0		;X square
@@ -3841,7 +3850,7 @@ dr_d4:		add.b	d2,d0			;add offset to position
 		lsl	#8,d2
 		add	d2,d2
 		add	d2,d2			;*1024 - X offset
-		sub	sv_InSquarePos,d2	;add square pos
+		sub	sv_InSquarePos,d2	;add in square pos
 		move	d2,10(a4)
 		addi	#1024,d2
 		move	d2,14(a4)
@@ -3885,11 +3894,11 @@ dr_checkITEM:	move	#0,sv_Flag+4
 		andi	#32,d5			;chk heith 0-dn, 1-up
 		beq.s	dr_scok3
 		moveq	#0,d5
-		or	#$8000,d4		;if up
+		ori	#$8000,d4		;if up
 		move	#1,sv_Flag+4		;draw column
 		bra.s	dr_scok4
 dr_scok3:	moveq	#-32,d5
-		or	#$c000,d4		;if down
+		ori	#$c000,d4		;if down
 dr_scok4:	andi	#$c01f,d4
 		addi	#28,d4
 		bsr	ShowCollumns
@@ -4130,15 +4139,17 @@ dr_cW:		andi	#63,d4
 		move	(sp),d5
 
 
-dr_checkEnd:	move	(sp)+,d5
+dr_checkEnd:	
+		move	(sp)+,d5
 		move.l	sv_Consttab+44,a5
 		move	sv_Consttab+30,d0
-dr_ChkLoop0:	tst.l	(a5)+			;all rows drawn?
+dr_ChkLoop0:					; TODO: optimise loop?
+		tst.l	(a5)+			;all rows (collumns) drawn?
 		bne.s	dr_DrawOn
-		dbf	d0,dr_ChkLoop0
+		dbf		d0,dr_ChkLoop0
 		bra.w	dr_EndRot
 dr_DrawOn:
-		dbf	d7,dr_ROTLOOP
+		dbf		d7,dr_ROTLOOP
 dr_EndRot:
 		movem.l	(sp)+,ALL
 		rts
@@ -4323,6 +4334,7 @@ dr_AddBlood:
 		rts
 
 ;-------------------------------------------------------------------
+; Add gadgets on walls
 dr_AddTables:	movem.l	a1-a4,-(sp)
 		addq	#2,d5
 		add	d5,d5
@@ -4865,7 +4877,7 @@ p_SC1:		move	(a2)+,d1
 		rts
 
 ;-------------------------------------------------------------------
-;Draw all walls.
+;Draw walls.
 ;Those collumns which are transparentput in a "zero table" to add to the screen later, on top of the background
 
 ShowWalls:	
@@ -5088,7 +5100,7 @@ sh_Lloop0:	addx	d3,d1			;interpolate Y
 
 
 		move.l	sv_Consttab+8,a0	;scr tab middle
-		lea	sv_LineTab,a4		; addresses of pre-generated code to draw lines
+		lea		sv_LineTab,a4		; addresses of pre-generated code to draw lines
 
 		move	(sp)+,d6
 		bmi.w	sh_Left			;go left...
@@ -8493,18 +8505,18 @@ FPSShow:
 ; show status "LEDs"
 StatusLedsShow:
 		lea		sv_BombPos+[4*40*5]+[25*40*5]+1,a2
+		move	lc_CpuType(pc),d0					; 0 - 68k, 1 - 020+
+		bsr.s	StatusLedsShowCol
+		move.l	lc_FastMem1(pc),d0					; memory type
+		cmpi.l	#$1fffff,d0
+		bpl.s	.fast
+		moveq	#0,d0
+.fast:	bsr.s	StatusLedsShowCol
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache
 		bsr.s	StatusLedsShowCol
 		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter, 1 - cpu
 		eori	#1,d0
 		bsr.s	StatusLedsShowCol
-		move	lc_CpuType(pc),d0					; 0 - 68k, 1 - 020+
-		bsr.s	StatusLedsShowCol
-		move.l	lc_FastMem1(pc),d0					; memory type
-		cmpi.l	#$1ffffff,d0
-		bpl.s	.fast
-		moveq	#0,d0
-.fast:	bsr.s	StatusLedsShowCol
 		rts
 
 ; in: Z=1 red, Z=0 green
@@ -9926,12 +9938,12 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		subq	#1,d2
 		move	d2,28(a1)		;width/16 - 1
 		add		d1,d1
-		move	d1,30(a1)		;width/4 - 1
+		move	d1,30(a1)		;width/4 - 1 (in longs)
 		subi	#1,30(a1)
 		add		d1,d1			;*4
 		move	d1,(a1)			;width/2
 		add		d1,d1			;*8
-		move	d1,6(a1)		;width
+		move	d1,6(a1)		;width in pixels
 
 		lea		shZ_WmulTab(pc),a3		; width mul table
 		moveq	#15,d0
@@ -9945,7 +9957,7 @@ mk_Wmt2: move	d2,(a3)+
 		lea		(a2,d1.w),a2		;SCR tab middle
 		move.l	a2,8(a1)
 		lea		64*192(a2),a3		;zero wall tab start
-		move.l	a3,44(a1)
+		move.l	a3,44(a1)			; row just before screen, indicating which collumns drawn. TODO: change?
 
 		move	sv_WallHeigth,d1
 		muls	sv_Size,d1		;scale screen
@@ -10785,13 +10797,13 @@ sv_DeltaTab:	equ	BASEC+$57100		;$12c0 (600*4 *2 = 4800)
 sv_ScrOffTab:	equ	BASEC+$58410		;$100
 sv_TextOffsets:	equ	BASEC+$58520		;$100 (to 128 texts)
 ;RealCopper:	equ	BASEC+$58630		;$da0	defined upper!
-sv_C1Save:	equ	BASEC+$593d0		;$21c
+sv_C1Save:	equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
 sv_C2Save:	equ	BASEC+$595f0		;$21c
 
 sv_ZeroTab:	equ	BASEC+$59820		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
 
-sv_ChunkyBufC:	equ	BASEC+$60a20		;max $6000	- chunky screen (192 width * 128 heigth). This is the chip buffer for blitter
-									; TODO - move permanently to FAST if no blitter used
+sv_ChunkyBufC:	equ	BASEC+$60a20	;chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
+									;This is the chip buffer for blitter
 
 sv_WindowSav:	equ	BASEC+$66d30		;$28a0 (do $695d0)
 sv_ItemBuf:	equ	BASEC+$69600		;$21c (do $634bc)
@@ -10986,9 +10998,12 @@ F2_AvLastVal:		rs.l	AVCNTS						; last read start_value for debug counters (l)
 F2_AvPtrs:			rs.w	AVCNTS						; rolling pointers into 16 debug counters (averages). Next free slot.w for each
 F2_AvData:			rs.w	AVCNTS*8					; space for debug data (averages). buffer for 8*data.w (each is 16 bytes)
 F2_ClearTo1:		rs.w	0							; clear up to here on start
-F2_ChunkyBufF:		rs.b	screenMaxX*screenMaxY		; chunky buffer ($6000 for 192x128)
+F2_ChunkyBufF:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
 
 F2_TopMem:			rs.w	0
+
+; lc_F2_addresses:
+; F2_Empty:
 
 end:
 
