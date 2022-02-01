@@ -11,7 +11,7 @@
 IS_EXE:		equ	0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET	$220129
+VERSION: 	SET	$220130
 BUILD:		SET	$01
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
@@ -245,6 +245,10 @@ start:
 		move	#$7fff,$9c(a0)		;INTREQ
 		move	#$00ff,$9e(a0)		;ADKONR
 
+		lea		lc_F2_addresses(pc),a1
+		move.l	lc_FastMem2(pc),d0
+		bsr		calcAddressTab		; calculate addresses to use in fast2
+
 		lea		start(pc),a1
 		addi.l	#oryginal_data-start,a1
 		lea		sv_DATA_AREA,a2
@@ -258,9 +262,6 @@ start:
 		move	#1,lc_isCache(a6)				; mark that there is a CPU cache present - will always be used
 		move	#1,lc_c2pType(a6)				; 1 = CPU C2P
 		move	#1,lc_c2pTypePreferred(a6)		; 1 = CPU C2P
-		; move.l	lc_FastMem2(pc),d0
-		; addi.l	#F2_ChunkyBufF,d0
-		; move.l	d0,sv_ChunkyBuffer
 
 		clr.l	d0
 		movec	CACR,d0			; switch on and clear cache
@@ -286,7 +287,6 @@ start:
 		move	#0,lc_isCache(a6)				; mark that there is no CPU cache present
 		move	#0,lc_c2pType(a6)				; 0 = blitter C2P
 		move	#0,lc_c2pTypePreferred(a6)		; 0 = blitter C2P
-		; move.l	#sv_ChunkyBufC,sv_ChunkyBuffer	; use chip chunky buffer with blitter
 
 .InitStruct:
 		move.l	lc_Structure(pc),a1
@@ -779,6 +779,17 @@ sv_startFrame:
 
 .sv_noActionUpdate1:
 
+		lea		lc_variables(pc),a6
+		tst		lc_floorBottomDelayed(a6)	; delayed filling in bottom half of screen by copper to allow to finish top
+		beq.s	.sv_noDelayedFloor
+		clr		lc_floorBottomDelayed(a6)
+		lea		CUSTOM,a0
+		waitblt
+		move	sv_Fillcols+4,$74(a0)		; clean second half. NOTE: there MUST be no blitter actions between clearScreen and here
+		move	lc_halfScreenBlit(a6),$58(a0)
+.sv_noDelayedFloor:
+
+
 		; Remove markers for all collumns drawn - so that new ones can be drawn
 ;		move.l	sv_Consttab+8,a4	;scr tab middle
 ;		lea		64*192(a4),a4
@@ -792,11 +803,11 @@ sv_Cloop0:	rept	4			;clear row map.
 
 		move.l	#sv_ZeroTab,sv_ZeroPtr				; tab for ZeroWalls
 
-		lea		$dff000,a0
-		waitblt									; make sure any operations such as floor filling etc. completed.
 	CNTSTART 5
 		bsr		ShowFloor							; draw floors
 	CNTSTOP 5
+		lea		$dff000,a0
+		waitblt										; make sure blitter screen clearing/floor filling is complete
 	CNTSTART 6
 		bsr		DrawAll								; draw walls and all - but not transparent (zero) walls.
 	CNTSTOP 6
@@ -1459,7 +1470,7 @@ rm_CardEnd:	bra.w	RMB_End
 ; add crosshairs in the middle of the screen
 drawCrosshairs:
 		lea		lc_variables(pc),a6
-		move.l	sv_ChunkyBuffer,a1
+		move.l	lc_ChunkyBuffer(pc),a1
 		move	sv_ViewWidth,d1				; in bytes = pixes / 8
 		lsl		#3,d1						; in pixels (48..192)
 		move	d1,d3
@@ -4358,11 +4369,11 @@ dr_AddTables:	movem.l	a1-a4,-(sp)
 		move.l	(a3,d4.w),d4
 		move.l	sv_Consttab+12,a3
 		lea	(a3,d4.l),a3		;wall start
-		lea	1056(a2),a4		;table start on wall
+		lea	1056(a2),a4		;table start on wall (moreless 1/4)
 
 
 		move	#64,d5
-AT_loop1:	rept	4
+AT_loop1:	rept	4				; move down 16 rows in the texture
 		move.l	(a3)+,(a2)+
 		move.l	(a3)+,(a2)+
 		move.l	(a3)+,(a2)+
@@ -4403,67 +4414,83 @@ AT_loop2:	rept	4
 ;Swap screens and clear tables in preparation for the next frame
 mc_clearScreen:	
 	; ------------- clear screen area, if no textured floor then fill
+		lea		lc_variables(pc),a6
+		move.l	lc_ChunkyBuffer(pc),a1
+
 		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter (buffer in chip), 1 - cpu (buffer in fast)
-		bne.s	.cpuFill							; if buffer in fast then only CPU can be used
+		bne.s	cpuFill								; if buffer in fast then only CPU can be used
 		; TODO: review as even in case of cache, blitter might be faster to use in CHIP
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
-		beq.s	.blitterFill
+		beq		blitterFill
 
-.cpuFill:
-		move.l	sv_ChunkyBuffer,a1
+		; --- CPU fill ceiling/floor
+cpuFill:
+		move.l	lc_ChunkyBuffer(pc),a1
 		move.l	sv_Fillcols,d0
-		move	sv_ViewWidth,d1				; in bytes = pixes / 8
-		mulu	sv_ViewHeigth,d1			; results in half the screen in longs
+		lea		CUSTOM,a0
+		waitblt								; make sure previous C2P completed before clearing screen
 		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
-		bne.s	.FillFloor
+		bne.s	.FillFloorGap
+
+		move	lc_halfScreenBytes(a6),d2
+		lea		(a1,d2),a2
+		move	d2,d1
+		lsr		#6,d2
+		andi	#63,d1			; if no extra bytes after dividing by 64, then reduce by 1 pass
+		bne.s	.nor1
+		subq	#1,d2
+.nor1:	move	d2,d1
+		bsr.s	.floop
+		movea.l	a2,a1
+		move	d2,d1
+ 		move.l	sv_Fillcols+4,d0
+		bra.s	.floop
+
+.FillFloorGap:	
+		move	lc_floorBytes(a6),d1
+		lea		(a1,d1.w),a1
+		move	lc_floorGapBytes(a6),d1
+		move	d1,d2
+		lsr		#6,d1
+		andi	#63,d2			; if no extra bytes after dividing by 64, then reduce by 1 pass
+		bne.s	.floop
 		subq	#1,d1
-		move	d1,d2
-										; TODO - make better use of cache, or maybe use blitter + CPU?
-.ClrVga1:	move.l	d0,(a1)+			; TODO - check if it's not too much as it's in longs?
-		dbf	d1,.ClrVga1
-		move.l	sv_Fillcols+4,d0
-.ClrVga2:	move.l	d0,(a1)+
-		dbf	d2,.ClrVga2
+.floop:	rept	16
+		move.l	d0,(a1)+		; fill in 64-byte chunks
+		endr
+		dbf		d1,.floop
 		rts
 
-.FillFloor:	
-		move	d1,d2
-		lsr		#2,d2
-		add		d2,d1						; add 1/4 more?
-.ClrVga3:	move.l	d0,(a1)+
-		dbf	d1,.ClrVga3
-		rts
+		; --- blitter fill ceiling/floor
+blitterFill:
+		tst		sv_Floor			; 1 = draw floor. 0 = no floor (fill whole screen)
+		bne.s	.FillFloorGap
 
-		; blitter fill ceiling/floor
-.blitterFill:
-		move	sv_ViewWidth,d2
-		add	d2,d2				; width in words. E.g. max 24 scren bytes -> 192 pixels, i.e. 192 bytes in the chunky table
-		move	sv_ViewHeigth,d1
-		tst	sv_Floor
-		beq.s	.NoFloor
-		move	d1,d0
-		lsr	#2,d0
-		add	d0,d1				; add 1/4 ? why?
-.NoFloor:	lsl	#6,d1			;*heigth
-		or	d2,d1
-		lea	$dff000,a0
-		waitblt				;clr SVGA table
-		move	#$8440,$96(a0)		;blitter NASTY & DMA on..
-		move.l	#-1,$44(a0)
-		move	sv_Fillcols,$74(a0)			; ceiling colour
-		move	#0,$66(a0)
-		move.l	#$01f00000,$40(a0)
-		move.l	sv_ChunkyBuffer,$54(a0)
-		move	d1,$58(a0)
-		tst	sv_Floor						; floor colour
-		beq.s	.NF2
+		move	lc_halfScreenBlit(a6),d1
+		st		lc_floorBottomDelayed(a6)	; delay filling in bottom half of screen by copper to allow to finish top
+		bra.s	.doFill
+.FillFloorGap:
+		move	lc_floorBytes(a6),d1
+		lea		(a1,d1.w),a1
+		move	lc_floorGapBlit(a6),d1
+		
+.doFill:
+		lea		CUSTOM,a0
+		waitblt
+		move.l	#-1,$44(a0)					; Blitter first+last word mask for source A
+		move	sv_Fillcols,$74(a0)			; ceiling colour (Blitter source A data register)
+		move	#0,$66(a0)					; Blitter modulo for dest D
+		move.l	#$01f00000,$40(a0)			; Blitter control register 0 (USED + copy mode)
+		move.l	a1,$54(a0)	; D addr
+		move	d1,$58(a0)					; row size (w) + rows * 64
+;		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
+;		beq.s	.NF2
 		rts
-.NF2:
-		waitblt				;clr SVGA table - down
-		move	sv_Fillcols+4,$74(a0)
-		move	d1,$58(a0)
-;		waitblt				;cls
-		rts
+;.NF2:
+		; waitblt
+		; move	sv_Fillcols+4,$74(a0)		; clean second half
+		; move	d1,$58(a0)
+;		rts
 
 ;-------------------------------------------------------------------
 ; show user map
@@ -5130,7 +5157,7 @@ sh_BorOK1:
 		beq		sh_Mloop1		;goto no-cache mode (pregenerated code)
 ;		tst	sv_Mode
 ;		beq.w	sh_Mloop1		;goto pre-generated code mode
-		lea	4*700(a4),a4		;Htab addrss
+		lea	4*700(a4),a4		;Htab address
 
 shS_Mloop1:	add	d3,d2			;interpolation
 		addx	d1,d4
@@ -5781,6 +5808,20 @@ clearCPUCache:
 		rts
 
 ;-------------------------------------------------------------------
+; traslate offset tab into address tab 
+; a1 - table, d0 - base address to add to all offsets
+calcAddressTab:
+.loop:	move.l	(a1),d1				; fix base address
+		add.l	d0,(a1)
+		move.l	8(a1),d2			; offset of next item in tab
+		beq.s	.exit
+		sub.l	d1,d2
+		move.l	d2,4(a1)			; length
+		lea		8(a1),a1
+		bra.s	.loop
+.exit:	rts
+		
+;-------------------------------------------------------------------
 ; JUMP EXTENSIONS
 ;-------------------------------------------------------------------
 
@@ -5808,6 +5849,8 @@ lc_OldLev2:				dc.l	0
 lc_OldLev3:				dc.l	0
 lc_cacr_copy:			dc.l	0				; copy of CACR when starting the engine
 
+lc_ChunkyBuffer:		dc.l	0		; SVGA (chunky) screen - in chip for blitter c2p, otherwise in fast
+
 ; local variables
 lc_variables:
 OFFSET	0
@@ -5825,10 +5868,25 @@ lc_ledChange:			dc.w	0				; 1 - update debug LED status
 lc_drunk:				dc.w	0				; 0 - all OK, >0 time left drunk
 lc_momentum:			dc.w	0				; 0 - not moving, >0 moving momentum which builds up to 255 while moving
 lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after shooting
+
+lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
+lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
+lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
+lc_halfScreenBlit:		dc.w	0				; BPLSIZE value for half of c2p screen (for floor filling)
+lc_floorGapBlit:		dc.w	0				; BPLSIZE for floor gap fill
+lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitter
 ENDOFF
 
 lc_TextBuffer:			ds.b	20				; buffer for keys pressed to check for codes. 0.w index, 2.w changed flag, 4.w+16 buffer
 
+; addresses in Fast 2
+lc_F2_addresses:	; address, size
+lc_F2_AvLastVal:	dc.l	F2_AvLastVal,0
+lc_F2_AvPtrs:		dc.l	F2_AvPtrs,0
+lc_F2_AvData:		dc.l	F2_AvData,0
+lc_F2_ChunkyBufF:	dc.l	F2_ChunkyBufF,0
+lc_F2_TopMem:		dc.l	F2_TopMem,0
+					dc.l	0
 
 lc_soundList:	;list of all sounds used. Sound addr.l, length.w, freq.w
 		dc.l	sv_SAMPLES
@@ -5986,13 +6044,13 @@ fl_MkDeltas:
 
 ;-----------------------------------------------
 		lea		sv_LineTab,a0		;x0,y0, dx,dy
-		move.l	sv_Consttab+32,a1	;floor addr
-		move.l	sv_Consttab+36,a2	;ceiling addr
-		move.l	sv_Consttab+40,a3	;SVGA tab floor addr - starts middle of the screen i.e.screentab+half
-		move.l	sv_ChunkyBuffer,a4	;SVGA tab ceiling addr
+		move.l	sv_Consttab+32,a1	;floor texture addr
+		move.l	sv_Consttab+36,a2	;ceiling texture addr
+		move.l	sv_Consttab+40,a3	;SVGA tab floor addr - starts on last row of the screen
+		move.l	lc_ChunkyBuffer(pc),a4	;SVGA tab ceiling addr
 
 
-		move	(a0)+,d7		;H counter - number of rows to draw
+		move	(a0)+,d7		;H counter - number of rows to draw -1
 		lea		-2(sp),sp
 		moveq	#63,d4			;AND mask
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
@@ -6063,7 +6121,7 @@ fl_Draw_Cache_CPU:
 		lea		fl_64MulTab(pc),a0	;64 mul tab
 		add		a5,d6
 		addx.b	d2,d0			;inc X
-		move	sv_ConstTab+30,d5	;X counter/4 -1 (48 for size 5)
+		move	sv_ConstTab+30,d5	;X counter/4 -1 (48-1 for size 5)
 
 .flc_DCode:	
 		REPT	4			; iterate over X (row) of the screen
@@ -6197,8 +6255,25 @@ c2p_Copy:
 		; --- Blitter non-stretched
 c2p_Copy_Blitter_noStretch:
 		movem.l	ALL,-(sp)
+
+; 	; copy buffer from fast to chip
+; 	move.l	lc_ChunkyBuffer(pc),a2
+; 	lea		sv_ChunkyBufC,a6			; Blitter C2P uses chunky buf in chip
+; 		move	lc_variables+lc_halfScreenBytes(pc),d2
+; 		move	d2,d1
+; 		lsr		#6,d2
+; 		andi	#63,d1			; if no extra bytes after dividing by 64, then reduce by 1 pass
+; 		bne.s	.nor1
+; 		subq	#1,d2
+; .nor1:
+; .floop:	rept	32
+; 		move.l	(a2)+,(a6)+		; fill in 64-byte chunks
+; 		endr
+; 		dbf		d2,.floop
+; 	lea		sv_ChunkyBufC,a6			; Blitter C2P uses chunky buf in chip
+
+		move.l	lc_ChunkyBuffer(pc),a6
 		lea		$dff000,a0
-		move.l	sv_ChunkyBuffer,a6
 		move	sv_ViewWidth,d1	;view window dim.
 		move	sv_ViewHeigth,d2
 		subq	#1,d2
@@ -6207,19 +6282,19 @@ c2p_Copy_Blitter_noStretch:
 
 		move	d2,d0
 		mulu	#5*row,d0
-		add	d1,d0
-		lea	-2(a1,d0.w),a3		;screen end addr
-		movem.l	a6/a2,-(sp)		;save oryginal tab
+		add		d1,d0
+		lea		-2(a1,d0.w),a3		;screen end addr
+		movem.l	a6/a2,-(sp)			;save original tab
 
 		move	#5*row,d0
-		sub	d1,d0
+		sub		d1,d0
 		waitblt
 		move	d0,$62(a0)		;B mod
 		move	d0,$66(a0)		;D mod
 
 		move	d1,d0
-		lsl	#3,d0
-		sub	d1,d0			;*7
+		lsl		#3,d0
+		sub		d1,d0			;*7
 		move	d0,$64(a0)		;A mod
 		move.l	#-1,$44(a0)		;WLWmasks
 
@@ -6229,14 +6304,13 @@ c2p_Copy_Blitter_noStretch:
 		lsr	#1,d1
 		add	d1,d2			;d2 - Blit Size
 
-
 ;Copy table to screen loop...
 		lea	-1,a4			;shift start
 		sub	a5,a5			;0 in a5
 		move	#$0de4,d1		;Bltcon0 or value
 
 		moveq	#4,d7			;plane nr-1
-		move	#$8440,$96(a0)		;blitter NASTY & DMA on..
+;		move	#$8040,$96(a0)		;blitter DMA on..
 sv_PlanesCopy:
 		move	a4,d6			;shift pointer
 		move	#$8080,d5
@@ -6294,7 +6368,7 @@ sv_NextBit:
 
 c2p_Copy_CPU_noStretch_Cache:
 		movem.l	ALL,-(sp)
-		move.l	sv_ChunkyBuffer,a0
+		move.l	lc_ChunkyBuffer(pc),a0
 		lea		row(a1),a2
 		lea		row(a2),a3
 		lea		row(a3),a4
@@ -6422,7 +6496,7 @@ sv2_endloop:
 
 c2p_Copy_CPU_Stretch_noCache:
 		movem.l	ALL,-(sp)
-		move.l	sv_ChunkyBuffer,a0
+		move.l	lc_ChunkyBuffer(pc),a0
 		move.l	sv_screen,a1
 		lea		sv_UpOffset*row*5(a1),a1
 		lea		row(a1),a2
@@ -6536,7 +6610,7 @@ sv3_DoubleTab:	ds.w	256
 
 c2p_Copy_CPU_Stretch_Cache:
 		movem.l	ALL,-(sp)
-		move.l	sv_ChunkyBuffer,a0
+		move.l	lc_ChunkyBuffer(pc),a0
 		move.l	sv_screen,a1
 		lea		sv_UpOffset*row*5(a1),a1
 		lea		row(a1),a2
@@ -7994,7 +8068,7 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 		add.l	a1,d5				; address to use: draw the line in the clear area (sv_CompasClr)
 		lea		$dff000,a0
 		waitblt
-		move	#$8440,$96(a0)		;blitter NASTY & DMA on..
+;		move	#$8040,$96(a0)		;blitter DMA on..
 		move.l	#$ffff8000,$72(a0)
 		move	#4,$60(a0)		;width
 		move	d1,$62(a0)
@@ -8016,7 +8090,7 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 		lea	sv_Compas,a2
 		moveq	#26,d6
 		waitblt
-		move	#$0440,$96(a0)		;blitter off...
+;		move	#$0440,$96(a0)		;blitter off...
 		; copy compass back from the saved copy
 .l_RetComp:	
 		move.l	(a1)+,d0
@@ -8315,8 +8389,7 @@ tc_DrawCardCnt:
 DebugCntStart:
 		movem.l	d1/a1,-(sp)
 		TIMESTAMP	d1
-		move.l	lc_FastMem2(pc),a1
-		addi.l	#F2_AvLastVal,a1
+		move.l	lc_F2_AvLastVal(pc),a1
 		lsl		#2,d0
 		move.l	d1,(a1,d0.w)					; store first value
 		movem.l	(sp)+,d1/a1
@@ -8327,8 +8400,7 @@ DebugCntStart:
 DebugCntStop:
 		movem.l	d1/d2/a1,-(sp)
 		TIMESTAMP	d2
-		move.l	lc_FastMem2(pc),a1
-		addi.l	#F2_AvLastVal,a1
+		move.l	lc_F2_AvLastVal(pc),a1
 		move	d0,d1
 		lsl		#2,d0
 		move.l	(a1,d0.w),d0					; get first value
@@ -8397,8 +8469,7 @@ DebugCntShow:
 .nostr:	lea		sv_Numbers+[20*18],a1	; small numbers
 		lea		sv_DebugPos1+[2*40*5]+1,a3
 		lea		sv_DebugPos2+[2*40*5]+1,a4
-		move.l	lc_FastMem2(pc),a5
-		addi.l	#F2_AvPtrs,a5
+		move.l	lc_F2_AvPtrs(pc),a5
 		clr		d7
 .d1:	move	(a5)+,d0					; check if counter used at all
 		beq.s	.d2
@@ -8424,8 +8495,7 @@ DebugCntShow:
 ; in: d0.l - TS (frames:scanlines), d1.w - AV index (0..15)
 TsAverageAdd:
 		movem.l	d0-d3/a1,-(sp)
-		move.l	lc_FastMem2(pc),a1
-		addi.l	#F2_AvPtrs,a1
+		move.l	lc_F2_AvPtrs(pc),a1
 		lsl		#1,d1
 		move	(a1,d1.w),d3				; free slot index in the average data table
 		move	d3,d2
@@ -8466,14 +8536,14 @@ TsRebaseTo256:
 ; in: d1 - AV index (0..15), out: d0 average.w (msb = frames, lsb = fraction 256-based)
 CounerAverageGet:
 		movem.l	d1/a1,-(sp)
-		move.l	lc_FastMem2(pc),a1
+		move.l	lc_F2_AvData(pc),a1
 		lsl		#4,d1
-		lea		F2_AvData(a1,d1.w),a1		; correct data buffer
+		lea		(a1,d1.w),a1		; right data buffer entry
 		clr		d0
 		move	#7,d1
 .t1:	add		(a1)+,d0
 		dbf		d1,.t1
-		lsr		#3,d0						; average of 8 values
+		lsr		#3,d0				; average of 8 values
 		movem.l	(sp)+,d1/a1
 		rts
 		
@@ -9500,7 +9570,7 @@ sv_rotate:	move	d0,d4
 ;make szum on screen if hit...
 sv_MAKE_SZUM:
 		movem.l	a1-a4/d0-d4,-(sp)
-		move.l	sv_ChunkyBuffer,a1
+		move.l	lc_ChunkyBuffer(pc),a1
 		lea		sv_ScrOffTab,a3
 		move	sv_ViewWidth,d4
 		lsr		#2,d4
@@ -9931,7 +10001,8 @@ mk_DCD2:move.w	(a3)+,(a2)+
 
 		; --- calculate several constants for later ---
 		lea		sv_ConstTab,a1
-		move.l	sv_ChunkyBuffer,a2
+		move.l	lc_ChunkyBuffer(pc),a2
+		lea		lc_variables(pc),a6
 		move	sv_ViewWidth,d1
 		move	d1,d2
 		lsr		d2
@@ -9941,7 +10012,7 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		move	d1,30(a1)		;width/4 - 1 (in longs)
 		subi	#1,30(a1)
 		add		d1,d1			;*4
-		move	d1,(a1)			;width/2
+		move	d1,(a1)			;width/2 (in words)
 		add		d1,d1			;*8
 		move	d1,6(a1)		;width in pixels
 
@@ -9951,13 +10022,16 @@ mk_DCD2:move.w	(a3)+,(a2)+
 mk_Wmt2: move	d2,(a3)+
 		add		d1,d2
 		dbf		d0,mk_Wmt2
+
 		move	sv_ViewHeigth,d2
 		lsr		#1,d2
 		mulu	d2,d1
+		move	d1,lc_halfScreenBytes(a6)		; save nr of bytes corresponding to half of the screen
+
 		lea		(a2,d1.w),a2		;SCR tab middle
 		move.l	a2,8(a1)
 		lea		64*192(a2),a3		;zero wall tab start
-		move.l	a3,44(a1)			; row just before screen, indicating which collumns drawn. TODO: change?
+		move.l	a3,44(a1)			; row just after screen, indicating which collumns drawn.
 
 		move	sv_WallHeigth,d1
 		muls	sv_Size,d1		;scale screen
@@ -9985,8 +10059,30 @@ mk_FlTab: move.l	d1,d3			;Floor perspective tab
 		move	d3,(a4)+
 		subq	#1,d2
 		bne.s	mk_FlTab
-mk_FTend: move	d0,(a3)
+mk_FTend: move	d0,(a3)				; on first word remember nr of rows to draw -1
 
+		lea		lc_variables(pc),a6
+		move	d0,d1
+		addi	#1,d1						; floor heigth in lines
+		move	d1,d2
+		mulu	6(a1),d1					; * width in pixels
+		move	d1,lc_floorBytes(a6)		; save nr of bytes used for floor
+		move	sv_ViewHeigth,d1
+		add		d2,d2
+		sub		d2,d1						; gap in lines
+		move	d1,d0
+		mulu	6(a1),d1					;* width in pixels
+		move	d1,lc_floorGapBytes(a6)		; save nr of bytes between floor and ceiling
+
+		move	sv_ViewWidth,d2
+		add		d2,d2						; width/2 in words. E.g. max 24 scren bytes -> 192 pixels
+		move	sv_ViewHeigth,d1
+		lsl		#6,d1
+		or		d2,d1
+		move	d1,lc_halfScreenBlit(a6)	; BLTSIZE for half of chunky buffer
+		lsl		#7,d0
+		or		d2,d0
+		move	d0,lc_floorGapBlit(a6)	; BLTSIZE for ceiling/floor gap
 
 		move.l	lc_FastMem1(pc),a3
 		lea		(a3),a4
@@ -10042,7 +10138,7 @@ mk_DT2:	move	d3,(a3)+
 		move.l	a2,36(a1)		;ceiling addr - store in constants
 		bsr.w	mk_FixFloors
 
-		move.l	sv_ChunkyBuffer,a2
+		move.l	lc_ChunkyBuffer(pc),a2
 		move	sv_ViewWidth,d1		;view window dim.
 		move	sv_ViewHeigth,d2
 		lsl		#3,d1
@@ -10239,19 +10335,21 @@ mk_DCoffsets:
 
 mk_BraPos:	dc.w	0
 ;-------------------------------------------------------------------
+; set new windows size.
+; in: size in sv_size (2-6 -> 8 to 24 bytes wide screen)
 sv_SetWindowSize:
 		movem.l	ALL,-(sp)
 
 		; start by setting the correct chunky buffer address
 		lea		lc_variables(pc),a6
-		move	lc_c2pType(a6),d0		; 0 - blitter C2P, 1 - CPU C2P
+		lea		lc_ChunkyBuffer(pc),a1
+		move	lc_c2pType(a6),d0			; 0 - blitter C2P, 1 - CPU C2P
 		beq.s	.sv_cbChip
-		move.l	lc_FastMem2(pc),d0		; CPU C2P uses chunky buf in fast
-		addi.l	#F2_ChunkyBufF,d0
-		move.l	d0,sv_ChunkyBuffer
+		move.l	lc_F2_ChunkyBufF(pc),(a1)	; CPU C2P uses chunky buf in fast
 		bra.s	sv_cont
 .sv_cbChip:
-		move.l	#sv_ChunkyBufC,sv_ChunkyBuffer	; Blitter C2P uses chunky buf in chip
+		move.l	#sv_ChunkyBufC,(a1)			; Blitter C2P uses chunky buf in chip
+;	move.l	lc_F2_ChunkyBufF(pc),(a1)	; CPU C2P uses chunky buf in fast
 sv_cont:
 
 		moveq.l	#0,d0
@@ -10328,7 +10426,7 @@ sv_SWS2:
 		VBLANKR 2
 .sv_lastnot:
 		waitblt				;clear big screen
-		move	#$8040,$96(a0)		;blitter NASTY & DMA on
+;		move	#$8040,$96(a0)		;blitter DMA on
 		move.l	#-1,$44(a0)
 		move.l	#$1000000,$40(a0)
 		move	#0,$66(a0)		;modulo
@@ -10518,7 +10616,7 @@ sv_SWS8:	move.l	(a2)+,(a1)+		;copy it to scr 2
 sv_SWS9:	
 		lea		$dff000,a0
 		waitblt
-		move	#$8040,$96(a0)		;blitter NASTY & DMA on
+;		move	#$8040,$96(a0)		;blitter DMA on
 		move.l	#-1,$44(a0)
 		move.l	#$1000000,$40(a0)
 		move	#40-24,$66(a0)		;modulo
@@ -10531,6 +10629,7 @@ sv_SWS9:
 		addi.l	#[16*row*5]+8,d2
 		move.l	d2,$54(a0)
 		move	#[128*5*64]+12,$58(a0)	;clear screen 2
+		waitblt
 		move.l	#$90f2c4,cop_borders
 
 sv_SWS5:
@@ -10852,9 +10951,10 @@ sv_ViewHeigth:	dc.w	screenMaxY				;24/128 - maximum
 sv_WallHeigth:	dc.w	450			;max 500 - percent
 
 sv_FillCols:	dc.l	$10101010,$e0e0e0e0	;background filling for ceiling and floor
+;sv_FillCols:	dc.l	$f1f1f1f1,$e0e0e0e0	;background filling for ceiling and floor
 
 ;---------------DATA AREA:
-sv_ChunkyBuffer:	dc.l	0		; SVGA (chunky) screen - by default in chip
+;sv_ChunkyBuffer:	dc.l	0		; SVGA (chunky) screen - in chip for blitter c2p, otherwise in fast
 
 sv_StrFlag:	dc.w	0,0			;0-no stretch, 1-stretch
 sv_MapPos:	dc.w	0			;user offset on map
@@ -10999,11 +11099,7 @@ F2_AvPtrs:			rs.w	AVCNTS						; rolling pointers into 16 debug counters (average
 F2_AvData:			rs.w	AVCNTS*8					; space for debug data (averages). buffer for 8*data.w (each is 16 bytes)
 F2_ClearTo1:		rs.w	0							; clear up to here on start
 F2_ChunkyBufF:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
-
 F2_TopMem:			rs.w	0
-
-; lc_F2_addresses:
-; F2_Empty:
 
 end:
 
