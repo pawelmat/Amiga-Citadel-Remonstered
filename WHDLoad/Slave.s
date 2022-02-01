@@ -310,10 +310,10 @@ _patchServer:
 		PL_PS	$5a64-$5100,PatchKbDelay
 		PL_PS	$765c-$5100,IntBug
 
-		PL_W	$5e1a,$1000		;offset changed from $6000 to $1000
+		PL_W	$5e1a-$5100,$0000		;offset changed from $6000 to $1000
 		PL_PS	$5e1e-$5100,PatchEngine
 
-		PL_W	$7c26-$5100,$1000		;offset changed from $6000 to $1000
+		PL_W	$7c26-$5100,$0000		;offset changed from $6000 to $1000
 		PL_PS	$7c2a-$5100,PatchEngine
 
 		PL_W	$69818-$5100,$6100	;remove manual protection

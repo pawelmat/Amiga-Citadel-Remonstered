@@ -1,7 +1,7 @@
 ;	*****************************************************
 ;	*		CITADEL - main game code (v1.3)   			*
 ;	*	Copyrigt (C) Pawel Matusz (Kane) 1995,2022		*
-;	* 	Version 1.3 coded 11.02.1994-xx.04.1995 		*
+;	* 	Version 1.0 coded 11.02.1994-xx.04.1995 		*
 ;	* 	Version 1.3 coded 08.01.2022-20.01.2022			*
 ;	*****************************************************
 ;Assembled using ASM-ONE 1.20+. Use "wb cyt.dat",s,end to create a deployment version
@@ -11,8 +11,8 @@
 IS_EXE:		equ	0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET	$220130
-BUILD:		SET	$01
+VERSION: 	SET	$220201
+BUILD:		SET	$02
 
 STRUCTURE:	equ	$7f800			; 128 bytes available
 ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
@@ -4477,6 +4477,7 @@ blitterFill:
 .doFill:
 		lea		CUSTOM,a0
 		waitblt
+		move	#$8040,$96(a0)				;blitter DMA on
 		move.l	#-1,$44(a0)					; Blitter first+last word mask for source A
 		move	sv_Fillcols,$74(a0)			; ceiling colour (Blitter source A data register)
 		move	#0,$66(a0)					; Blitter modulo for dest D
@@ -6310,7 +6311,7 @@ c2p_Copy_Blitter_noStretch:
 		move	#$0de4,d1		;Bltcon0 or value
 
 		moveq	#4,d7			;plane nr-1
-;		move	#$8040,$96(a0)		;blitter DMA on..
+		move	#$8040,$96(a0)		;blitter DMA on..
 sv_PlanesCopy:
 		move	a4,d6			;shift pointer
 		move	#$8080,d5
@@ -8068,7 +8069,7 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 		add.l	a1,d5				; address to use: draw the line in the clear area (sv_CompasClr)
 		lea		$dff000,a0
 		waitblt
-;		move	#$8040,$96(a0)		;blitter DMA on..
+		move	#$8040,$96(a0)		;blitter DMA on..
 		move.l	#$ffff8000,$72(a0)
 		move	#4,$60(a0)		;width
 		move	d1,$62(a0)
@@ -10426,7 +10427,7 @@ sv_SWS2:
 		VBLANKR 2
 .sv_lastnot:
 		waitblt				;clear big screen
-;		move	#$8040,$96(a0)		;blitter DMA on
+		move	#$8040,$96(a0)		;blitter DMA on
 		move.l	#-1,$44(a0)
 		move.l	#$1000000,$40(a0)
 		move	#0,$66(a0)		;modulo
@@ -10616,7 +10617,7 @@ sv_SWS8:	move.l	(a2)+,(a1)+		;copy it to scr 2
 sv_SWS9:	
 		lea		$dff000,a0
 		waitblt
-;		move	#$8040,$96(a0)		;blitter DMA on
+		move	#$8040,$96(a0)		;blitter DMA on
 		move.l	#-1,$44(a0)
 		move.l	#$1000000,$40(a0)
 		move	#40-24,$66(a0)		;modulo
@@ -10951,7 +10952,7 @@ sv_ViewHeigth:	dc.w	screenMaxY				;24/128 - maximum
 sv_WallHeigth:	dc.w	450			;max 500 - percent
 
 sv_FillCols:	dc.l	$10101010,$e0e0e0e0	;background filling for ceiling and floor
-;sv_FillCols:	dc.l	$f1f1f1f1,$e0e0e0e0	;background filling for ceiling and floor
+;sv_FillCols:	dc.l	$f8f8f8f8,$e0e0e0e0	;background filling for ceiling and floor
 
 ;---------------DATA AREA:
 ;sv_ChunkyBuffer:	dc.l	0		; SVGA (chunky) screen - in chip for blitter c2p, otherwise in fast
