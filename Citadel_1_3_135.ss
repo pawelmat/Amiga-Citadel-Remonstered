@@ -21,11 +21,13 @@ MC68000:	equ	$7fff2			; 0 - 68000, 1 - 68020+
 MEMORY:		equ	$7fff8			; 1st 0.5 free memory
 DEBUGDATA:	equ	$80000			; for debug only. Deployed versions should not use it
 
+CPU:		equ	1				; 0 - 68000, 1 - 68020+
 select_cache:	equ	0			;TODO: remove. 1-user selects cache
 
 ;BASEF1:		equ	$07e00000		; Fast on a real A4000
-;BASEF1:		equ	$00400000		; Z2 fast (e.g. A500 which does not support Z3)
-BASEF1:		equ	$40400000			; Z3 fast. First 0.5MB memory. Hopefully Fast 
+;BASEF1:		equ	$00400000		; Z2 fast (e.g. 1200, mem starts at $200000)
+;BASEF1:		equ	$00cf0000		; Z2 fast (e.g. A500, mem starts at $c00000)
+BASEF1:		equ	$40400000			; Z3 fast. First 0.5MB memory. Hopefully Fast
 BASEF2:		equ	BASEF1+$80000		; Z3 fast. Second 0.5MB memory. Hopefully Fast
 
 CODESTART:	equ	$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
@@ -175,8 +177,7 @@ s:
 .s1:	move.l	#BASEF1,MEMORY
 		move.l	#BASEF2,ADDMEM
 		move.l	#0,VBR_BASE
-		move	#1,MC68000				; force 020
-;		move	#0,MC68000				; force 68k
+		move	#CPU,MC68000	; force 020 or 68k
 		lea		STRUCTURE,a1
 		lea		(a1),a2
 		moveq	#31,d0

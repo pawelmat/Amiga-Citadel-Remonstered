@@ -3,3 +3,4 @@ w
 *.code-workspace
 cyt.dat
 Assets/old_*
+Temp/*
