@@ -14,6 +14,9 @@ IS_EXE:		equ	0
 VERSION: 	SET	$220201
 BUILD:		SET	$02
 
+; 0 - 68000, 1 - 68020+
+CPU:		equ	1
+
 STRUCTURE:	equ	$7f800			; 128 bytes available
 ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
 VBR_BASE:	equ	$7ffee			; VBR to use by the game
@@ -21,13 +24,12 @@ MC68000:	equ	$7fff2			; 0 - 68000, 1 - 68020+
 MEMORY:		equ	$7fff8			; 1st 0.5 free memory
 DEBUGDATA:	equ	$80000			; for debug only. Deployed versions should not use it
 
-CPU:		equ	1				; 0 - 68000, 1 - 68020+
 select_cache:	equ	0			;TODO: remove. 1-user selects cache
 
 ;BASEF1:		equ	$07e00000		; Fast on a real A4000
-;BASEF1:		equ	$00400000		; Z2 fast (e.g. 1200, mem starts at $200000)
-;BASEF1:		equ	$00cf0000		; Z2 fast (e.g. A500, mem starts at $c00000)
-BASEF1:		equ	$40400000			; Z3 fast. First 0.5MB memory. Hopefully Fast
+BASEF1:		equ	$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $200000)
+;BASEF1:		equ	$00cf0000		; Fast on a real A500 (starts at $c00000)
+;BASEF1:		equ	$40400000			; Z3 fast. First 0.5MB memory. Hopefully Fast
 BASEF2:		equ	BASEF1+$80000		; Z3 fast. Second 0.5MB memory. Hopefully Fast
 
 CODESTART:	equ	$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
@@ -157,7 +159,7 @@ ENDM
 ;in: \1 - ax register, \2 - dx register
 ;out: \2 - dx.l contains random value
 RANDOM:	MACRO
-		lea	seed(pc),\1
+		lea		seed(pc),\1
 		move.l	(\1),\2
 		add.l	\2,\2
 		swap	\2
@@ -734,7 +736,7 @@ sv_startFrame:
 	CNTSTOP 3
 		bsr		cc_FixKeys		; moved from L3 - hopefully will not cause issues 
 		bsr		sv_joystick		; get additional joy values and move player
-		bsr		sv_Border		; clip movements - no wall passing etc.
+		bsr		sv_ClipMovements		; clip movements - no wall passing etc.
 
 		lea		lc_variables(pc),a6
 		tst		lc_updateFrame(a6)
@@ -1026,15 +1028,13 @@ interruptL3Vertb:
 		addi	#1,lc_updateTimer(a6)		; frames - this is used to decide on UPDATE time in the main loop. Reset in the main loop.
 
 	CNTSTART 2
-		tst		do_Flash
+		tst		lc_doFlash(a6)
 		beq.s	.nl_2
 		move	#$0f0,RealCopper+2		; flash green
-		subi	#1,do_Flash
+		subi	#1,lc_doFlash(a6)
 		bne.s	.nl_2
 		move	#0,RealCopper+2
 .nl_2:	
-
-		bsr		sc_DoScroll				; move scroll
 
 		tst		sv_PAUSE
 		bne.s	.nl_3
@@ -1047,14 +1047,19 @@ interruptL3Vertb:
 		bsr		ci_DrawWeapon			; by-pixel drawing of new weapon. This has to stay here.
 .noWeaponAnim:
 
-		tst		do_pikaj			; check/decrease beeping timer - play if energy is very low
+		tst		lc_doPikaj(a6)			; check/decrease beeping timer - play if energy is very low
 		beq.s	.nl_9
-		subi	#1,do_pikaj+2
+		subi	#1,lc_doPikaj+2(a6)
 		bne.s	.nl_9
-		move	#55,do_pikaj+2
+		move	#55,lc_doPikaj+2(a6)
 		SOUND	22,1,50				
 .nl_9:	
-		bsr	PLAY_SOUND
+
+		tst.l	play_sample
+		beq.s	.noSnd
+		bsr		play_sound
+.noSnd:
+		bsr		sc_DoScroll				; move scroll
 
 .nl_end:
 	CNTSTOP 2
@@ -1180,29 +1185,30 @@ rm_Column2:	SCROLL	44			;normal column
 rm_Nothing:	SCROLL	49			;nothing here
 		bra		rm_HandEnd
 
-
+; note: removed door2 detection
 rm_FacingWall:	move	d0,d2
 		andi	#$3e,d0			;only wall
 		cmpi	#54,d0
 		beq.s	rm_Nothing		;passable wall
 		cmpi	#30,d0
-		beq.s	rm_ClosedDoor
+		beq.s	rm_ClosedDoor		; door2
 		cmpi	#36,d0
 		bne.s	rm_OpenedDoor
 rm_ClosedDoor:	SCROLL	50			;closed door
 		bra		rm_HandEnd
 rm_OpenedDoor:	cmpi	#32,d0
-		beq.s	rm_OpenedDoor1
+		beq.s	rm_OpenedDoor1		; door2
 		cmpi	#38,d0
 		bne.s	rm_AnimDoor
 rm_OpenedDoor1:	SCROLL	51			;opened door
 		bra.w	rm_HandEnd
 rm_AnimDoor:	cmpi	#34,d0
-		beq.s	rm_AnimDoor1
+		beq.s	rm_AnimDoor1		; door2
 		cmpi	#40,d0
 		bne.s	rm_SwitchOUT
 rm_AnimDoor1:	SCROLL	52			;opening door
 		bra.w	rm_HandEnd
+
 
 
 rm_SwitchOUT:	cmpi	#44,d0
@@ -1236,6 +1242,8 @@ rm_NotSlot1:	subq	#1,d3			;if 2
 rm_NotSlot2:
 		andi	#$c0,d2
 		beq.s	rm_NoBlood
+		cmpi	#$c0,d2
+		beq.s	rm_HandEnd	; do not "notice" Blood3
 		SCROLL	48			;blooded wall
 		bra.s	rm_HandEnd
 rm_NoBlood:	
@@ -2042,37 +2050,46 @@ eh_cont1:	movem	2(a1),d2/d3
 		move	2(a1),d2
 		bpl.s	.eh3
 		moveq	#3,d5			;W
-.eh3:		bsr	GetRandom
+.eh3:
+		add		d5,d1
+		move.b	(a3,d1.w),d2
+		andi	#$3e,d2
+		beq.s	eh_E1			;if no wall
+		cmpi.b	#30,d2
+		bmi.s	.eh4				; if wall <30 (door) then do splatter
+		cmpi.b	#42,d2
+		bmi.s	eh_E1				; no splatter on doors
+		cmpi.b	#48,d2
+		bmi.s	.eh4
+		cmpi.b	#56,d2
+		bmi.s	eh_E1				; not on transparent no-pass wall (52) and tr.pass (54) wall
+.eh4:
+		bsr		GetRandom			; get blood splatter index
 		move	#$40,d3
 		andi	#1,d0
 		beq.s	.eh5
 		move	#$80,d3
 .eh5:
-		add	d5,d1
-		move.b	(a3,d1.w),d2
-		andi	#$3e,d2
-		beq.s	eh_E1			;if no wall
-		cmpi.b	#30,d2
-		bmi.s	.eh4
-		cmpi.b	#42,d2
-		bmi.s	eh_E1
-		cmpi.b	#48,d2
-		bmi.s	.eh4
-		cmpi.b	#56,d2
-		bmi.s	eh_E1
-.eh4:		andi.b	#$3f,(a3,d1.w)
+		andi.b	#$3f,(a3,d1.w)
 		or.b	d3,(a3,d1.w)		;blood on map
-eh_E1:		addq	#1,d1
+eh_E1:
+		move	#1,d3
 		bsr.s	eh_SideBlood
+		move	#2,d3
 		bsr.s	eh_SideBlood
 		rts
+
 eh_stillOk:	move.b	#1,12(a4)		;trafiony
 		move.b	#72,13(a4)
 eh_End:		rts
 
-eh_SideBlood:	addq	#2,d1
-		andi	#$fffb,d1
-		bsr	GetRandom
+eh_SideBlood:	
+		add		d1,d3
+		andi	#3,d3
+		andi	#$fffc,d1
+		or		d3,d1
+
+		bsr		GetRandom			; side blood only with some probability
 		andi	#3,d0
 		beq.s	eh2_End
 eh6:		move.b	(a3,d1.w),d2
@@ -2086,9 +2103,17 @@ eh6:		move.b	(a3,d1.w),d2
 		bmi.s	eh7
 		cmpi.b	#56,d2
 		bmi.s	eh2_End
-eh7:		andi.b	#$3f,(a3,d1.w)
-		ori.b	#$c0,(a3,d1.w)		;blood on map
-eh2_End:	rts
+eh7:
+		bsr		GetRandom			; get side blood splatter index (cannot be blood3)
+		move	#$40,d3
+		andi	#1,d0
+		beq.s	.eh5
+		move	#$80,d3
+.eh5:
+		andi.b	#$3f,(a3,d1.w)
+		or.b	d3,(a3,d1.w)		;side blood on map
+eh2_End:	
+		rts
 
 eh_Burning:	move.b	#3,12(a4)
 		move.b	#80,13(a4)
@@ -4419,10 +4444,14 @@ mc_clearScreen:
 		move.l	lc_ChunkyBuffer(pc),a1
 
 		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter (buffer in chip), 1 - cpu (buffer in fast)
+		bne.s	cpuFill								; if CPU used == buffer in fast then only CPU can be used
+
+		; so blitter c2p is selected, but is the chunky buffer _actually_ in chip?
+		move	lc_variables+lc_isChunkyInFast(pc),d0 ; 0 - chunky buf in chip, ff - chunky buf in fast
 		bne.s	cpuFill								; if buffer in fast then only CPU can be used
-		; TODO: review as even in case of cache, blitter might be faster to use in CHIP
+
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
-		beq		blitterFill
+		beq		blitterFill							; do this only if buffer in CHIP and no cache is used
 
 		; --- CPU fill ceiling/floor
 cpuFill:
@@ -5866,6 +5895,7 @@ lc_debugOn:				dc.w	0				; show debug info (averages) flag (0-no, 1-yes)
 lc_isCache:				dc.w	0				; 0 - no cache, 1 - cache present
 lc_c2pType:				dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Actual C2P being used at the moment
 lc_c2pTypePreferred:	dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Preferred C2P for the system. This allows to return to the preferred one if the game has to switch e.g. to CPU for stretching
+lc_isChunkyInFast:		dc.w	0				; 0 - chunky buffer in CHIP, ff - in FAST
 lc_ledChange:			dc.w	0				; 1 - update debug LED status
 lc_drunk:				dc.w	0				; 0 - all OK, >0 time left drunk
 lc_momentum:			dc.w	0				; 0 - not moving, >0 moving momentum which builds up to 255 while moving
@@ -5877,6 +5907,9 @@ lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
 lc_halfScreenBlit:		dc.w	0				; BPLSIZE value for half of c2p screen (for floor filling)
 lc_floorGapBlit:		dc.w	0				; BPLSIZE for floor gap fill
 lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitter
+lc_scrollBitsLeft:		dc.w	0				; how many bits of the scroll left on screen (0..272)
+lc_doFlash:				dc.w	0				; >0 - flash screen
+lc_doPikaj:				dc.w	0,55			; beep when energy low. 0.w beeb on flag, 2.w time between beeps
 ENDOFF
 
 lc_TextBuffer:			ds.b	20				; buffer for keys pressed to check for codes. 0.w index, 2.w changed flag, 4.w+16 buffer
@@ -6151,7 +6184,7 @@ flc_Dcont_cpu:
 		rts
 
 ; CACHE+BLITTER version (y collumns indexed differently to CPU mode). This floor draw proc is $c0 long so fits in cache
-; This WORKS ONLY with 020+ due to the Dx*y addressing mode beind used
+; This WORKS ONLY with 020+ due to the Dx*y addressing mode being used
 CNOP 0,16
 fl_Draw_Cache_Blitter:
 		clr		d4				; collumn index from 
@@ -6722,12 +6755,12 @@ sv4_DoubleTab:	ds.w	256
 ;-------------------------------------------------------------------
 sv_joystick:	
 		lea		sv_sinus,a1
-		lea		$80(a1),a2		;cosinus
+		lea		$80(a1),a2			;cosinus
 		move	#0,sv_Flag+2		;regenerate normally
 		lea		cc_MoveTab,a3		;keys pressed
 
 		lea		$dff000,a0
-		move	$c(a0),d2
+		move	$c(a0),d2		; joydat
 		move	sv_RotSpeed,d7
 		move	sv_WalkSpeed,d1
 		moveq	#0,d6			;joy_used flag
@@ -6751,35 +6784,36 @@ joy_down:	andi	#1,d2
 		move	#1,2(a3)		; down
 
 joy_no:
-		tst	6(a3)			;test keys
+		tst		6(a3)			;test keys
 		beq.s	.ke_Tleft
 		add		d7,sv_angle
 		andi	#$1fe,sv_angle	; right
 		bra.s	.ke_Up
-.ke_Tleft:	tst	4(a3)
+.ke_Tleft:	
+		tst		4(a3)
 		beq.s	.ke_Up
 ;		lsr		#1,d7
 ;		bne		.ke_tl2
 ;		moveq	#1,d7
 .ke_tl2: sub		d7,sv_angle
 		andi	#$1fe,sv_angle
-.ke_Up:		tst	(a3)
+.ke_Up:	tst		(a3)
 		beq.s	.ke_Dn
 		moveq	#4,d3			;up-left
-		tst	8(a3)
+		tst		8(a3)
 		bne.w	sv_DoMMove
 		moveq	#5,d3			;up-right
-		tst	10(a3)
+		tst		10(a3)
 		bne.w	sv_DoMMove
 		moveq	#0,d3			;forward
 		bra.w	sv_DoMMove
-.ke_Dn:		tst	2(a3)
+.ke_Dn:	tst		2(a3)
 		beq.s	.ke_Right
 		moveq	#6,d3			;dn-left
-		tst	8(a3)
+		tst		8(a3)
 		bne.w	sv_DoMMove
 		moveq	#7,d3			;dn-right
-		tst	10(a3)
+		tst		10(a3)
 		bne.w	sv_DoMMove
 		moveq	#1,d3			;backward
 		bra.w	sv_DoMMove
@@ -6953,7 +6987,8 @@ sv_Mou4:
 		sub		d4,sv_angle
 		andi	#$1fe,sv_angle
 
-sv_NOVodka:	move	d1,sv_LastMove		;save vector length
+sv_NOVodka:	
+		move	d1,sv_LastMove		;save vector length
 		move	d6,sv_LastMove+2	;save angle
 		tst		sv_LastMove+4		;if bumped wall
 		beq.w	sv_DoRotIt
@@ -7429,53 +7464,54 @@ DeathTab:	blk.w	320,0
 ;-------------------------------------------------------------------
 ; Clip player movements
 ;border movements - no passing thru walls, etc... + pos fix
-sv_Border:	lea	sv_SquarePos,a1
+sv_ClipMovements:	
+		lea		sv_SquarePos,a1
 		move	sv_PosX,d3		;make in-square pos.
 		move	d3,d2
-		rol	#6,d2			;/1024
+		rol		#6,d2			;/1024
 		andi	#63,d2
 		move	d2,(a1)			;X
-		andi	#1023,d3		;X pos
+		andi	#1023,d3		;X pos in-square (d3)
 		move	sv_PosY,d0
 		move	d0,d1
-		rol	#6,d1
+		rol		#6,d1
 		andi	#63,d1
 		move	d1,2(a1)		;Y
-		andi	#1023,d0		;Y pos
-		cmp	sv_LevelData+22,d2
+		andi	#1023,d0		;Y pos in-square (d0)
+		cmp		sv_LevelData+22,d2
 		bne.s	.sv_b1
-		cmp	sv_LevelData+24,d1
+		cmp		sv_LevelData+24,d1
 		bne.s	.sv_b1
-		move	#1,sv_EndLEvel
+		move	#1,sv_EndLEvel	; level finished - i.e. standing the end square?
 .sv_b1:
-		lsl	#3,d2
-		lsl	#8,d1
-		add	d1,d1			;d1-Z, d2-X
-		add	d2,d1			;d1 - pos offset
+		lsl		#3,d2
+		lsl		#8,d1
+		add		d1,d1			;d1-Z, d2-X
+		add		d2,d1			;d1 - pos offset
 		move	d1,sv_MapPos
-		lea	sv_MAP,a1
+		lea		sv_MAP,a1
 
 
 		movem	d0-d3,-(sp)
 		move	d1,d6
-		tst	sv_DoorFlag1+22		;not use if in prior_use!
+		tst		sv_DoorFlag1+22		;not use if in prior_use!
 		bne.s	br_PriorD1
-		lea	sv_DoorFlag1,a2		;open/close doors
+		lea		sv_DoorFlag1,a2		;open/close doors
 		moveq	#30,d2
 		moveq	#36,d3
-		bsr	br_Chk_OPEN
+		bsr		br_Chk_OPEN
 br_PriorD1:	move	d6,d1
-		tst	sv_DoorFlag2+22
+		tst		sv_DoorFlag2+22
 		bne.s	br_PriorD2
-		lea	sv_DoorFlag2,a2
+		lea		sv_DoorFlag2,a2
 		moveq	#36,d2
 		moveq	#42,d3
-		bsr	br_Chk_OPEN
+		bsr		br_Chk_OPEN
 br_PriorD2:	movem	(sp)+,d0-d3
 
 
 
-br_Xl:		cmpi	#min_distance-60,d3
+br_Xl:	cmpi	#min_distance-60,d3
 		bpl.s	br_Xr
 		move.b	3(a1,d1.w),d4
 		bsr.w	br_ChkDoors
@@ -7513,13 +7549,13 @@ br_Yd:
 		;subi	#378-62,d5
 		subi	#378-7,d5
 		bsr.w	br_BumpWall
-		bra.s	br2_COLUMN
+		bra.s	br2_Bumped_Enemy_Check
 br_Yu:
 		cmpi	#1024-min_distance+60,d0
-		bmi.s	br2_COLUMN
+		bmi.s	br2_Bumped_Enemy_Check
 		move.b	(a1,d1.w),d4
 		bsr.w	br_ChkDoors
-		beq.s	br2_COLUMN
+		beq.s	br2_Bumped_Enemy_Check
 		move	#1024-min_distance+60,d0
 		move	sv_LastMove+2,d5
 		move	#256,d4
@@ -7528,8 +7564,9 @@ br_Yu:
 		bsr.w	br_BumpWall
 
 ;---------------
-br2_COLUMN:	move.b	7(a1,d1.w),d4		;if hit enemy...
-		beq.w	.br2_COLUMN2
+br2_Bumped_Enemy_Check:
+		move.b	7(a1,d1.w),d4		;if hit enemy...
+		beq.w	br2_Bumped_Collumn_Check
 		lea	sv_EnemyData,a2		;EnemyTab
 		andi	#$ff,d4
 		lsl	#4,d4
@@ -7539,19 +7576,20 @@ br2_COLUMN:	move.b	7(a1,d1.w),d4		;if hit enemy...
 		bpl.s	.oc_e1
 		neg	d4
 .oc_e1:		cmpi	#300,d4			;Xdelta < 256?
-		bpl.w	.br2_COLUMN2
+		bpl.w	br2_Bumped_Collumn_Check
 		sub	sv_PosY,d5
 		bpl.s	.oc_e2
 		neg	d5
 .oc_e2:		cmpi	#300,d5			;Ydelta too?
-		bpl.w	.br2_COLUMN2
+		bpl.w	br2_Bumped_Collumn_Check
 
 		cmpi.b	#3,12(a2)		;burning?
 		bne.s	.oc_e3
 		addi	#1,sv_ENERGY
 		SOUND	13,1,63
 		SCROLL	71
-.oc_e3:		move.l	sv_LastPos,sv_PosX
+.oc_e3:		
+		move.l	sv_LastPos,sv_PosX
 		lea		sv_SquarePos,a2
 		move	sv_PosX,d3		;make in-square pos.
 		move	d3,d2
@@ -7569,9 +7607,10 @@ br2_COLUMN:	move.b	7(a1,d1.w),d4		;if hit enemy...
 		move	d0,6(a2)		;insquare pos Y
 		bra	br2_END2
 
-.br2_COLUMN2:	
-		lea		sv_InSquarePos,a6	;if hitable column...
-		move.b	5(a1,d1.w),d4
+;---------------
+br2_Bumped_Collumn_Check:	
+		lea		sv_InSquarePos,a6
+		move.b	5(a1,d1.w),d4	;if hitable column...
 		andi	#31,d4
 		beq.s	br2_UP			;if no column
 		cmpi	#18,d4
@@ -7612,123 +7651,155 @@ br2_c3:		cmpi	#512+209,d5
 		bmi.s	br2_UP
 		move	#512+210,d0
 
-
-br2_UP:						;check corners
+;---------------
+;check corners
+br2_UP:	
 		andi	#63*512,d1
 		move	d1,d4			;get neighbouring posis
 		addi	#512,d4
 		andi	#63*512,d4
-		add	d2,d4
-		lea	(a1,d4.w),a2		;N
+		add		d2,d4
+		lea		(a1,d4.w),a2		;N
 		move	d2,d4
 		addi	#8,d4
 		andi	#511,d4
-		add	d1,d4
-		lea	(a1,d4.w),a3		;E
+		add		d1,d4
+		lea		(a1,d4.w),a3		;E
 		move	d1,d4
 		subi	#512,d4
 		andi	#63*512,d4
-		add	d2,d4
-		lea	(a1,d4.w),a4		;S
+		add		d2,d4
+		lea		(a1,d4.w),a4		;S
 		move	d2,d4
 		subi	#8,d4
 		andi	#511,d4
-		add	d1,d4
-		lea	(a1,d4.w),a1		;W
+		add		d1,d4
+		lea		(a1,d4.w),a1		;W
 
+		; up left
 		cmpi	#1024-min_distance+60,d0
 		bmi.s	br2_DOWN
 		cmpi	#min_distance-60,d3
 		bpl.s	br2_Uright
-		tst.b	3(a2)			;any border walls?
+;		tst.b	3(a2)			;any border walls? W wall on N square
+		move.b	3(a2),d4
+		bsr		br_ChkTransparent
 		bne.s	br2_U2
-		tst.b	(a1)
+;		tst.b	(a1)			; check N wall on W square
+		move.b	(a1),d4
+		bsr		br_ChkTransparent
 		beq.s	br2_Uright
-br2_u2:		move	#min_distance-60,d4
-		sub	d3,d4
+br2_u2:	move	#min_distance-60,d4
+		sub		d3,d4
 		move	d0,d5
 		subi	#1024-min_distance+60,d5
-		cmp	d4,d5
+		cmp		d4,d5
 		bpl.s	br2_u3			;if x<z
 		move	#1024-min_distance+60,d0
 		bra.s	br2_Uright
-br2_u3:		move	#min_distance-60,d3
+br2_u3:	move	#min_distance-60,d3
 
+		; up right
 br2_Uright:	cmpi	#1024-min_distance+60,d3
 		bmi.s	br2_DOWN
-		tst.b	1(a2)
+;		tst.b	1(a2)
+		move.b	1(a2),d4
+		bsr		br_ChkTransparent
 		bne.s	br2_U4
-		tst.b	(a3)
+;		tst.b	(a3)
+		move.b	(a3),d4
+		bsr		br_ChkTransparent
 		beq.s	br2_DOWN
-br2_u4:		move	d3,d4
+br2_u4:	move	d3,d4
 		subi	#1024-min_distance+60,d4
 		move	d0,d5
 		subi	#1024-min_distance+60,d5
-		cmp	d4,d5
+		cmp		d4,d5
 		bpl.s	br2_u5
 		move	#1024-min_distance+60,d0
 		bra.s	br2_DOWN
-br2_u5:		move	#1024-min_distance+60,d3
+br2_u5:	move	#1024-min_distance+60,d3
 
-br2_DOWN:	cmpi	#min_distance-60,d0
+		; down left
+br2_DOWN:	
+		cmpi	#min_distance-60,d0
 		bpl.s	br2_END
 		cmpi	#min_distance-60,d3
 		bpl.s	br2_Dright
-		tst.b	3(a4)
+;		tst.b	3(a4)
+		move.b	3(a4),d4
+		bsr		br_ChkTransparent
 		bne.s	br2_D2
-		tst.b	2(a1)
+;		tst.b	2(a1)
+		move.b	2(a1),d4
+		bsr		br_ChkTransparent
 		beq.s	br2_Dright
-br2_D2:		move	#min_distance-60,d4
-		sub	d3,d4
+br2_D2:	move	#min_distance-60,d4
+		sub		d3,d4
 		move	#min_distance-60,d5
-		sub	d0,d5
-		cmp	d4,d5
+		sub		d0,d5
+		cmp		d4,d5
 		bpl.s	br2_D3
 		move	#min_distance-60,d0
 		bra.s	br2_Dright
-br2_D3:		move	#min_distance-60,d3
+br2_D3:	move	#min_distance-60,d3
 
+		; down right
 br2_Dright:	cmpi	#1024-min_distance+60,d3
 		bmi.s	br2_END
-		tst.b	1(a4)
+;		tst.b	1(a4)
+		move.b	1(a4),d4
+		bsr.s	br_ChkTransparent
 		bne.s	br2_D4
-		tst.b	2(a3)
+;		tst.b	2(a3)
+		move.b	2(a3),d4
+		bsr.s	br_ChkTransparent
 		beq.s	br2_END
-br2_D4:		move	d3,d4
-		sub	#1024-min_distance+60,d4
+br2_D4:	move	d3,d4
+		sub		#1024-min_distance+60,d4
 		move	#min_distance-60,d5
-		sub	d0,d5
-		cmp	d4,d5
+		sub		d0,d5
+		cmp		d4,d5
 		bpl.s	br2_D5
 		move	#min_distance-60,d0
 		bra.s	br2_END
-br2_D5:		move	#1024-min_distance+60,d3
+br2_D5:	move	#1024-min_distance+60,d3
 
 
-br2_END:	move	d3,(a6)			;X pos (insquare)
-		move	d0,2(a6)		;Y pos
+br2_END:	
+		move	d3,(a6)			;X pos (insquare)
+		move	d0,2(a6)		;Y pos (insquare)
 		move	sv_PosX,d1		;fix absolute positions
 		andi	#$fc00,d1
-		or	d3,d1
+		or		d3,d1
 		move	d1,sv_PosX
 		move	sv_PosY,d2
 		andi	#$fc00,d2
-		or	d0,d2
+		or		d0,d2
 		move	d2,sv_PosY
 br2_END2:	rts
 
 
-;eliminate passable walls...
-;-1  - wall hit
-br_ChkDoors:	move	d4,sv_BumpedWall	;remember wall
+;eliminate ALL passable walls...
+; OUT:  Z set - passable wall
+br_ChkDoors:	
+		move	d4,sv_BumpedWall	;remember wall
 		andi	#62,d4			;if nothing
-		beq.s	br_CDok
+		beq.s	.br_CDok
 		cmpi	#32,d4			;if door 1
-		beq.s	br_CDok
+		beq.s	.br_CDok
 		cmpi	#38,d4			;if door 2
-		beq.s	br_CDok
+		beq.s	.br_CDok
 		cmpi	#54,d4			;if bad door
-br_CDok:	rts
+.br_CDok: rts
+
+;eliminate only no and transparent wall 54
+; OUT:  Z set - passable wall
+br_ChkTransparent:
+		andi	#62,d4			;if nothing (filter out blood)
+		beq.s	.br_CDok
+		cmpi	#54,d4			;if bad door
+.br_CDok: rts
 
 br_BumpWall:	;>0, ^128, <256, v378 (degrees of rotation)
 
@@ -7775,11 +7846,12 @@ br_BW1:		rts
 
 ;---------------
 ;check doors to close/open
+; IN: d2 - start wall (door) offset e.g. 30 or 36, d3 - end+2 e.g. 36 or 42
 br_Chk_OPEN:	lea	2(a2),a3
 		move.b	#0,(a2)			;close door flag
 		move.b	6(a1,d1.w),d5
 		andi.b	#%01000000,d5		;block door flag
-		bne	br_DW1
+		bne		br_DW1
 		move.b	(a1,d1.w),d5
 		cmpi.b	d2,d5			;przedzial
 		bmi.s	br_DN1
@@ -7882,31 +7954,32 @@ br_CDS2:	subq	#2,d2
 ;find teleport in table & jump
 
 br_FindTeleport:
-		lea	sv_SwitchData,a2	;CommandTab
-.rm_SeekPos:	move	(a2)+,d4
+		lea		sv_SwitchData,a2	;CommandTab
+.rm_SeekPos:	
+		move	(a2)+,d4
 		cmpi	#-1,d4
 		bne.s	.rm_SeekPos
 		move	(a2)+,d4
 		bmi.s	br_InactTel		;not found server
 		subq	#4,d4
-		cmp	d4,d1			;chk offest
+		cmp		d4,d1			;chk offest
 		bne.s	.rm_SeekPos
 
 		move	(a2)+,d3
 		move	d3,d0
-		lsr	#3,d3
+		lsr		#3,d3
 		andi	#63,d3			;X
-		lsr	#7,d0
-		lsr	#2,d0
+		lsr		#7,d0
+		lsr		#2,d0
 		andi	#63,d0			;Y
 
 ;		move	(a2)+,d3		;new x
 		move	d3,sv_SquarePos
 ;		move	(a2)+,d0		;new y
 		move	d0,sv_SquarePos+2
-		ror	#6,d3			;*1024
+		ror		#6,d3			;*1024
 		move	d3,sv_PosX
-		ror	#6,d0			;*1024
+		ror		#6,d0			;*1024
 		move	d0,sv_PosY
 		move	#512,d3
 		move	d3,d0
@@ -7915,27 +7988,64 @@ br_InactTel:	bra.w	br2_END
 
 
 ;-------------------------------------------------------------------
-sc_DoScroll:	movem.l	a1/a2/d0/d7,-(sp)	;Move & print scroll
-
+;Move & print scroll
+;in: a6 - lc_variables
+sc_DoScroll:	
 		move.l	sc_TextAddr,d0
-		bne.s	.sc_DoText
+		bne		sc_DoText1
 		move.l	sc_TextAddr+4,d0
-		move.l	d0,sc_TextAddr
-		move.l	#0,sc_TextAddr+4
-		tst.l	d0
-		bne.s	.sc_DoText
+		bne		sc_DoText0
 
-		lea	sv_ScrollArea,a1		; Scroll the screen area with the text
+		move	lc_scrollBitsLeft(a6),d1
+		beq		sc_EndScroll			; do not scroll if nothing to scroll on screen
+		subq	#1,d1
+		move	d1,lc_scrollBitsLeft(a6)
+
+		lea		sv_ScrollArea,a1		; Scroll the screen area with the text
 		moveq	#6,d7
-.sc_DS1:	move	#%00000,CCR		;XNZVC
+		moveq	#0,d0
+
+		cmpi	#24*8,d1
+		bpl.s	sc_scroll34
+		cmpi	#12*8,d1
+		bpl.s	sc_scroll24
+
+sc_scroll12:
+		lea		-[34-12](a1),a1
+.sc_DS1: addx	d0,d0
+		REPT	6
+		roxl	-(a1)
+		ENDR
+		lea		[5*40]+12(a1),a1
+		dbf		d7,.sc_DS1
+		rts
+
+sc_scroll24:
+		lea		-[34-24](a1),a1
+.sc_DS1: addx	d0,d0
+		REPT	12
+		roxl	-(a1)
+		ENDR
+		lea		[5*40]+24(a1),a1
+		dbf		d7,.sc_DS1
+		rts
+
+sc_scroll34:
+.sc_DS1: addx	d0,d0
 		REPT	17
 		roxl	-(a1)
 		ENDR
-		lea	[5*40]+34(a1),a1
-		dbf	d7,.sc_DS1
-		bra.w	.sc_EndScroll
+		lea		[5*40]+34(a1),a1
+		dbf		d7,.sc_DS1
+		rts
 
-.sc_DoText:	subi	#1,sc_TextAddr+8
+sc_DoText0:
+		move.l	#0,sc_TextAddr+4
+		move.l	d0,sc_TextAddr
+		move	#34*8,lc_scrollBitsLeft(a6)		; scroll bit counter
+
+sc_DoText1:
+		subi	#1,sc_TextAddr+8
 		bpl.w	.sc_MakeSpace		;insert spaces
 		move	#0,sc_TextAddr+8
 		move.l	d0,a1
@@ -7947,21 +8057,29 @@ sc_DoScroll:	movem.l	a1/a2/d0/d7,-(sp)	;Move & print scroll
 		cmpi.b	#";",d0			;comment on text
 		beq.w	.sc_EndTextP
 		cmpi.b	#"^",d0
-		beq.s	.sc_ChooseText
-		lea	1(a1),a1		;next letter
+		beq		.sc_ChooseText
+		lea		1(a1),a1		;next letter
 		move.l	a1,sc_TextAddr
 
-.sc_DoPrint:	bsr.w	.sc_MoveText
+.sc_DoPrint:	
+		lea		sv_ScrollArea-34,a2		; byte-move text left
+		moveq	#6,d7
+.sc_DS2: REPT	33
+		move.b	1(a2),(a2)+
+		ENDR
+		lea		[5*40]-33(a2),a2
+		dbf		d7,.sc_DS2
+
 		subi	#32,d0
-		lsl	#3,d0
-		lea	sv_Fonts,a1
-		lea	(a1,d0.w),a1
-		lea	sv_ScrollArea-1,a2
+		lsl		#3,d0
+		lea		sv_Fonts,a1
+		lea		(a1,d0.w),a1
+		lea		sv_ScrollArea-1,a2
 		REPT	7
 		move.b	(a1)+,(a2)
-		lea	40*5(a2),a2
+		lea		40*5(a2),a2
 		ENDR
-		bra.s	.sc_EndScroll
+		rts
 
 .sc_ChooseText:
 		move.b	1(a1),d0
@@ -7974,42 +8092,38 @@ sc_DoScroll:	movem.l	a1/a2/d0/d7,-(sp)	;Move & print scroll
 .sc_CT2:	move	d0,d7
 		addq	#1,d0			;save next offset
 		move.b	d0,2(a1)
-		lsr	#8,d0
+		lsr		#8,d0
 		move.b	d0,1(a1)
-		lea	(a1,d7.w),a2
+		lea		(a1,d7.w),a2
 
 		moveq	#0,d0
 		move.b	(a2),d0
-		beq.s	.sc_EndTextP
+		beq.s	.sc_EndTextP	; 0 - end
 		cmpi.b	#10,d0
-		beq.s	.sc_EndTextP
+		beq.s	.sc_EndTextP	; 10 (CR) - end
 		cmpi.b	#"@",d0			;go to beggining
 		bne.w	.sc_DoPrint
 		move.b	#"^",1(a1)
 		bra.s	.sc_ChooseText
 
-.sc_MakeSpace:	moveq	#32,d0
+.sc_MakeSpace:	
+		moveq	#32,d0
 		bra.w	.sc_DoPrint
 
-.sc_EndTextP:	move.l	sc_TextAddr+4,d0
+.sc_EndTextP:	
+		move.l	sc_TextAddr+4,d0
 		beq.s	.sc_ETP1
 		move	#2,sc_TextAddr+8
-.sc_ETP1:	move.l	d0,sc_TextAddr
+		bra.s	.sc_ETP2
+.sc_ETP1:
+		move	#34*8,lc_scrollBitsLeft(a6)		; scroll bit counter
+.sc_ETP2:
+		move.l	d0,sc_TextAddr
 		move.l	#0,sc_TextAddr+4
 
-.sc_EndScroll:	
-		movem.l	(sp)+,a1/a2/d0/d7
+sc_EndScroll:	
 		rts
 
-
-.sc_MoveText:	lea	sv_ScrollArea-34,a2
-		moveq	#6,d7
-.sc_DS2:	REPT	33
-		move.b	1(a2),(a2)+
-		ENDR
-		lea	[5*40]-33(a2),a2
-		dbf	d7,.sc_DS2
-		rts
 
 ;-------------------------------------------------------------------
 ; Draw the compass
@@ -8170,6 +8284,7 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 ; Test all counters (life etc.) and react accordingly
 TEST_COUNTERS:
 		movem.l	ALL,-(sp)
+		lea		lc_variables(pc),a6
 		lea		sv_Energy,a1
 		move	(a1),d0
 		cmp		2(a1),d0
@@ -8187,15 +8302,15 @@ TEST_COUNTERS:
 		moveq	#0,d0
 		move.l	d0,(a1)			;zero if minus or zero
 		SCROLL	39
-		move	#0,do_pikaj
+		clr		lc_doPikaj(a6)
 		move	#-1,sv_EndLevel		;death
 		moveq	#9,d1			;red
 		bra.s	.tc_E2
 .tc_E1:		moveq	#16,d1			;color - white
-		move	#0,do_pikaj
+		clr		lc_doPikaj(a6)
 		cmpi	#20,d0
 		bpl.s	.tc_E2
-		move	#1,do_pikaj		;pikaj if energy low!!!
+		st		lc_doPikaj(a6)		;pikaj if energy low!!!
 		moveq	#9,d1			;red
 .tc_E2:		lea	sv_C1Save,a2
 		lea	sv_Counter1,a3
@@ -8978,8 +9093,9 @@ sc_PosTab:
 ;open/close priority doors...
 ServePriorDoor:	lea	sv_DoorFlag1,a1
 		bsr.s	oc_DoServe
-		lea	sv_DoorFlag2,a1
-oc_DoServe:	tst	20(a1)			;not if door in_use
+		lea		sv_DoorFlag2,a1
+oc_DoServe:	
+		tst		20(a1)			;not if door in_use
 		bne.s	oc_sdpEND
 		cmpi	#-1,24+2(a1)		;not if no prior doors!
 		beq.s	oc_sdpEND
@@ -9434,7 +9550,7 @@ Take_Items:
 		bpl.w	ti_NoItem
 
 		andi.b	#$c0,6(a1,d0.w)		;delete item from map
-		move	#5,do_flash		;flash screen
+		move	#5,lc_doFlash(a6)	;flash screen
 
 		lea		sv_ITEMS+4,a2
 		subq	#2,d1
@@ -9554,14 +9670,15 @@ ti_mul6:	move	d1,d2
 ;-------------------------------------------------------------------
 ;a1 - sinus, a2- cosinus
 ;d6-kat, d0-x , d1-y
-sv_rotate:	move	d0,d4
+sv_rotate:	
+		move	d0,d4
 		move	d1,d5
 		muls	(a1,d6.w),d0
 		muls	(a2,d6.w),d5
 		add.l	d5,d0		;x'=x*sin+y*cos
 		add.l	d0,d0
-		swap	d0
 		muls	(a2,d6.w),d4	; x*cos
+		swap	d0
  		muls	(a1,d6.w),d1	; y*sin
 		sub.l	d4,d1		;y'=y*sin-x*cos
 		add.l	d1,d1
@@ -9600,20 +9717,19 @@ sv_MAKE_SZUM:
 		move.l	#$88888888,(a4)+
 		move.l	#$88888888,(a4)+
 		move.l	#$88888888,(a4)+
-		dbf	d2,.sv_MS03
-		dbf	d0,.sv_MS02
+		dbf		d2,.sv_MS03
+		dbf		d0,.sv_MS02
 		movem.l	(sp)+,a1-a4/d0-d4
 		rts
 
 ;-------------------------------------------------------------------
 ;Sound replayer... by Kane of Suspect, 30.11.1994
 ;macro input:	sound nr, channel, volume
-
 play_sound:	
 		;movem.l	a1-a3/d0-d4,-(sp)
 		lea		play_sample,a2
-		tst.l	(a2)
-		beq.s	.play_quit			; if all sounds == 0 then quit straight away
+;		tst.l	(a2)
+;		beq.s	.play_quit			; if all sounds == 0 then quit straight away
 		lea		$dff000,a0
 		lea		$a0(a0),a1
 		lea		lc_soundList(pc),a3
@@ -10348,9 +10464,11 @@ sv_SetWindowSize:
 		move	lc_c2pType(a6),d0			; 0 - blitter C2P, 1 - CPU C2P
 		beq.s	.sv_cbChip
 		move.l	lc_F2_ChunkyBufF(pc),(a1)	; CPU C2P uses chunky buf in fast
+		st		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in fast (ff)
 		bra.s	sv_cont
 .sv_cbChip:
 		move.l	#sv_ChunkyBufC,(a1)			; Blitter C2P uses chunky buf in chip
+		clr		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in chip (0)
 ;	move.l	lc_F2_ChunkyBufF(pc),(a1)	; CPU C2P uses chunky buf in fast
 sv_cont:
 
@@ -10963,7 +11081,7 @@ sv_MapPos:	dc.w	0			;user offset on map
 sv_SzumTime:	dc.w	0
 sc_TextAddr:	dc.l	0,0,0			;adr 1,2,flag
 sv_pause:	dc.w	0,0			;1- pause, 0- no,text CNT
-do_FLASH:	dc.w	0			;nr of frames to flash
+;do_FLASH:	dc.w	0			;nr of frames to flash
 sv_ZeroPtr:	dc.l	sv_ZeroTab
 sv_screen:	dc.l	screen1,screen2	;160*40*5=$7d00 each
 sv_offset:	dc.l	[sv_Upoffset*row*5]+sv_Leftoffset		;view start
@@ -10987,7 +11105,7 @@ sv_MapOn:	dc.w	0			;0-off, 1-on
 sv_OldCop:	dc.l	0,0,0
 sv_EndLevel:	dc.w	0,4			;1 - end of lev, -1 death
 sv_SpaceOn:	dc.w	0			;1 - space pressed (hand)
-do_pikaj:	dc.w	0,50
+;do_pikaj:	dc.w	0,50
 do_bron:	dc.w	0
 do_JakiKoniec:	dc.w	0			;+ good, - bad
 sv_Opoznienie:	dc.w	0			; frames to remain idle on faster machines - WTF!!!!
