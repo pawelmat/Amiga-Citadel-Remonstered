@@ -316,12 +316,12 @@ start:
 		st		lc_ledChange(a6)		; mark leds to be updated
 		bsr		SeedRandom				; initialise random seed
 
-		lea	lc_soundList(pc),a3		;fix sounds- put a 0 on the first word
+		lea		lc_soundList(pc),a3		;fix sounds- put a 0 on the first word
 .fix_s:	move.l	(a3)+,d0
 		beq.s	.fe
 		move.l	d0,a1
 		move	#0,(a1)
-		lea	4(a3),a3		; skip freq/len
+		lea		4(a3),a3		; skip freq/len
 		bra.s	.fix_s
 .fe:
 
@@ -332,7 +332,7 @@ start:
 		lea		sv_UserMap,a1		;clr user map
 		moveq	#127,d0
 .ClrMap: move.l	#0,(a1)+
-		dbf	d0,.ClrMap
+		dbf		d0,.ClrMap
 
 		move.l	#0,sv_cards+2		;clear cards - add number and current count
 		move.l	#0,sv_cards+8
@@ -432,7 +432,7 @@ start:
 		lea		24(a1),a1
 		move.l	(a1)+,(a2)+
 		move.l	(a1)+,(a2)+
-		dbf	d7,.sv_SavWindow
+		dbf		d7,.sv_SavWindow
 
 		lea		sv_ScrollArea-34,a1	;clear scroll area
 		moveq	#0,d0
@@ -450,7 +450,7 @@ start:
 		lea		12(a1),a1
 		dbf		d1,.sc_Clear2
 
-
+	;--- save elements of the screen which have to be used later
 		lea		sv_Counter1,a1		;save counters
 		lea		sv_Counter2,a2
 		lea		sv_C1Save,a3
@@ -500,18 +500,19 @@ start:
 		lea		5*row(a1),a1
 		dbf		d0,.sc_SavCard
 
-		lea		sv_Heart,a1
-		lea		sv_HeartSav,a2
+		lea		sv_Heart,a1			;save Heart backgnd
+		move.l	lc_F2_HeartSav(pc),a2
 		moveq	#[12*5]-1,d0
-.sc_SavHt:	move.b	(a1)+,(a2)+		;save Heart backgnd
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		lea		row-5(a1),a1
+.sc_SavHt:	
+		move.l	(a1)+,(a2)+
+		move	(a1)+,(a2)+
+		lea		row-6(a1),a1
 		dbf		d0,.sc_SavHt
 .sc_NoSave:
 
+		bsr		makeHBTable			; generate HB animation frames
+
+	;--- clear counters
 		lea		sv_C2Save,a1		;zero counter first
 		lea		sv_Counter2,a2
 		moveq	#[18*5]-1,d0
@@ -704,9 +705,9 @@ sv_NoScrChange:
 
 sv_cont2:
 		; --- change weapon if required
-		move	sv_flag+6,d0
+		move	lc_changeWeaponInd(a6),d0
 		beq.s	.noNewWeapon
-		clr		sv_flag+6
+		clr		lc_changeWeaponInd(a6)
 		bsr		ci_NewWeapon
 .noNewWeapon:
 
@@ -719,13 +720,11 @@ sv_cont2:
 		move	sv_WalkSpeed+4,sv_WalkSpeed+2	; back to normal speed after potion runs out
 		bra.s	sv_startframe
 sv_NotSpeed:
-		lea		sc_PosTab(pc),a1	;speed & exhaust
-		move	2(a1),d0
-		addi	#288,d0				;max 512
 		move	sv_WalkSpeed+2,d1
-		mulu	d0,d1
-		lsr.l	#8,d1
-		lsr		d1						;/512
+		moveq	#16+3,d0
+		sub		lc_fatigue(a6),d0		; 3..8
+		mulu	d0,d1					; * x/16 where x = (11..16)
+		lsr		#4,d1
 		move	d1,sv_WalkSpeed
 		
 ;---------------------------------------------------------
@@ -768,9 +767,9 @@ sv_startFrame:
 .sv_NotRMB:	
 		bsr		ServePriorDoor
 
-		tst		sv_Flag+8		; launcher reload timer
+		tst		lc_launcherReloadTimer(a6)		; launcher reload timer
 		beq.s	.sv_Lok
-		subi	#1,sv_Flag+8
+		subi	#1,lc_launcherReloadTimer(a6)
 .sv_Lok:
 
 		tst		do_bron				; check reload weapon delay on finding a weapon (so it does not play at the same some as "ooo")
@@ -916,7 +915,7 @@ sv_Cloop0:	rept	4			;clear row map.
 		move	d1,sv_RotSpeed
 
 	
-		tst		sv_EndLEvel
+		tst		lc_EndLevel(a6)
 		BEQ		MAIN_LOOP
 		bsr		EndLevel		;returns +1 finished OK, -1 dead (d0)
 		BEQ		MAIN_LOOP
@@ -926,7 +925,7 @@ sv_quit:
 		lea		$dff000,a0
 		lea		lc_variables(pc),a6
 		move	d0,do_JakiKoniec		; +1 finished OK, -1 dead, 0: quit by pressing ESC
-		move	#0,sv_EndLevel
+		move	#0,lc_EndLevel(a6)
 		VBLANK
 		move	#$7fff,$9a(a0)			; INTENA - disable all interrupts
 		move	#$7fff,$9c(a0)			; INTREQ - clearpending interrupts
@@ -994,12 +993,13 @@ sv_quit:
 NewLev3:	
 		movem.l ALL,-(sp)
 		move	$dff01e,d0				; INTREQQ - which L3 interrupt was raised?
+		move	d0,d1
 		andi	#$20,d0
 		bne.s	interruptL3Vertb
 
 ;blitter finished interrupt
 		;blitter code here
-		andi	#$40,d0
+		andi	#$40,d1
 		beq.s	interruptL3Coper
 		movem.l	(sp)+,ALL
 		move	#$40,$dff09c			; clear BLIT INREREQ
@@ -1103,7 +1103,8 @@ swapScreen:
 ;-------------------------------------------------------------------
 ;if RMB has been pressed...
 ; shoot, use weapons
-check_RMB:	movem.l	ALL,-(sp)
+Check_RMB:	movem.l	ALL,-(sp)
+		lea		lc_variables(pc),a6
 		move	#1,sv_HitFlag
 		lea		sv_Items,a1
 		move	(a1),d0					; selected item (*6)
@@ -1575,7 +1576,7 @@ Kickback:
 ;-------------------------------------------------------------------
 ; input: d0 = weapon index
 rm_HandGunUsed:					; input: d0 = weapon index: 0 (hand), 6 (handgun) etc.
-		tst	2(a1)				; do you have any ammo for it (check current counter)?
+		tst		2(a1)				; do you have any ammo for it (check current counter)?
 		bne.s	.rm_Gok
 		SCROLL	65				; "no ammo"
 		SOUND	8,1,63
@@ -2412,8 +2413,9 @@ rm_FlamerUsed:	tst	2(a1)
 		bra	RMB_End
 
 ;-------------------------------------------------------------------
+; in: a6 - lc_variables
 rm_LauncherUsed:
-		tst		sv_Flag+8		;reload
+		tst		lc_launcherReloadTimer(a6)		;reload
 		beq.s	.bo_33
 		SCROLL	68				; still reloading
 		bra	RMB_End
@@ -2432,7 +2434,7 @@ rm_LauncherUsed:
 		addq	#1,2(a1)
 		SOUND	3,1,63
 
-		move	#10,sv_Flag+8	; reload timer
+		move	#10,lc_launcherReloadTimer(a6)	; reload timer
 		lea	sv_ObjectTab,a1		;empty place in tab
 		moveq	#29,d0
 .SeekEmpty:	tst	(a1)
@@ -3828,6 +3830,7 @@ sv_DA3:	move	d0,2(a1)
 ;Main draw walls & objects loop - scaning from sv_MAP. No input.
 DrawAll:
 		movem.l	ALL,-(sp)
+		lea		lc_variables(pc),a6
 		lea		sv_MAP,a0
 		lea		sv_sinus,a1
 		lea		$80(a1),a2		;cosinus
@@ -3915,7 +3918,8 @@ dr_checkEnemy:	move	#32,sv_CollumnWid
 		bne.s	dr_checkITEM
 		bsr	dr_DrawEnemy
 
-dr_checkITEM:	move	#0,sv_Flag+4
+dr_checkITEM:	
+		move	#0,lc_collumnDrawInd(a6)
 		move	d5,-(sp)
 		move.b	6(a0,d5.w),d4		;get item
 		andi	#63,d4
@@ -3925,20 +3929,20 @@ dr_checkITEM:	move	#0,sv_Flag+4
 		addi	#512,d0
 		move	12(a4),d1		;y
 		addi	#512,d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	(sp)+,d4
 		move	d4,d5
 		andi	#32,d5			;chk heith 0-dn, 1-up
 		beq.s	dr_scok3
 		moveq	#0,d5
-		ori	#$8000,d4		;if up
-		move	#1,sv_Flag+4		;draw column
+		ori		#$8000,d4		;if up
+		move	#1,lc_collumnDrawInd(a6)		;draw column
 		bra.s	dr_scok4
-dr_scok3:	moveq	#-32,d5
-		ori	#$c000,d4		;if down
-dr_scok4:	andi	#$c01f,d4
+dr_scok3: moveq	#-32,d5
+		ori		#$c000,d4		;if down
+dr_scok4: andi	#$c01f,d4
 		addi	#28,d4
-		bsr	ShowCollumns
+		bsr		ShowCollumns
 		move	(sp),d5
 
 
@@ -3986,9 +3990,9 @@ dr_checkCOL:	move	#32,sv_CollumnWid
 		move.b	5(a0,d5.w),d4		;get collumn
 		andi	#31,d4
 		beq.s	dr_checkENEMY2
-		tst	sv_Flag+4
+		tst		lc_collumnDrawInd(a6)
 		bne.s	.dr_ccol2		;if item here
-		tst	sv_DETAILS		;test detsils
+		tst		sv_DETAILS		;test detsils
 		beq.s	.dr_ccol2
 		cmpi	#3,d4			;low detail columns
 		beq.s	dr_checkENEMY2
@@ -5910,6 +5914,16 @@ lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitte
 lc_scrollBitsLeft:		dc.w	0				; how many bits of the scroll left on screen (0..272)
 lc_doFlash:				dc.w	0				; >0 - flash screen
 lc_doPikaj:				dc.w	0,55			; beep when energy low. 0.w beeb on flag, 2.w time between beeps
+lc_fatigue:				dc.w	3				; fatigue when getting hit etc. 2 - normal, 8 - max
+lc_hbFrameNr:			dc.w	0				; heart beat current frame number (0..49)
+lc_hbFrameNrLast:		dc.w	0				; heart beat last used frame number (to avoid re-drawing if not necessary)
+lc_EndLevel:			dc.w	0,4				; 1 - end of lev, -1 death
+lc_regenerationTimer:	dc.w	1				; regeneration speed timer
+lc_regenerationType:	dc.w	0				; regeneration speed indicator(0 norm, 1 slow)
+lc_collumnDrawInd:		dc.w	0				; col. draw indicator
+lc_changeWeaponInd:		dc.w	0				; weapon to change index
+lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
+
 ENDOFF
 
 lc_TextBuffer:			ds.b	20				; buffer for keys pressed to check for codes. 0.w index, 2.w changed flag, 4.w+16 buffer
@@ -5919,7 +5933,10 @@ lc_F2_addresses:	; address, size
 lc_F2_AvLastVal:	dc.l	F2_AvLastVal,0
 lc_F2_AvPtrs:		dc.l	F2_AvPtrs,0
 lc_F2_AvData:		dc.l	F2_AvData,0
-lc_F2_ChunkyBufF:	dc.l	F2_ChunkyBufF,0
+lc_F2_ChunkyBuf:	dc.l	F2_ChunkyBuf,0
+lc_F2_HeartSav:		dc.l	F2_HeartSav,0
+lc_F2_HBFrames:		dc.l	F2_HBFrames,0
+
 lc_F2_TopMem:		dc.l	F2_TopMem,0
 					dc.l	0
 
@@ -6756,7 +6773,6 @@ sv4_DoubleTab:	ds.w	256
 sv_joystick:	
 		lea		sv_sinus,a1
 		lea		$80(a1),a2			;cosinus
-		move	#0,sv_Flag+2		;regenerate normally
 		lea		cc_MoveTab,a3		;keys pressed
 
 		lea		$dff000,a0
@@ -6902,7 +6918,7 @@ sv_DoMove_NoMouseCheck:
 		move	lc_momentum(a6),d6
 		tst		d1
 		beq.s	.sv_NotMoved
-		move	#1,sv_Flag+2		;slow regenerating
+		st		lc_regenerationType(a6)		; moving - switch on slow regenerating
 		move	lc_fps(a6),d5		; moving - increase momentum
 		addi	#1,d5
 		add		d5,d5
@@ -6912,6 +6928,7 @@ sv_DoMove_NoMouseCheck:
 		move	#255,d6
 		bra.s	.sv_dalej
 .sv_NotMoved:
+		clr		lc_regenerationType(a6)		; not moving - regenerate normally
 		move	lc_fps(a6),d5		; not moving - decrease momentum
 		addi	#1,d5
 		add		d5,d5
@@ -7014,7 +7031,8 @@ sv_dr2:		add	d0,sv_PosX
 
 ;-------------------------------------------------------------------
 ; search through the item table to find the next item (up or down) to select. If found select, otherwise do nothing.
-; a2: sv_Items+4, d1: current item (*6), d3: direction (+6 forwards, -6 backwards)
+; In: a2: sv_Items+4, d1: current item (*6), d3: direction (+6 forwards, -6 backwards)
+; a6: lc_variables
 SelectNextItem:
 		move	d1,d2
 .sw0:	add		d3,d1					; + or - 6
@@ -7037,7 +7055,7 @@ SelectNextItem:
 		sub		d1,d4
 		lsl		#1,d4
 		addi	#$eb,d4
-		move	d4,sv_Flag+6			; set item to change to
+		move	d4,lc_changeWeaponInd(a6)		; set item to change to
 .sw4_noswitch:
 		rts
 		
@@ -7082,7 +7100,7 @@ InputKeyParse:
 		lea		lc_variables(pc),a6
 		move	d0,-(sp)
 
-		tst		sv_EndLevel		;if killed
+		tst		lc_EndLevel(a6)		;if killed
 		bmi		cc_NoKey
 
 cc_m:	cmpi.b	#$91,d0			;m - map
@@ -7185,7 +7203,7 @@ cc_1_0:	cmpi.b	#$fe,d0			;1-0 - weapons + cards
 		btst	#0,d0
 		beq.s	cc_f
 ;		addi	#$9e,d0			;(coz prev. numeric!)
-		move	d0,sv_Flag+6
+		move	d0,lc_changeWeaponInd(a6)
 		bra		cc_NoKey
 cc_f:	cmpi.b	#$b9,d0			;f - floor on/off
 		bne.s	cc_TAB
@@ -7372,7 +7390,7 @@ EndLevel:
 .sv_ws:	tst		lc_swapScreen(a6)				; check if screen has been swapped so that any further end level stuff can be drawn
 		bne.s	.sv_ws
 		
-		tst		sv_EndLEvel
+		tst		lc_EndLevel(a6)
 		bmi.s	sv_Death
 ; survived exit
 		move	sv_Size+2,d0	; current user screen size 
@@ -7382,13 +7400,13 @@ EndLevel:
 		lea		[sv_Upoffset*5*row](a2),a2
 		moveq	#0,d0
 		move	#[130*5]-1,d7
-.Clrscr:	REPT	10
+.Clrscr: REPT	10
 		move.l	d0,(a2)+
 		ENDR
 		dbf		d7,.Clrscr
 		bra.s	.E2
 
-.NoStr:		lea	sv_WindowSav,a1
+.NoStr:	lea	sv_WindowSav,a1
 		move.l	sv_screen,a2
 		addi.l	#[sv_Upoffset*5*row],a2
 		moveq	#0,d0
@@ -7408,16 +7426,18 @@ EndLevel:
 		rts
 
 ; dead exit
-sv_Death:	subi	#1,sv_EndLevel+2
+sv_Death:	
+		subi	#1,lc_EndLevel+2(a6)
 		beq.s	sv_Death2
 		moveq	#0,d0
 		rts
 
-sv_Death2:	move	#4,sv_EndLevel+2
-		lea	$dff000,a0
+sv_Death2:	
+		move	#4,lc_EndLevel+2(a6)
+		lea		$dff000,a0
 		moveq	#60,d7
-.loopY:		move	#319,d6			;Blood on screen
-		lea	DeathTab(pc),a1
+.loopY:	 move	#319,d6			;Blood on screen
+		lea		DeathTab(pc),a1
 		move.l	sv_screen+4,a3
 		move	#$8000,d3
 		move	#$7fff,d4
@@ -7464,7 +7484,8 @@ DeathTab:	blk.w	320,0
 ;-------------------------------------------------------------------
 ; Clip player movements
 ;border movements - no passing thru walls, etc... + pos fix
-sv_ClipMovements:	
+sv_ClipMovements:
+		lea		lc_variables(pc),a6
 		lea		sv_SquarePos,a1
 		move	sv_PosX,d3		;make in-square pos.
 		move	d3,d2
@@ -7482,7 +7503,7 @@ sv_ClipMovements:
 		bne.s	.sv_b1
 		cmp		sv_LevelData+24,d1
 		bne.s	.sv_b1
-		move	#1,sv_EndLEvel	; level finished - i.e. standing the end square?
+		move	#1,lc_EndLevel(a6)	; level finished - i.e. standing the end square?
 .sv_b1:
 		lsl		#3,d2
 		lsl		#8,d1
@@ -8303,7 +8324,7 @@ TEST_COUNTERS:
 		move.l	d0,(a1)			;zero if minus or zero
 		SCROLL	39
 		clr		lc_doPikaj(a6)
-		move	#-1,sv_EndLevel		;death
+		move	#-1,lc_EndLevel(a6)		;death
 		moveq	#9,d1			;red
 		bra.s	.tc_E2
 .tc_E1:		moveq	#16,d1			;color - white
@@ -8799,7 +8820,7 @@ copyCounter:
 
 ;-------------------------------------------------------------------
 ; CHANGE WEAPON
-; in: d0 new weapon
+; in: d0 - new weapon, a6 - lc_variables
 ci_NewWeapon:	
 		lea		sv_Items,a1
 		ext		d0
@@ -8998,100 +9019,128 @@ ci_20MulTab:
 
 ;-------------------------------------------------------------------
 ; Draw heart plotter
+; in: a6 - lc_variables
+Draw_Heart:
+		lea		hbFrameAddr(pc),a3
+		move	lc_hbFrameNr(a6),d0
+		add		lc_fatigue(a6),d0		; advanvce anim to next frame based on fatigue (3..8)
+		cmpi	#4*[HB_ANIM_FRAMES-1]+1,d0
+		bmi.s	.sc_NoRes
+		moveq	#0,d0
+.sc_NoRes:
+		move	d0,lc_hbFrameNr(a6)
 
-DRAW_HEART:	lea	sv_HeartSav,a1
-		lea	sv_Heart,a2
-		moveq	#11,d0
-sc_RetHt:	REPT	5
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		move.b	(a1)+,(a2)+
-		lea	row-5(a2),a2
-		ENDR
-		dbf	d0,sc_RetHt
+		andi	#$fffc,d0				; frame addresses start at multiple of 4
+		cmp		lc_hbFrameNrLast(a6),d0
+		beq.s	.sc_NoCopyHB			; avoid refreshing if not necessary
+		move	d0,lc_hbFrameNrLast(a6)
 
-		lea	sc_PosTab(pc),a1
-		lea	sc_PosTab2(pc),a2
-		subi	#1,sv_Flag
-		bne.s	sc_HD5
-		move	#25,sv_Flag		;*11 = regeneration time
-		tst		sv_Flag+2		; 0 - normal, 1 - slow regeneration
-		beq.s	sc_HD6
-		move	#50,sv_Flag		;regen. slower if moving
-sc_HD6:		addi	#4,2(a1)
-		cmpi	#57*4,2(a1)
-		bmi.s	sc_HD5
-		move	#56*4,2(a1)		;max beat
-sc_HD5:
-		move	(a1)+,d0
-		move	(a1)+,d1
-		addq	#4,d0
-		cmpi	d1,d0			;is actual cnt > max?
-		bmi.s	sc_HD3
-		moveq	#0,d0			;cnt restart
-sc_HD3:		move	d0,-4(a1)
-		move	(a2),d1			;cnt2
-		addi	#29*4,d1
-		andi	#127,d1
-
-		move.l	(a1,d0.w),2(a2,d1.w)	;next part of plot
-		tst	sv_EndLevel
+		tst		lc_EndLevel(a6)			; <1 dead
 		bpl.s	.sc00
-		move.l	#$04b00000,2(a2,d1.w)	;next part of plot
+		moveq	#0,d0					; if dead then flatline
+.sc00:
 
-.sc00:		lea	sv_Heart,a1
-		addi	#4,(a2)
-		andi	#127,(a2)
-		move	(a2)+,d1		;start offset in table
+		move.l	(a3,d0.w),a1			; copy right HB frame to screen
+		lea		sv_Heart+1,a2
+		moveq	#11,d0
+.sc_CopyHB:	
+		REPT	5
+		move.b	(a1)+,(a2)+
+		move.l	(a1)+,(a2)+
+		lea		1(a1),a1
+		lea		row-5(a2),a2
+		ENDR
+		dbf		d0,.sc_CopyHB
+
+.sc_NoCopyHB:
+		subi	#1,lc_regenerationTimer(a6)
+		bne.s	.sc_HD5
+		tst		lc_regenerationType(a6)				; 0 - normal, 1 - slow regeneration
+		beq.s	.sc_HD6
+		move	#250,lc_regenerationTimer(a6)			;regen. slower if moving
+		bra.s	.sc_HD6a
+.sc_HD6: 
+		move	#150,lc_regenerationTimer(a6)
+.sc_HD6a:
+		cmpi	#3,lc_fatigue(a6)		; keep reducing fatigue
+		beq.s	.sc_HD5
+		subi	#1,lc_fatigue(a6)
+.sc_HD5:
+		rts
+
+;---------------
+EXCITE:	 move.l	a1,-(sp)
+		lea		lc_variables+lc_fatigue(pc),a1
+		cmpi	#8,(a1)
+		beq.s	.sc_HD4
+		addi	#1,(a1)
+.sc_HD4: move.l	(sp)+,a1
+		rts
+
+;---------------
+; pre-generate heart beat animation frames
+HB_ANIM_FRAMES:		equ		50		; number of heartbeat animation frames
+makeHBTable:
+		move.l	lc_F2_HeartSav(pc),a3
+		move.l	lc_F2_HBFrames(pc),a2
+		lea		hbFrameAddr(pc),a4
+		moveq	#HB_ANIM_FRAMES-1,d0
+.cpBkg:	move.l	a3,a1				; create animation background for all frames
+		move.l	a2,d1
+		addq.l	#1,d1
+		move.l	d1,(a4)+			; remember frame starts (skipping 1st byte)
+		moveq	#[5*12]-1,d1
+.cpB1:	move	(a1)+,(a2)+
+		move.l	(a1)+,(a2)+
+		dbf		d1,.cpB1
+		dbf		d0,.cpBkg
+
+		lea		hbFrameAddr(pc),a4
+		lea		hbAnimDef(pc),a2
+		moveq	#0,d5			; start offset for every frame
+.hdDrawFrame:
+		move.l	(a4)+,a1		; frame address
+		move	d5,d1
+
 		moveq	#2,d0			;x pos
 		moveq	#28,d2			;X max
-sc_HDrawLoop:	move	(a2,d1.w),d3
+.sc_HDrawLoop:	
+		move	(a2,d1.w),d3	; pixel offset in frame
 		subq	#1,d0
-		bpl.s	sc_HD1
+		bpl.s	.sc_HD1
 		moveq	#7,d0
-		lea	1(a1),a1
-sc_HD1:
+		lea		1(a1),a1
+.sc_HD1:
 		move	2(a2,d1.w),d4
-		lea	(a1,d3.w),a3
-sc_HD2:		bset	d0,(a3)			;color 19 - green
-		bset	d0,40(a3)
-		bclr	d0,80(a3)
-		bclr	d0,120(a3)
-		bset	d0,160(a3)
-		lea	200(a3),a3
-		dbf	d4,sc_HD2
-
+		lea		(a1,d3.w),a3
+.sc_HD2: bset	d0,(a3)			;color 19 - green
+		bset	d0,1*6(a3)
+		bclr	d0,2*6(a3)
+		bclr	d0,3*6(a3)
+		bset	d0,4*6(a3)
+		lea		5*6(a3),a3
+		dbf		d4,.sc_HD2
 		addq	#4,d1			;next pos
-		andi	#127,d1
-		dbf	d2,sc_HDrawLoop
+		cmpi	#4*HB_ANIM_FRAMES,d1
+		bne.s	.sc_HD3
+		moveq	#0,d1
+.sc_HD3:
+		dbf		d2,.sc_HDrawLoop
+
+		addq	#4,d5
+		cmpi	#4*HB_ANIM_FRAMES,d5
+		bne.s	.hdDrawFrame
 		rts
 
-;---------------
-EXCITE:		move.l	a1,-(sp)
-		lea	sc_PosTab+2(pc),a1
-		subi	#11*4,(a1)
-		cmpi	#11*4,(a1)		;min Heart beat
-		bpl.s	sc_HD4
-		move	#11*4,(a1)
-sc_HD4:		move.l	(sp)+,a1
-		rts
-
-;---------------
-sc_PosTab2:
-	dc.w	0
-	blk.l	32,$04b00000				;dc.w	6*200,0
-
-sc_PosTab:
-	dc.w	30*4,56*4			;act.cnt, max cnt (exhaust)
-	dc.w	6*200,0,5*200,0,4*200,0,2*200,1,0*200,1	;start row, rept-1
-	dc.w	2*200,3,6*200,3,10*200,1,8*200,1,7*200,0
-	blk.l	46,$04b00000				;dc.w	6*200,0
-
+hbFrameAddr:	blk.l	HB_ANIM_FRAMES,0
+hbAnimDef:		blk.l	HB_ANIM_FRAMES-10,$00b40000				;dc.w	6*30,0
+				dc.w	6*30,0,5*30,0,4*30,0,2*30,1,0*30,1		;start row, rept-1
+				dc.w	2*30,3,6*30,3,10*30,1,8*30,1,7*30,0
+				
 ;-------------------------------------------------------------------
 ;open/close priority doors...
-ServePriorDoor:	lea	sv_DoorFlag1,a1
+ServePriorDoor:	
+		lea		sv_DoorFlag1,a1
 		bsr.s	oc_DoServe
 		lea		sv_DoorFlag2,a1
 oc_DoServe:	
@@ -9402,6 +9451,7 @@ te_ok1:
 ;-------------------------------------------------------------------
 CheckCodes:	
 		movem.l	ALL,-(sp)
+		lea		lc_variables(pc),a6
 		lea		lc_TextBuffer(pc),a1
 		tst		2(a1)						;test only after key added to buffer
 		beq.w	cco_End
@@ -9430,7 +9480,7 @@ chk_Ammo:	lea	AmmoCode,a2
 		lea		sv_Items,a1
 		tst		(a1)			; check selected weapon
 		bne.s	.cco_nohand		; if hand then select handgun by default
-		move	#$fb,sv_Flag+6
+		move	#$fb,lc_changeWeaponInd(a6)
 		bra.s	.cco_1
 .cco_nohand:
 		move	#-666,d0
@@ -9480,11 +9530,11 @@ chk_Godmode:	lea	GodModeCode,a2
 		eori.b	#1,STR_GODMODE(a2)
 		bra.s	cco_End
 chk_MapShow:
-		lea	MapCode,a2
+		lea		MapCode,a2
 		bsr.s	cco_Check
 		bne.s	cco_level
 
-		lea	sv_UserMap,a1		;clr user map
+		lea		sv_UserMap,a1		;clr user map
 		moveq	#127,d0
 .ClrMap:	move.l	#-1,(a1)+
 		dbf	d0,.ClrMap
@@ -9494,7 +9544,7 @@ chk_MapShow:
 cco_Level:	lea	LevelCode,a2		;end level
 		bsr.s	cco_Check
 		bne.s	cco_Bomb
-		move	#1,sv_endlevel
+		move	#1,lc_EndLevel(a6)
 		bra.s	cco_End
 
 cco_Bomb:	lea	BombCode,a2		;give bomb
@@ -9584,7 +9634,7 @@ Take_Items:
 		sub		d0,d2
 		lsl		#1,d2
 		addi	#$f1,d2
-		move	d2,sv_Flag+6
+		move	d2,lc_changeWeaponInd(a6)
 		bra.w	ti_NoItem
 ti_ammo:	subq	#6,d1
 		cmpi	#6,d1			;if ammo
@@ -10463,13 +10513,13 @@ sv_SetWindowSize:
 		lea		lc_ChunkyBuffer(pc),a1
 		move	lc_c2pType(a6),d0			; 0 - blitter C2P, 1 - CPU C2P
 		beq.s	.sv_cbChip
-		move.l	lc_F2_ChunkyBufF(pc),(a1)	; CPU C2P uses chunky buf in fast
+		move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
 		st		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in fast (ff)
 		bra.s	sv_cont
 .sv_cbChip:
 		move.l	#sv_ChunkyBufC,(a1)			; Blitter C2P uses chunky buf in chip
 		clr		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in chip (0)
-;	move.l	lc_F2_ChunkyBufF(pc),(a1)	; CPU C2P uses chunky buf in fast
+;	move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
 sv_cont:
 
 		moveq.l	#0,d0
@@ -11035,7 +11085,7 @@ sv_Counter2:	equ	screen1+$7d00+$640+28
 sv_Compas:	equ	screen1+$7d00+200+18
 sv_Weapon:	equ	screen1+$7d00+200+23
 sv_CardCnt:	equ	screen1+$7d00+600+39
-sv_Heart:	equ	screen1+$7d00+$640+13
+sv_Heart:	equ	screen1+$7d00+$640+12		; 8 lines down, 13 bytes from left
 sv_BombPos:	equ	screen1+$7d00+$320
 sv_DebugPos1:	equ	screen1+[20*40*5]		; debug counter positions for screens 1 and 2
 sv_DebugPos2:	equ	screen2+[20*40*5]
@@ -11045,7 +11095,7 @@ sc_colors:	equ	BASEC+$7d600		;$40 (64)
 sc_Text:	equ	BASEC+$7d642		;$1b58 (7000)
 ChangeCopper:	equ	BASEC+$7f1a0		;$1c
 sv_ObjectTab:	equ	BASEC+$7f1d0		;$168 (30 cells)
-sv_HeartSav:	equ	BASEC+$7f340		;$12c
+;sv_HeartSav:	equ	BASEC+$7f340		;$12c (300)
 sv_CardSav:	equ	BASEC+$7f470		;$78
 sv_ItemSav:	equ	BASEC+$7f4f0		;$21c
 
@@ -11088,7 +11138,9 @@ sv_offset:	dc.l	[sv_Upoffset*row*5]+sv_Leftoffset		;view start
 sv_BumpedWall:	dc.w	0			;nr. of bumped wall
 sv_ChaosAddr:	dc.w	[32*27*2]-2,0		; offset in randomised table used e.g. for weapon change drawing. 
 sv_AmmoChg:	dc.w	0,0,0,0			;old/cnt, new/cnt
-sv_Flag:	dc.w	1,0,0,0,0		;different flags: ?, regeneration speed (0 norm, 1 slow)
+;sv_Flag:	dc.w	1,0,0,0,0		;different flags: 0 - regeneration speed timer (25 norm, 50 slow) 
+									; 2 - regeneration speed indicator(0 norm, 1 slow), 4 - col. draw indicator, 
+									; 6 - weapon to change index, 8 - launcher reload timer
 
 sv_Teleport:	dc.w	1			;1-teleport on at start to nicely show screen
 sv_CollumnWid:	dc.w	0			;width (16 or 32)
@@ -11103,7 +11155,7 @@ ab_BloodAdr:	dc.l	0,0,0
 eh_FirePos:	dc.l	0,0
 sv_MapOn:	dc.w	0			;0-off, 1-on
 sv_OldCop:	dc.l	0,0,0
-sv_EndLevel:	dc.w	0,4			;1 - end of lev, -1 death
+;sv_EndLevel:	dc.w	0,4			;1 - end of lev, -1 death
 sv_SpaceOn:	dc.w	0			;1 - space pressed (hand)
 ;do_pikaj:	dc.w	0,50
 do_bron:	dc.w	0
@@ -11218,7 +11270,10 @@ F2_AvLastVal:		rs.l	AVCNTS						; last read start_value for debug counters (l)
 F2_AvPtrs:			rs.w	AVCNTS						; rolling pointers into 16 debug counters (averages). Next free slot.w for each
 F2_AvData:			rs.w	AVCNTS*8					; space for debug data (averages). buffer for 8*data.w (each is 16 bytes)
 F2_ClearTo1:		rs.w	0							; clear up to here on start
-F2_ChunkyBufF:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
+F2_ChunkyBuf:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
+F2_HeartSav:		rs.b	6*12*5						; 360 ($168)
+F2_HBFrames:		rs.b	6*12*5*HB_ANIM_FRAMES		; 18000 ($4650) - 50 frames
+
 F2_TopMem:			rs.w	0
 
 end:
