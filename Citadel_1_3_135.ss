@@ -11,8 +11,8 @@
 IS_EXE:		equ	0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET	$220201
-BUILD:		SET	$02
+VERSION: 	SET	$220207
+BUILD:		SET	$01
 
 ; 0 - 68000, 1 - 68020+
 CPU:		equ	1
@@ -453,10 +453,12 @@ start:
 	;--- save elements of the screen which have to be used later
 		lea		sv_Counter1,a1		;save counters
 		lea		sv_Counter2,a2
-		lea		sv_C1Save,a3
+;		lea		sv_C1Save,a3
+		move.l	lc_F2_C1Save(pc),a3
 		cmpi.l	#"KANE",18*6*5(a3)		; do not save counters if they have already been saved. Required by the server which does not reload all gfx.
 		beq.w	.sc_NoSave
-		lea		sv_C2Save,a4
+;		lea		sv_C2Save,a4
+		move.l	lc_F2_C2Save(pc),a4
 		moveq	#[18*5]-1,d0
 .sc_sc0: moveq	#5,d1
 .sc_SaveCou:
@@ -513,7 +515,8 @@ start:
 		bsr		makeHBTable			; generate HB animation frames
 
 	;--- clear counters
-		lea		sv_C2Save,a1		;zero counter first
+;		lea		sv_C2Save,a1		;zero counter first
+		move.l	lc_F2_C2Save(pc),a1
 		lea		sv_Counter2,a2
 		moveq	#[18*5]-1,d0
 .ci_ResCou:	move.l	(a1)+,(a2)+
@@ -796,12 +799,13 @@ sv_startFrame:
 ;		move.l	sv_Consttab+8,a4	;scr tab middle
 ;		lea		64*192(a4),a4
 		move.l	sv_Consttab+44,a4	; marker table - behind chunky buffer?
-		move	sv_Consttab+28,d0
+		move	sv_Consttab+28,d0	; (pixel width / 16) - 1
 		moveq.l	#-1,d1
-sv_Cloop0:	rept	4			;clear row map.
+sv_Cloop0:
+		rept	4			;clear transparent marker row.
 		move.l	d1,(a4)+
 		endr
-		dbf	d0,sv_Cloop0
+		dbf		d0,sv_Cloop0
 
 		move.l	#sv_ZeroTab,sv_ZeroPtr				; tab for ZeroWalls
 
@@ -4070,12 +4074,12 @@ dr_checkN:	move	-2(a3),d1
 		move	16(a4),d1
 		bsr	sv_rotate
 		move	(sp)+,d4
-		move	(sp),d5
+		move	(sp),d5				; map position
 		move.b	4(a0,d5.w),d5		;get tables
 		andi	#$c0,d5
 		beq.s	dr_cN0
 		rol.b	#2,d5
-		bsr	dr_AddTables
+		bsr	dr_AddTables		; add plaque to wall
 dr_cN0:		move	d4,d5
 		andi	#$c0,d5			; filter out blood index to d5
 		beq.s	dr_cN
@@ -4939,19 +4943,20 @@ p_SC1:		move	(a2)+,d1
 		rts
 
 ;-------------------------------------------------------------------
-;Draw walls.
-;Those collumns which are transparentput in a "zero table" to add to the screen later, on top of the background
+;Draw a single wall.
+;Those collumns which are transparent are put in a "zero table" to add to the screen later, on top of the background
+; in: d0/d1 - x1/z1, d2/d3 - x2/z2, d4 - wall index (without blood)
 
 ShowWalls:	
 		move	#0,sv_consttab+48
 		addi	#2^SHLeft,d1		;center ROT point (z+256)
 		addi	#2^SHLeft,d3
-		cmp	d3,d1			;d1 - Zw
-		bpl.s	sh_W04			;if ok
-		exg	d0,d2
-		exg	d1,d3
-		move	#1,sv_consttab+48
-sh_W04:		cmpi	#Min_Distance,d1	;chk borders
+		cmp		d3,d1				;d1 - Zw
+		bpl.s	sh_W04				;if ok
+		exg		d0,d2
+		exg		d1,d3
+		move	#1,sv_consttab+48	; wall inverted in Z i.e. right corner is deeper
+sh_W04:	cmpi	#Min_Distance,d1	;chk borders
 		ble.w	sh_exit3
 		cmpi	#Max_Distance,d3
 		bpl.w	sh_exit3
@@ -4966,29 +4971,29 @@ sh_W04:		cmpi	#Min_Distance,d1	;chk borders
 
 		move	d4,a3			;save d4
 		move	#Min_Distance,d7	;Cut wall to border
-		sub	d3,d7			;z'
+		sub		d3,d7			;z'
 		move	d1,d6
-		sub	d3,d6			;dZ
+		sub		d3,d6			;dZ
 		move	d0,d5
-		sub	d2,d5			;dX
+		sub		d2,d5			;dX
 		move	d5,d4			;dX
 		muls	d7,d5
 		divs	d6,d5			;x'=(dX*z')/dZ
 
-		add	d5,d2			;new x2
+		add		d5,d2			;new x2
 		move	#Min_Distance,d3	;new y2
 
-		tst	d4
+		tst		d4
 		bpl.s	sh_WXorZ
-		neg	d4
-sh_WXorZ:	cmp	d6,d4
+		neg		d4
+sh_WXorZ: cmp	d6,d4
 		bmi.s	sh_WZwX			;if dZ>dX - for accuracy
 
-		tst	d5			;for calculation accuracy
+		tst		d5			;for calculation accuracy
 		bpl.s	sh_WXwZ			;here are two algorithms
-		neg	d5
-sh_WXwZ:	move	d4,d6
-		sub	d5,d6
+		neg		d5
+sh_WXwZ: move	d4,d6
+		sub		d5,d6
 		mulu	#700,d6
 		divu	d4,d6			;w=700(dX-x')/dX
 		addq	#1,d6			;cant be 0
@@ -4996,7 +5001,7 @@ sh_WXwZ:	move	d4,d6
 		move.l	d6,(sp)			;new width
 		move	a3,d4
 		bra.s	sh_DrawOn
-sh_WZwX:	move	d6,d5
+sh_WZwX: move	d6,d5
 		sub	d7,d5
 		mulu	#700,d5
 		divu	d6,d5			;w=700(dZ-z')/dZ
@@ -5006,20 +5011,22 @@ sh_WZwX:	move	d6,d5
 		move	a3,d4
 
 ;----------------------------
-sh_DrawOn:	subq	#2,d4
-		lea	sh_Walldir1+2(pc),a3
-		lsr	d4
+sh_DrawOn:	
+		subq	#2,d4			; wall index (2,4,6... cannot be 0 at this point)
+;		lea		sh_Walldir1+2(pc),a3
+		lsr		d4				; check wall invert bit
 		bcc.s	sh_WD0
 
 		;move	#63,(a3)		;invert direction
 		;move	#0,sh_WallDir2-sh_WallDir1(a3)
-		lea	sh_EorWallDir1(pc),a3
+		lea		sh_EorWallDir1(pc),a3
 		move.w	#63,(a3)
-		lea	sh_EorWallDir2(pc),a3
-		move.w	#0,(a3)
-
+		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
+;		lea	sh_EorWallDir2(pc),a3
+;		move.w	#0,(a3)
 
 		IFNE	SELECT_CACHE
+		; TODO: SMC - change!!
 		move	#63,shS_WallDir1-sh_WallDir1(a3)
 		move	#0,shS_WallDir2-sh_WallDir1(a3)
 		ENDC
@@ -5030,23 +5037,24 @@ sh_WD0:
 
 		lea	sh_EorWallDir1(pc),a3
 		move.w	#0,(a3)
-		lea	sh_EorWallDir2(pc),a3
-		move.w	#63,(a3)
-
+		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
+;		lea	sh_EorWallDir2(pc),a3
+;		move.w	#63,(a3)
 
 		IFNE	SELECT_CACHE
+		; TODO: SMC - change!!
 		move	#0,shS_WallDir1-sh_WallDir1(a3)
 		move	#63,shS_WallDir2-sh_WallDir1(a3)
 		ENDC
 sh_WD1:
-		add	d4,d4
-		add	d4,d4
-		lea	sv_WallOffsets,a3
-		move.l	(a3,d4.w),d4
-		move.l	sv_Consttab+12,a3
-		lea	32(a3,d4.l),a3		;required wall start
+		add		d4,d4
+		add		d4,d4			; wall index *4
+		lea		sv_WallOffsets,a3
+		move.l	(a3,d4.w),d4		; offset to wall start
+		move.l	sv_Consttab+12,a3	; wall textures start addr
+		lea		32(a3,d4.l),a3		;required wall start - middle pixel
 
-		muls	sv_Size,d0
+		muls	sv_Size,d0		; scale X to screen size
 		divs	#6,d0
 		muls	sv_Size,d2
 		divs	#6,d2
@@ -5058,29 +5066,33 @@ sh_WD1:
 		lsl.l	#SHLeft,d2		;x2*256
 		divs	d3,d2			;x2*256/(z+256)
 
-		tst	sv_consttab+48		;not draw 'back' walls
+ ; TODO: can this be checked earlier?
+		tst		sv_consttab+48		;not draw 'back' walls
 		bne.s	sh_cXd2
-		cmp	d2,d0
-		bmi	sh_exit2
+		cmp		d2,d0
+		bmi		sh_exit2
 		bra.s	sh_cXdOK
-sh_cXd2:	cmp	d0,d2
+sh_cXd2: cmp	d0,d2
 		bmi	sh_exit2
 sh_cXdOK:
-		move.l	sv_Consttab+2,d4
-		move.l	d4,d5
-		divu	d1,d4			;y1
-		divu	d3,d5			;y2
 
-		cmp	d2,d0			;d0 - Xw
-		bpl.s	sh_W0			;if ok
-		exg	d0,d2
-		exg	d4,d5
-sh_W0:		move	sv_Consttab,d7
-		add	d7,d0
-		bmi	sh_exit2		;if < left border
-		cmp	d7,d2
-		bpl	sh_exit2		;if > right border
-		add	d7,d2			;center x
+		move.l	sv_Consttab+2,d4	; scaled screen heigth * 256 (e.g. 128 * 256)
+		move.l	d4,d5
+		divu	d1,d4			;y1	 = d4 = screen heigth * 256 / y1_orig
+		divu	d3,d5			;y2	 = d5 = screen heigth * 256 / y2
+
+		cmp		d2,d0			;d0 - Xw
+		bpl.s	sh_W0			;if ok (if d0>d2)
+		exg		d0,d2
+		exg		d4,d5
+sh_W0:	
+		; d0: right corner X, d2 - left corner X
+		move	sv_Consttab,d7		; window width in pixels
+		add		d7,d0
+		bmi		sh_exit2		;if < left border
+		cmp		d7,d2
+		bpl		sh_exit2		;if > right border
+		add		d7,d2			;center x
 
 		tst.l	ab_BloodAdr				; if blood needs to be added then this contains addressses to be used
 		beq		sh_NoBlood
@@ -5112,28 +5124,27 @@ AB_loop1:
 		dbf	d1,AB_loop1
 
 
-sh_NoBlood:	cmp	d5,d4			;d4 - Yw
+sh_NoBlood:	
+		cmp		d5,d4			;d4 - Yw
 		bpl.s	sh_W01			;if ok
-		exg	d0,d2			;exchange X 
-		exg	d4,d5			;exg Yw and Ym
+		exg		d0,d2			;exchange X 
+		exg		d4,d5			;exg Yw and Ym
 sh_W01:
 		move	d5,d1
 		move	#350,d3
 		mulu	d3,d1
 		divu	d4,d1
-		sub	d1,d3			;dY (91-350)
+		sub		d1,d3			;dY (91-350)
 		andi	#$fffc,d3		;cut 2 LSbits
 		move.l	sv_Consttab+20,a5
 		move.l	(a5,d3.w),a5		;700 tab
 
-
-
-		exg	d0,d2
-		sub	d0,d2			;dX
-		move	d2,-(sp)
+		exg		d0,d2
+		sub		d0,d2			;dX
+		move	d2,-(sp)		; (sp) - Dx
 		bpl.s	sh_Dok
-		neg	d2
-sh_Dok:		sub	d5,d4
+		neg		d2
+sh_Dok:	sub		d5,d4
 		ext.l	d4
 		addq	#1,d2			;to prevent div 0 error
 
@@ -5148,26 +5159,26 @@ sh_Dok:		sub	d5,d4
 		move	d5,d7
 		move.l	sv_Consttab+16,a0	;fast code tab
 		move.l	sv_Consttab+24,a1	;slow Htab
-		lea	sv_LineTab,a4
-		add	d4,d6
+		lea		sv_LineTab,a4
+		add		d4,d6
 sh_Lloop0:	addx	d3,d1			;interpolate Y
 		move	d7,d5			;Y start
-		add	d1,d5			;add delta Y
-		add	d5,d5
-		add	d5,d5
+		add		d1,d5			;add delta Y
+		add		d5,d5
+		add		d5,d5
 		move.l	(a1,d5.w),4*700(a4)
-		add	d4,d6			;to gain mem access speed
+		add		d4,d6			;to gain mem access speed
 		move.l	(a0,d5.w),(a4)+		;Xcode not changed!
-		dbf	d2,sh_Lloop0
+		dbf		d2,sh_Lloop0
 
 
 		move.l	sv_Consttab+8,a0	;scr tab middle
-		lea		sv_LineTab,a4		; addresses of pre-generated code to draw lines
+		lea		sv_LineTab,a4		; addresses of pre-generated code to draw interpolated lines
 
-		move	(sp)+,d6
+		move	(sp)+,d6		; Dx - nr of pixel collumns to draw
 		bmi.w	sh_Left			;go left...
 sh_Right:
-		move.l	(sp),d3			;norm 700
+		move.l	(sp),d3			; width (norm 700?)
 		addq	#2,d6
 
 		divu	d6,d3
@@ -5184,7 +5195,7 @@ sh_Right:
 		ble.s	sh_BorOK1
 		sub		d7,d6
 sh_BorOK1:	
-		subq	#1,d6
+		subq	#1,d6			; nr of collumns to draw - 1
 		subq	#1,d0
 
 	IFNE	SELECT_CACHE
@@ -5209,7 +5220,8 @@ shS_Mloop1:	add	d3,d2			;interpolation
 		beq.s	shS_NoLine1
 
 		move.b	(a5,d4.w),d7
-shS_Walldir1:	eori	#0,d7			;fix wall direction
+; TODO: this is SMC, CHANGE!!!!
+shS_Walldir1:	eori	#0,d7			;fix wall direction	
 		move	d7,d5
 		lsl		#6,d7
 		add		d5,d7
@@ -5254,7 +5266,14 @@ shS_SaveZero1:	move.l	sv_ZeroPtr,a6
 		bra.w	shS_NoLine1
 	ENDC
 
-sh_Mloop1:	add	d3,d2			;interpolation
+; d0 - start X pixel offset on screen
+; d6 - nr of pixel collumns to draw (wall width)
+
+; a0 - scr tab middle
+; a4 - sv_LineTab. This is 700 code jump addresses and then Htab values at 4*700
+; a5 - '700' tab (sv_PLANES)
+sh_Mloop1:	
+		add		d3,d2			;interpolation
 		addx	d1,d4
 
 		move.l	(a4)+,a6		; line drawing code address for this line
@@ -5262,9 +5281,9 @@ sh_Mloop1:	add	d3,d2			;interpolation
 		bmi.s	sh_Noline1
 
 		moveq	#0,d7
-		move.b	sv_widthTable(pc,d0.w),d7
-		lea	(a0,d7.w),a2		;screen
-		tst.b	64*192(a2)		;is column drawn?
+		move.b	sv_widthTable(pc,d0.w),d7		; get index of the right pixel to use in X
+		lea		(a0,d7.w),a2		;screen middle starting point in collumn
+		tst.b	64*192(a2)			;does this stripe have transparency?
 		beq.s	sh_NoLine1
 
 		move.b	(a5,d4.w),d7
@@ -5273,9 +5292,9 @@ sh_Walldir1:	;eori	#0,d7			;fix wall direction
 		eor.w	d5,d7
 
 		move	d7,d5
-		lsl	#6,d7
-		add	d5,d7
-		lea	(a3,d7.w),a1		;wall
+		lsl		#6,d7
+		add		d5,d7				; *65
+		lea		(a3,d7.w),a1		;wall - middle pixel
 		tst.b	32(a1)
 		bne.s	sh_SaveZero1
 		move.b	#0,64*192(a2)		;mark column as drawn
@@ -5290,7 +5309,7 @@ sh_SaveZero1:
 		move.l	sv_ZeroPtr,a6
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
-		move.l	[4*700]-4(a4),(a6)+	;cell addr
+		move.l	[4*700]-4(a4),(a6)+	;cell addr - drawing code start
 		move	#0,(a6)+
 		move.l	a6,sv_ZeroPtr
 		bra.w	sh_NoLine1
@@ -5343,6 +5362,7 @@ shS_Mloop2:	add	d3,d2			;interpolation
 		beq.s	shS_NoLine2
 
 		move.b	(a5,d4.w),d7
+; TODO: this is SMC, CHANGE!!!!
 shS_Walldir2:	eori	#63,d7			;fix wall direction
 		move	d7,d5
 		lsl	#6,d7			;*64
@@ -5598,7 +5618,7 @@ shZ_ZeroLoop:
 		cmpa.l	a4,a0
 		beq.w	shZ_PixEnd		;if reached beg of table
 
-		move	-(a0),d0		;what object
+		move	-(a0),d0		;what is the object pos: up, down, fullsize, mid, ...
 		beq.s	shZ_NotMinus
 		cmpi	#$8000,d0
 		beq	shZ_UpObject
@@ -5936,6 +5956,8 @@ lc_F2_AvData:		dc.l	F2_AvData,0
 lc_F2_ChunkyBuf:	dc.l	F2_ChunkyBuf,0
 lc_F2_HeartSav:		dc.l	F2_HeartSav,0
 lc_F2_HBFrames:		dc.l	F2_HBFrames,0
+lc_F2_C1Save:		dc.l	F2_C1Save,0
+lc_F2_C2Save:		dc.l	F2_C2Save,0
 
 lc_F2_TopMem:		dc.l	F2_TopMem,0
 					dc.l	0
@@ -8327,29 +8349,32 @@ TEST_COUNTERS:
 		move	#-1,lc_EndLevel(a6)		;death
 		moveq	#9,d1			;red
 		bra.s	.tc_E2
-.tc_E1:		moveq	#16,d1			;color - white
+.tc_E1:	 moveq	#16,d1			;color - white
 		clr		lc_doPikaj(a6)
 		cmpi	#20,d0
 		bpl.s	.tc_E2
 		st		lc_doPikaj(a6)		;pikaj if energy low!!!
 		moveq	#9,d1			;red
-.tc_E2:		lea	sv_C1Save,a2
-		lea	sv_Counter1,a3
+.tc_E2:		
+;		lea	sv_C1Save,a2
+		move.l	lc_F2_C1Save(pc),a2
+		lea		sv_Counter1,a3
 		bsr.s	tc_DrawCounter
 
 
-.tc_EnOK:	tst	sv_ChaosAddr
+.tc_EnOK:
+		tst		sv_ChaosAddr
 		bne.s	.tc_EndCou		;not draw if changing
 
-		lea	sv_ITEMS,a1
+		lea		sv_ITEMS,a1
 		move	(a1),d0
 		move	2(a1),d1
-		lea	8(a1,d0.w),a1
-		tst	sv_ChaosAddr+2		;if must print
+		lea		8(a1,d0.w),a1
+		tst		sv_ChaosAddr+2		;if must print
 		bne.s	.tc_I1
-		cmp	(a1),d1
+		cmp		(a1),d1
 		beq.s	.tc_EndCou		;if counter not changed
-.tc_I1:		move	#0,sv_ChaosAddr+2
+.tc_I1:	 move	#0,sv_ChaosAddr+2
 
 		cmpi	#7*6,d0			;not use ch.cnt if cards
 		beq.s	.tc_NoSet
@@ -8358,11 +8383,12 @@ TEST_COUNTERS:
 		cmpi	#9*6,d0
 		beq.s	.tc_NoSet
 		move	d1,(a1)
-.tc_NoSet:	move	(a1),d0
+.tc_NoSet: move	(a1),d0
 		neg	d0
 		moveq	#16,d1
-		lea	sv_C2Save,a2
-		lea	sv_Counter2,a3
+;		lea		sv_C2Save,a2
+		move.l	lc_F2_C2Save(pc),a2
+		lea		sv_Counter2,a3
 		bsr.s	tc_DrawCounter
 
 .tc_EndCou:	movem.l	(sp)+,ALL
@@ -8925,7 +8951,8 @@ ci_DrawWeapon:
 		move	sv_AmmoChg,d0
 		neg	d0
 		bmi.s	ci_DWMain		;no fade if f.e. hand
-		lea		sv_C2Save,a2
+;		lea		sv_C2Save,a2
+		move.l	lc_F2_C2Save(pc),a2
 		lea		sv_Counter2,a3
 		bsr		tc_DrawCounter
 		bra.s	ci_DWMain
@@ -8942,29 +8969,31 @@ ci_Wait:
 		tst	d1
 		bne.s	ci_Wt2
 		moveq	#16,d1
-ci_Wt2:		lea	sv_C2Save,a2
-		lea	sv_Counter2,a3
-		bsr	tc_DrawCounter
+ci_Wt2:		
+;		lea	sv_C2Save,a2
+		move.l	lc_F2_C2Save(pc),a2
+		lea		sv_Counter2,a3
+		bsr		tc_DrawCounter
 
 ci_DWMain:
 		move	sv_ChaosAddr,d0
-		lea	sv_ItemBuf,a1
-		lea	sv_Weapon,a2
-		lea	sv_ChaosTab,a3
-		lea	ci_200MulTab(pc),a4
+		lea		sv_ItemBuf,a1
+		lea		sv_Weapon,a2
+		lea		sv_ChaosTab,a3
+		lea		ci_200MulTab(pc),a4
 		move	#31,d1
 ci_DWLoop:	move	(a3,d0.w),d2
 		move	d2,d3
-		lsr	#5,d3
-		add	d3,d3
+		lsr		#5,d3
+		add		d3,d3
 		move	ci_20MulTab-ci_200MulTab(a4,d3.w),d5
 		move	(a4,d3.w),d3
 		andi	#31,d2
 		move	d2,d4
-		lsr	#3,d4
-		add	d4,d5			;bytes in buf
-		add	d4,d3			;bytes
-		not	d2			;bits
+		lsr		#3,d4
+		add		d4,d5			;bytes in buf
+		add		d4,d3			;bytes
+		not		d2			;bits
 		andi	#7,d2
 
 		move.b	(a1,d5.w),d4
@@ -9487,7 +9516,8 @@ chk_Ammo:	lea	AmmoCode,a2
 		move	d0,2(a1)		; displayed ammo
 		neg		d0
 		moveq	#16,d1
-		lea		sv_C2Save,a2
+;		lea		sv_C2Save,a2
+		move.l	lc_F2_C2Save(pc),a2
 		lea		sv_Counter2,a3
 		bsr		tc_DrawCounter	; update displayed counter of existing weapon
 .cco_1:
@@ -9891,7 +9921,7 @@ mc_MakeCode:
 		addi.l	#mc_code,a1		;addr table
 		lea		[mc_MaxHeigth*4](a1),a2	;code table
 ;		addi.l	#mc_Htab,a5		;Heigth table
-		lea		mc_Htab,a5		;Heigth table
+		lea		mc_Htab,a5		;Heigth table - this has 360 addresses followed by "cells" i.e. pixel size table entries
 		lea		[mc_MaxHeigth*4](a5),a6
 		move.l	a2,(a1)+		;fix zero
 		move	#$4e75,(a2)+		;rts
@@ -9915,8 +9945,8 @@ mc_loop32:
 		moveq	#31,d6
 mc_cl32loop:	move.b	#0,(a6)+		;clear Htab cell
 		dbf		d6,mc_cl32loop
-		move.b	#-1,(a6)+		;end cell
-		move.l	-4(a5),a6
+		move.b	#-1,(a6)+		;end cell. Each cell is 33 bytes
+		move.l	-4(a5),a6		; get back cell start address into a6
 
 		moveq	#1,d6			;n
 mc_l322: moveq	#0,d0
@@ -10059,7 +10089,6 @@ mc_check1:	move	(a4)+,d0
 mc_notequ:	addq	#1,d7
 		cmpi	#mc_maxHeigth,d7
 		bne.L	mc_loopMore
-
 		movem.l	(sp)+,ALL
 		rts
 
@@ -10175,14 +10204,14 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		move	d1,d2
 		lsr		d2
 		subq	#1,d2
-		move	d2,28(a1)		;width/16 - 1
+		move	d2,28(a1)		;pixel width/16 - 1
 		add		d1,d1
-		move	d1,30(a1)		;width/4 - 1 (in longs)
+		move	d1,30(a1)		;pixel width/4 - 1 (in longs)
 		subi	#1,30(a1)
 		add		d1,d1			;*4
-		move	d1,(a1)			;width/2 (in words)
+		move	d1,(a1)			;pixel width/2 (in words)
 		add		d1,d1			;*8
-		move	d1,6(a1)		;width in pixels
+		move	d1,6(a1)		;width in pixels (e.g. 192)
 
 		lea		shZ_WmulTab(pc),a3		; width mul table
 		moveq	#15,d0
@@ -10206,7 +10235,7 @@ mk_Wmt2: move	d2,(a3)+
 		divs	#6,d1
 		ext.l	d1
 		lsl.l	#SHLeft,d1		;*256
-		move.l	d1,2(a1)
+		move.l	d1,2(a1)		; scaled screen heigth * 256 (e.g. 128 * 256)
 
 		; --- make static floor perspective tab
 		lea		sv_FloorTab,a3
@@ -10256,7 +10285,7 @@ mk_FTend: move	d0,(a3)				; on first word remember nr of rows to draw -1
 		lea		(a3),a4
 		lea		(a3),a5
 		addi.l	#co_Walls,a3
-		move.l	a3,12(a1)
+		move.l	a3,12(a1)				; sv_Consttab+12 - wall textures start
 		lea		(a4),a3
 		addi.l	#mc_code,a4
 		move.l	a4,16(a1)
@@ -11022,7 +11051,7 @@ end_offsets:
 ;---------------CONSTANTS:
 row:		equ	40
 heigth:		equ	200
-mc_maxHeigth:	equ	350		;max wall heigth (max 350)
+mc_maxHeigth:	equ	350		;max wall heigth (max 350) when zoomed in
 SHLeft:		equ	8		;2^SHLeft=D factor for
 					;perspective (7 - optimal)
 min_distance:	equ	[500*[2^SHLeft]/mc_maxHeigth]+2
@@ -11056,7 +11085,7 @@ sv_Fonts:	equ	BASEC+$54560		;$300
 sv_sinus:	equ	BASEC+$54860		;$280
 ; end tables
 
-mc_Htab:	equ	BASEC+$54b00		;$1ba0
+mc_Htab:	equ	BASEC+$54b00		;$1b34 round up to 1b80. Empirically found as this is a compressed table.
 sv_CompasClr:	equ	BASEC+$56770		;$6c
 sv_CompasSav:	equ	BASEC+$567e0		;$21c
 sv_DATA_AREA:	equ	BASEC+$56a00		;$600
@@ -11066,8 +11095,8 @@ sv_DeltaTab:	equ	BASEC+$57100		;$12c0 (600*4 *2 = 4800)
 sv_ScrOffTab:	equ	BASEC+$58410		;$100
 sv_TextOffsets:	equ	BASEC+$58520		;$100 (to 128 texts)
 ;RealCopper:	equ	BASEC+$58630		;$da0	defined upper!
-sv_C1Save:	equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
-sv_C2Save:	equ	BASEC+$595f0		;$21c
+;sv_C1Save:	equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
+;sv_C2Save:	equ	BASEC+$595f0		;$21c
 
 sv_ZeroTab:	equ	BASEC+$59820		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
 
@@ -11093,7 +11122,7 @@ sv_DebugPos2:	equ	screen2+[20*40*5]
 sv_LineTab:	equ	BASEC+$7b800		;$15e0 (heigths) ($1900)
 sc_colors:	equ	BASEC+$7d600		;$40 (64)
 sc_Text:	equ	BASEC+$7d642		;$1b58 (7000)
-ChangeCopper:	equ	BASEC+$7f1a0		;$1c
+;ChangeCopper:	equ	BASEC+$7f1a0		;$1c		 - not used
 sv_ObjectTab:	equ	BASEC+$7f1d0		;$168 (30 cells)
 ;sv_HeartSav:	equ	BASEC+$7f340		;$12c (300)
 sv_CardSav:	equ	BASEC+$7f470		;$78
@@ -11273,6 +11302,8 @@ F2_ClearTo1:		rs.w	0							; clear up to here on start
 F2_ChunkyBuf:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
 F2_HeartSav:		rs.b	6*12*5						; 360 ($168)
 F2_HBFrames:		rs.b	6*12*5*HB_ANIM_FRAMES		; 18000 ($4650) - 50 frames
+F2_C1Save:			rs.b	18*5*6+4					; $21c + 4 bytes for "KANE"
+F2_C2Save:			rs.b	18*5*6+4					; $21c
 
 F2_TopMem:			rs.w	0
 
