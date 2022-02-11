@@ -552,12 +552,12 @@ start:
 .sc_CopyCop:	move	(a1)+,(a2)+
 		dbf		d0,.sc_CopyCop
 
-		lea		start(pc),a1		;copy offsets to chip
-		addi.l	#st_offsets-start,a1
-		lea		sv_Offsets,a2
-		move	#[[End_offsets-st_Offsets]/2],d0
-.sc_CopyOff:	move	(a1)+,(a2)+
-		dbf		d0,.sc_CopyOff
+; 		lea		start(pc),a1		;copy offsets to chip
+; 		addi.l	#st_offsets-start,a1
+; 		lea		sv_Offsets,a2
+; 		move	#[[End_offsets-st_Offsets]/2],d0
+; .sc_CopyOff:	move	(a1)+,(a2)+
+; 		dbf		d0,.sc_CopyOff
 
 		bsr		make_PLANES_pass
 		bsr		sv_SetWindowSize_pass	; recalculate windows related parameters and set window size
@@ -757,7 +757,7 @@ sv_startFrame:
 	CNTSTART 4
 		bsr		CheckCodes
 		bsr		OpenCloseDoors
-		bsr		Take_Items
+		bsr		Take_Items_pass
 		bsr		Test_Counters
 		bsr		Move_Enemy
 	CNTSTOP 4
@@ -849,7 +849,7 @@ sv_Cloop0:
 		move.l	lc_Structure(pc),a1
 		tst.b	STR_DISTURBANCES(a1)
 		bne.s	.sv_NoSzum
-		bsr.w	sv_MAKE_SZUM
+		bsr.w	sv_MAKE_SZUM_pass
 .sv_NoSzum:
 
 		move.l	lc_Structure(pc),a2
@@ -3806,8 +3806,8 @@ sq_tab1:	dc.b	0,1,4,9,16,25,36,49,64,81,100,121,144,169,196,225
 ;-------------------------------------------------------------------
 ; move on all animations
 sv_DoAnims:	
-		lea		sv_AnimOffsets,a1		;animate walls...
-		lea		sv_WallOffsets,a2
+		lea		lc_AnimOffsets(pc),a1		;animate walls...
+		lea		lc_WallOffsets(pc),a2
 		move	2(a1),d0
 		addq	#4,d0
 		cmpi	#8,d0
@@ -3816,7 +3816,7 @@ sv_DoAnims:
 sv_DA1:	move	d0,2(a1)
 		move.l	4(a1,d0.w),23*4(a2)
 		lea		3*4(a1),a1
-		lea		sv_BloodOffsets,a2
+		lea		lc_BloodOffsets(pc),a2
 		move	2(a1),d0
 		addq	#4,d0
 		cmpi	#8,d0
@@ -3826,7 +3826,7 @@ sv_DA2:	move	d0,2(a1)
 		move.l	4(a1,d0.w),5*4(a2)
 
 		lea		3*4(a1),a1
-		lea		sv_CollumnOffsets,a2
+		lea		lc_CollumnOffsets(pc),a2
 		moveq	#4*4,d1
 		bsr.s	sv_DAdo
 		lea		5*4(a1),a1
@@ -4333,7 +4333,7 @@ dr_DrawEnemy:	movem.l	ALL,-(sp)
 		move.b	13(a4),d4
 		bra.s	de_CONT
 
-de_WALK:	lea	sv_EnemyDirTab,a3
+de_WALK:	lea	lc_EnemyDirTab(pc),a3
 		move	8(a4),d2
 		sub	sv_angle,d2
 		addi	#64,d2
@@ -4347,12 +4347,12 @@ de_dirOK:
 		move	sv_WalkState,d4
 		move	(a3,d4.w),d4
 
-de_CONT:	lea	sv_Enemy1Offsets,a3
+de_CONT:	lea	lc_Enemy1Offsets(pc),a3
 		btst.b	#0,1(a4)
 		bne.s	de_enemy2
-		lea	sv_Enemy2Offsets,a3
+		lea		lc_Enemy2Offsets(pc),a3
 de_enemy2:
-		bsr	ShowEnemy
+		bsr		ShowEnemy
 
 		movem.l	(sp)+,ALL
 		rts
@@ -4372,11 +4372,11 @@ dr_AddBlood:
 		subq	#1,d5
 		add		d5,d5
 		add		d5,d5
-		lea		sv_Bloodoffsets,a1
+		lea		lc_BloodOffsets(pc),a1
 		move.l	(a1,d5.w),d5			; offset of blood on texture map
 		move.l	sv_Consttab+12,a1		; this is the start of the Walls2 textures
 		lea		(a1,d5.l),a1			; blood start
-		move.l	sv_WallOffsets+[27*4],d5	; why 27th wall? Unless narrow collumns count as 1
+		move.l	lc_WallOffsets+[27*4](pc),d5	; why 27th wall? Unless narrow collumns count as 1
 		move.l	sv_Consttab+12,a2
 		lea		(a2,d5.l),a2			;buffor start - this is the last "square" in the textures
 		andi	#$3f,d4
@@ -4387,7 +4387,7 @@ dr_AddBlood:
 		subq	#1,d4
 		add		d4,d4
 		add		d4,d4
-		lea		sv_WallOffsets,a3
+		lea		lc_WallOffsets(pc),a3
 		move.l	(a3,d4.w),d4
 		move.l	sv_Consttab+12,a3
 		lea		(a3,d4.l),a3		;wall start
@@ -4405,11 +4405,11 @@ dr_AddTables:	movem.l	a1-a4,-(sp)
 		addq	#2,d5
 		add	d5,d5
 		add	d5,d5
-		lea	sv_Bloodoffsets,a1
+		lea		lc_BloodOffsets(pc),a1
 		move.l	(a1,d5.w),d5
 		move.l	sv_Consttab+12,a1
 		lea	(a1,d5.l),a1		;blood start
-		move.l	sv_WallOffsets+[27*4],d5
+		move.l	lc_WallOffsets+[27*4](pc),d5
 		move.l	sv_Consttab+12,a2
 		lea	(a2,d5.l),a2		;buffor start
 		move	d4,d5
@@ -4420,7 +4420,7 @@ dr_AddTables:	movem.l	a1-a4,-(sp)
 		subq	#1,d4
 		add	d4,d4
 		add	d4,d4
-		lea	sv_WallOffsets,a3
+		lea		lc_WallOffsets(pc),a3
 		move.l	(a3,d4.w),d4
 		move.l	sv_Consttab+12,a3
 		lea	(a3,d4.l),a3		;wall start
@@ -4484,6 +4484,8 @@ mc_clearScreen:
 
 		; --- CPU fill ceiling/floor
 cpuFill:
+		lea		CUSTOM,a0
+		waitblt								; this is needed in the case c2p blitter is used and cache is also used
 		move.l	sv_Fillcols,d0
 		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
 		bne		.FillFloorGap
@@ -4954,8 +4956,8 @@ um_Update:
 SetLocation:
 		movem.l	d0/a1,-(sp)
 		move	sv_TextOffsets+74*2,d0
-		lea	sc_Text,a1
-		lea	15(a1,d0.w),a1
+		lea		sc_Text,a1
+		lea		15(a1,d0.w),a1
 		moveq	#0,d0
 		move	sv_Squarepos,d0
 		divu	#10,d0
@@ -5091,6 +5093,7 @@ sh_DrawOn:
 		lsr		d4				; check wall invert bit
 		bcc.s	sh_WD0
 
+	; inverted wall
 		;move	#63,(a3)		;invert direction
 		;move	#0,sh_WallDir2-sh_WallDir1(a3)
 		lea		sh_EorWallDir1(pc),a3
@@ -5106,6 +5109,7 @@ sh_DrawOn:
 		ENDC
 		bra.s	sh_WD1
 sh_WD0:
+	; non inverted wall
 		;move	#0,(a3)			;do not invert
 		;move	#63,sh_WallDir2-sh_WallDir1(a3)
 
@@ -5121,9 +5125,10 @@ sh_WD0:
 		move	#63,shS_WallDir2-sh_WallDir1(a3)
 		ENDC
 sh_WD1:
-		add		d4,d4
-		add		d4,d4			; wall index *4
-		lea		sv_WallOffsets,a3
+		lea		lc_WallOffsets(pc),a3
+		lsl		#2,d4				; wall index *4
+;		add		d4,d4
+;		add		d4,d4			; wall index *4
 		move.l	(a3,d4.w),d4		; offset to wall start
 		move.l	sv_Consttab+12,a3	; wall textures start addr
 		lea		32(a3,d4.l),a3		;required wall start - middle pixel
@@ -5180,6 +5185,7 @@ AB_loop1:
 		; or.l   (a1)+,d3		; blood		6+8 = 14
 		; move.l d3,(a2)+		; dst		12
 		; total = 52
+		; NOTE: set new a3 (texture addr) here as well
 		rept	4
 		move.l	(a4)+,(a2)+				; copy 4 orig pixels (20)
 		move.b	(a1)+,d3				; load blood pixel (8)
@@ -5220,7 +5226,7 @@ sh_W01:
 		neg		d2
 sh_Dok:	sub		d5,d4
 		ext.l	d4
-		addq	#1,d2			;to prevent div 0 error
+		addq	#1,d2			;Dx correction to prevent div 0 error
 
 		divu	d2,d4
 		move	d4,d3			;C
@@ -5230,6 +5236,7 @@ sh_Dok:	sub		d5,d4
 		moveq	#0,d1			;wybrana
 		subq	#1,d2
 
+	; TODO: depending on mode (cache or not), this can be optimised to calc and save less things
 		move	d5,d7
 		move.l	sv_Consttab+16,a0	; fast code tab
 		move.l	lc_F2_Htab(pc),a1	; slow Htab
@@ -5240,10 +5247,10 @@ sh_Lloop0: addx	d3,d1			;interpolate Y
 		add		d1,d5			;add delta Y
 		add		d5,d5
 		add		d5,d5
-		move.l	(a1,d5.w),4*700(a4)
+		move.l	(a1,d5.w),4*700(a4)	; Htab entry for cache procedure
 		add		d4,d6			;to gain mem access speed
-		move.l	(a0,d5.w),(a4)+		;Xcode not changed!
-		dbf		d2,sh_Lloop0
+		move.l	(a0,d5.w),(a4)+		;Y draw code jump address
+		dbf		d2,sh_Lloop0	; repeat Dx times
 
 		move.l	sv_Consttab+8,a0	;scr tab middle
 		move.l	lc_F2_LineTab(pc),a4		; addresses of pre-generated code to draw interpolated lines
@@ -5278,7 +5285,8 @@ sh_BorOK1:
 ;		beq.w	sh_Mloop1		;goto pre-generated code mode
 		lea	4*700(a4),a4		;Htab address
 
-shS_Mloop1:	add	d3,d2			;interpolation
+shS_Mloop1:	
+		add		d3,d2			;X texture interpolation
 		addx	d1,d4
 
 		move.l	(a4)+,a6		;Htab cell start
@@ -5293,7 +5301,7 @@ shS_Mloop1:	add	d3,d2			;interpolation
 		beq.s	shS_NoLine1
 
 		move.b	(a5,d4.w),d7
-; TODO: this is SMC, CHANGE!!!!
+; TODO: this is SMC, CHANGE?
 shS_Walldir1:	eori	#0,d7			;fix wall direction	
 		move	d7,d5
 		lsl		#6,d7
@@ -5340,33 +5348,40 @@ shS_SaveZero1:	move.l	sv_ZeroPtr,a6
 	ENDC
 
 ; d0 - start X pixel offset on screen
+; d1-d4 interpolation
+; (d5) - used inside
 ; d6 - nr of pixel collumns to draw (wall width)
+; (d7) - used inside
 
 ; a0 - scr tab middle
+; (a1) - texture Y/2 and X starting point for every collumn
+; (a2) - screen middle for collumn used
+; a3 - required texture start - middle pixel
 ; a4 - LineTab. This is 700 code jump addresses and then Htab values at 4*700
 ; a5 - '700' tab (sv_PLANES)
+; (a6) - Y code drawing jump address
 sh_Mloop1:	
-		add		d3,d2			;interpolation
-		addx	d1,d4
+		add		d3,d2			;X texture interpolation
+		addx	d1,d4			; texture X point
 
 		move.l	(a4)+,a6		; line drawing code address for this line
-		addq	#1,d0
+		addq	#1,d0			; running X counter of screen collumns to use
 		bmi.s	sh_Noline1
 
 		moveq	#0,d7
 		move.b	sv_widthTable(pc,d0.w),d7		; get index of the right pixel to use in X
 		lea		(a0,d7.w),a2		;screen middle starting point in collumn
-		tst.b	64*192(a2)			;does this stripe have transparency?
+		tst.b	64*192(a2)			;does this stripe have transparency (1), or is it already fully drawn (0) ?
 		beq.s	sh_NoLine1
 
-		move.b	(a5,d4.w),d7
-sh_Walldir1:	;eori	#0,d7			;fix wall direction
+		move.b	(a5,d4.w),d7		; interpolated X on texture
+sh_Walldir1:	;eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inverted wall, so effectively take pixels from the right side of the texture
 		move.w	sh_EorWallDir1(pc),d5
 		eor.w	d5,d7
 
 		move	d7,d5
 		lsl		#6,d7
-		add		d5,d7				; *65
+		add		d5,d7				; *65 to get to the 
 		lea		(a3,d7.w),a1		;wall - middle pixel
 		tst.b	32(a1)
 		bne.s	sh_SaveZero1
@@ -5564,7 +5579,7 @@ ShowCollumns:
 		subq	#1,d4
 		add	d4,d4
 		add	d4,d4
-		lea	sv_CollumnOffsets,a3
+		lea		lc_CollumnOffsets(pc),a3
 sc_EnemyCont:	move	d2,-(sp)		;up/down/norm coll. flag
 		move.l	(a3,d4.w),d4
 		move.l	sv_Consttab+12,a3
@@ -5960,6 +5975,8 @@ mk_FixFloorMod_pass:	bra		mk_FixFloorMod
 DrawBomb_pass:			bra		DrawBomb
 make_tables_pass:		bra		make_tables
 DecrunchItems_pass:		bra		DecrunchItems
+Take_Items_pass:		bra		Take_Items
+sv_MAKE_SZUM_pass:		bra		sv_MAKE_SZUM
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -6017,6 +6034,7 @@ lc_regenerationType:	dc.w	0				; regeneration speed indicator(0 norm, 1 slow)
 lc_collumnDrawInd:		dc.w	0				; col. draw indicator
 lc_changeWeaponInd:		dc.w	0				; weapon to change index
 lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
+lc_lastCompassAngle:	dc.w	-1				; angle of last drawn compass
 
 ENDOFF
 
@@ -6117,8 +6135,89 @@ txt_cache_off:			dc.b	"CPU CACHE: OFF",0
 txt_c2p_cpu:			dc.b	"C2P: CPU",0
 txt_c2p_blitter:		dc.b	"C2P: BLITTER",0
 txt_version:			dc.b	"V1.30 BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48,0
+EVEN
 
-even
+lc_WallOffsets:		;start offsets of walls in table
+	dc.l	0,65*64,2*65*64,3*65*64,4*65*64
+	dc.l	5*65*64,6*65*64,7*65*64,8*65*64,9*65*64
+	dc.l	10*65*64,11*65*64,12*65*64,13*65*64,14*65*64
+	dc.l	15*65*64,16*65*64,17*65*64,18*65*64,19*65*64
+
+	dc.l	20*65*64,21*65*64,22*65*64,23*65*64,24*65*64
+	dc.l	25*65*64,26*65*64,39*65*64				;+buffer
+
+lc_CollumnOffsets:
+	dc.l	27*65*64,27*65*64+[65*32],28*65*64,28*65*64+[65*32]	;collumns
+	dc.l	29*65*64,29*65*64+[65*32],30*65*64,30*65*64+[65*32]
+	dc.l	31*65*64,31*65*64+32,31*65*64+[65*32],31*65*64+[65*32]+32 ;up
+	dc.l	32*65*64,32*65*64+32,32*65*64+[65*32],32*65*64+[65*32]+32
+	dc.l	33*65*64,33*65*64+32,33*65*64+[65*32],33*65*64+[65*32]+32 ;down
+	dc.l	34*65*64,34*65*64+32,34*65*64+[65*32],34*65*64+[65*32]+32
+
+	dc.l	52*65*64,52*65*64+32			;25-28 killed enemies
+	dc.l	64*65*64+[65*32],64*65*64+[65*32]+32
+
+lc_ItemOffsets:
+; items, 29-48
+	dc.l	65*65*64,65*65*64+32,65*65*64+[65*32],65*65*64+[65*32]+32
+	dc.l	66*65*64,66*65*64+32,66*65*64+[65*32],66*65*64+[65*32]+32
+	dc.l	67*65*64,67*65*64+32,67*65*64+[65*32],67*65*64+[65*32]+32
+	dc.l	68*65*64,68*65*64+32,68*65*64+[65*32],68*65*64+[65*32]+32
+	dc.l	69*65*64,69*65*64+32,69*65*64+[65*32],69*65*64+[65*32]+32
+	;objects, 49-64
+	dc.l	70*65*64-16,70*65*64
+	dc.l	70*65*64+[65*32]-16,70*65*64+[65*32]
+	dc.l	70*65*64+[65*48]-16,70*65*64+[65*48]
+	dc.l	70*65*64+[65*16]-16,70*65*64+[65*16],71*65*64+[65*32]+32
+	dc.l	71*65*64+[65*32]-16,71*65*64+[65*32],71*65*64+[65*32]+16
+	dc.l	70*65*64+32,70*65*64+[65*32]+32,71*65*64,71*65*64+32
+
+lc_BloodOffsets:
+	dc.l	35*65*64,36*65*64,37*65*64		;blood & tables
+	dc.l	38*65*64,38*65*64+32,38*65*64+[65*32],38*65*64+[65*32]+32
+
+lc_AnimOffsets:
+	dc.l	0,23*65*64,24*65*64
+	dc.l	0,38*65*64+[65*32],38*65*64+[65*32]+32
+	dc.l	0,29*65*64,29*65*64+[65*32],30*65*64,30*65*64+[65*32]
+	dc.l	0,32*65*64,32*65*64+32,32*65*64+[65*32],32*65*64+[65*32]+32
+	dc.l	0,34*65*64,34*65*64+32,34*65*64+[65*32],34*65*64+[65*32]+32
+
+lc_Enemy1Offsets:
+	dc.l	40*65*64,40*65*64+[65*32],41*65*64,41*65*64+[65*32]
+	dc.l	42*65*64,42*65*64+[65*32],43*65*64,43*65*64+[65*32]
+	dc.l	44*65*64,44*65*64+[65*32],45*65*64,45*65*64+[65*32]
+	dc.l	46*65*64,46*65*64+[65*32],47*65*64,47*65*64+[65*32]
+	dc.l	48*65*64,48*65*64+[65*32],49*65*64,49*65*64+[65*32]
+	dc.l	50*65*64,50*65*64+[65*32],51*65*64,51*65*64+[65*32]
+lc_Enemy2Offsets:
+	dc.l	52*65*64+[65*32]
+	dc.l	53*65*64,53*65*64+[65*32],54*65*64,54*65*64+[65*32]
+	dc.l	55*65*64,55*65*64+[65*32],56*65*64,56*65*64+[65*32]
+	dc.l	57*65*64,57*65*64+[65*32],58*65*64,58*65*64+[65*32]
+	dc.l	59*65*64,59*65*64+[65*32],60*65*64,60*65*64+[65*32]
+	dc.l	61*65*64,61*65*64+[65*32],62*65*64,62*65*64+[65*32]
+	dc.l	63*65*64,63*65*64+[65*32],64*65*64
+
+lc_EnemyDirTab:
+	dc.w	52,56,52,56
+	dc.w	44,40,48,40
+	dc.w	32,36,32,36
+	dc.w	4,0,8,0
+	dc.w	12,16,12,16
+	dc.w	24,20,28,20
+	dc.l	0
+
+
+;-------------------------------------------------------------------
+lc_GodModeCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$dd,-$d1,0	; hotkiwi - god mode
+lc_EnergyCode:		dc.b	-$b5,-$cf,-$d7,-$91,-$bf,-$91,-$bf,0 	; hotmama
+lc_AmmoCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$bd,-$bd,0	; hotkiss
+lc_CardCode:		dc.b	-$b5,-$cf,-$d7,-$cd,-$cf,-$cd,-$bd,0	; hotkpops
+lc_WallCode:		dc.b	-$d1,-$bb,-$bf,-$b5,-$cf,0				; idaho
+lc_MapCode:			dc.b	-$af,-$cf,-$d9,-$d1,-$db,-$93,0			; lorien
+lc_LevelCode:		dc.b	-$b1,-$d1,-$d7,-$d1,-$bf,-$d9,-$bf,0 	; kitiara
+lc_BombCode:		dc.b	-$bf,-$af,-$d1,-$95,-$bf,-$95,-$bf,0 	; alibaba
 
 EVEN
 
@@ -8281,15 +8380,17 @@ makeCompassTable:
 
 ; draw compass from pre-calculated frames
 drawCompass:
-		lea		compFrameAddr(pc),a1
-		lea		sv_Compas,a2
 		move	sv_angle,d6
 		lsr		#2,d6
 		andi	#[COMP_ANIM_FRAMES-1]<<2,d6
-;		add		d6,d6
-;		add		d6,d6
+		lea		lc_variables(pc),a6
+		cmp		lc_lastCompassAngle(a6),d6
+		beq.s	.exit
+		move	d6,lc_lastCompassAngle(a6)		; save last drawn angle to avoid redrawing if not needed
+
+		lea		compFrameAddr(pc),a1
+		lea		sv_Compas,a2
 		move.l	(a1,d6.w),a1
-;	move.l	24(a1),a1
 
 		moveq	#12,d0			; this will miss the last 27-th line
 .dc_loop:	
@@ -8307,7 +8408,7 @@ drawCompass:
 
 		lea		10*row(a2),a2
 		dbf		d0,.dc_loop
-
+.exit:
 		rts
 
 compFrameAddr:	blk.l	COMP_ANIM_FRAMES,0
@@ -8421,7 +8522,7 @@ drawCompassFrame:
 .l_octant:	dc.b	1,8+1,16+1,20+1
 ;-------------------------------------------------------------------
 ; Test all counters (life etc.) and react accordingly
-TEST_COUNTERS:
+Test_Counters:
 		movem.l	ALL,-(sp)
 		lea		lc_variables(pc),a6
 		lea		sv_Energy,a1
@@ -8981,7 +9082,7 @@ ci_NewWeapon:
 		dbf		d0,.ci_BufItem
 
 
-		lea	sv_ItemOffsets,a1
+		lea		lc_ItemOffsets(pc),a1
 		cmpi	#14,d1			;Fix card icon
 		bmi.s	ci_NotCards
 		addi	#12,d1
@@ -9392,7 +9493,7 @@ oc_Mul10Tab:	dc.w	10,20,30,40,50
 oc_DrawOpen:
 		moveq	#0,d0
 		move.b	-1(a1),d0		;open value for DBF
-		move.l	sv_WallOffsets+[4*14],d1
+		move.l	lc_WallOffsets+[4*14](pc),d1
 		move.l	sv_Consttab+12,a1
 		lea	(a1,d1.l),a1		;required wall start
 		lea	[13*65]+3(a1),a1	;closed door
@@ -9442,7 +9543,7 @@ oc_MulD2Tab:	dc.b	0,2,4,6,8,10
 oc_DrawOpen2:	moveq	#0,d0
 		move.b	-1(a1),d0
 		move.b	oc_MulD2Tab(pc,d0.w),d0	;real open value
-		move.l	sv_WallOffsets+[4*17],d1
+		move.l	lc_WallOffsets+[4*17](pc),d1
 		move.l	sv_Consttab+12,a1
 		lea	(a1,d1.l),a1
 		lea	[7*65]+3(a1),a1
@@ -9583,14 +9684,15 @@ CheckCodes:
 		clr		2(a1)
 
 		lea		4(a1),a1					; start of letters
-		lea		EnergyCode,a2
+		lea		lc_EnergyCode(pc),a2
 		bsr		cco_Check
 		bne.s	chk_Ammo
 		lea		sv_ENERGY,a1
 		move	#-666,(a1)
 		SCROLL	66
 		bra.w	cco_End
-chk_Ammo:	lea	AmmoCode,a2
+chk_Ammo:	
+		lea		lc_AmmoCode(pc),a2
 		bsr		cco_Check
 		bne.s	chk_Card
 
@@ -9620,7 +9722,8 @@ chk_Ammo:	lea	AmmoCode,a2
 		SCROLL	67
 		bra.w	cco_End
 
-chk_Card:	lea	CardCode,a2
+chk_Card:	
+		lea		lc_CardCode(pc),a2
 		bsr		cco_Check
 		bne.s	chk_WallJump
 
@@ -9632,7 +9735,8 @@ chk_Card:	lea	CardCode,a2
 		bsr		tc_DrawCardCnt
 		bra.w	cco_End
 
-chk_WallJump:	lea	WallCode,a2
+chk_WallJump:	
+		lea		lc_WallCode(pc),a2
 		bsr.w	cco_Check
 		bne.s	chk_Godmode
 
@@ -9648,7 +9752,8 @@ chk_WallJump:	lea	WallCode,a2
 		add		d1,sv_PosY
 		bra.w	cco_End
 
-chk_Godmode:	lea	GodModeCode,a2
+chk_Godmode:	
+		lea		lc_GodModeCode(pc),a2
 		bsr.w	cco_Check
 		bne.s	chk_MapShow
 		SCROLL	66
@@ -9656,28 +9761,30 @@ chk_Godmode:	lea	GodModeCode,a2
 		eori.b	#1,STR_GODMODE(a2)
 		bra.s	cco_End
 chk_MapShow:
-		lea		MapCode,a2
+		lea		lc_MapCode(pc),a2
 		bsr.s	cco_Check
 		bne.s	cco_level
 
 		move.l	lc_F2_UserMap(pc),a1		;clr user map
 		moveq	#127,d0
-.ClrMap:	move.l	#-1,(a1)+
-		dbf	d0,.ClrMap
+.ClrMap: move.l	#-1,(a1)+
+		dbf		d0,.ClrMap
 		SCROLL	75
 		bra.s	cco_End
 
-cco_Level:	lea	LevelCode,a2		;end level
+cco_Level:	
+		lea		lc_LevelCode(pc),a2		;end level
 		bsr.s	cco_Check
 		bne.s	cco_Bomb
 		move	#1,lc_EndLevel(a6)
 		bra.s	cco_End
 
-cco_Bomb:	lea	BombCode,a2		;give bomb
+cco_Bomb:	
+		lea		lc_BombCode(pc),a2		;give bomb
 		bsr.s	cco_Check
 		bne.s	cco_End
 		move	#-12,sv_Glowica
-		bsr	DrawBomb
+		bsr		DrawBomb
 cco_End:	movem.l	(sp)+,ALL
 		rts
 
@@ -10417,13 +10524,13 @@ mk_DT2:	move	d3,(a3)+
 		move.l	4(a2),(a2)
 		move.l	-8(a2),-4(a2)
 
-		lea		sv_WallOffsets,a2	;remove zero wall bytes
+		lea		lc_WallOffsets(pc),a2	;remove zero wall bytes
 		move.l	wall_floor1(a2),d0
 		move.l	12(a1),a2
 		lea		(a2,d0.l),a2
 		move.l	a2,32(a1)		;floor addr - store in constants
 		bsr.w	mk_FixFloors
-		lea		sv_WallOffsets,a2
+		lea		lc_WallOffsets(pc),a2
 		move.l	wall_floor2(a2),d0
 		move.l	12(a1),a2
 		lea		(a2,d0.l),a2
@@ -10465,7 +10572,7 @@ mk_FixRot:	move.l	(a2),d1
 mk_NotFR:
 
 		; --- eliminate zero-line collumn & enemy drawing
-		lea		sv_CollumnOffsets,a2
+		lea		lc_CollumnOffsets(pc),a2
 		move.l	(a2),d0
 		move.l	sv_Consttab+12,a2
 		lea		(a2,d0.l),a2		;first col.addr
@@ -10481,7 +10588,7 @@ mk_NotFR:
 		move	#[24*32]-1,d7
 		bsr		mk_coll1
 
-		lea		sv_BloodOffsets,a2	;blood not zero-wall! - clear zero wall indicators
+		lea		lc_BloodOffsets(pc),a2	;blood not zero-wall! - clear zero wall indicators
 		move.l	(a2),d0
 		move.l	sv_Consttab+12,a2
 		lea		(a2,d0.l),a2		;first blood.addr
@@ -10512,7 +10619,7 @@ mk_DouT2:	dbf	d3,mk_DTloop
 		lea	sc_Text,a2		;make text offsets
 		move.l	a2,d1
 		lea	sv_TextOffsets,a3
-.MTO1:		move.b	(a2)+,d0
+.MTO1:	move.b	(a2)+,d0
 		cmpi.b	#"@",d0
 		bne.s	.MTO1
 		move.l	a2,d0
@@ -11077,84 +11184,6 @@ cop2_area:
 ;ds.l	[260*3]
 EndCopper:
 
-;-------------------------------------------------------------------
-st_Offsets:
-	sv_Offsets:	equ	BASEC+$2a000		;$2e0
-	OFFSET	sv_Offsets
-
-sv_WallOffsets:		;start offsets of walls in table
-	dc.l	0,65*64,2*65*64,3*65*64,4*65*64
-	dc.l	5*65*64,6*65*64,7*65*64,8*65*64,9*65*64
-	dc.l	10*65*64,11*65*64,12*65*64,13*65*64,14*65*64
-	dc.l	15*65*64,16*65*64,17*65*64,18*65*64,19*65*64
-
-	dc.l	20*65*64,21*65*64,22*65*64,23*65*64,24*65*64
-	dc.l	25*65*64,26*65*64,39*65*64				;+buffer
-
-sv_CollumnOffsets:
-	dc.l	27*65*64,27*65*64+[65*32],28*65*64,28*65*64+[65*32]	;collumns
-	dc.l	29*65*64,29*65*64+[65*32],30*65*64,30*65*64+[65*32]
-	dc.l	31*65*64,31*65*64+32,31*65*64+[65*32],31*65*64+[65*32]+32 ;up
-	dc.l	32*65*64,32*65*64+32,32*65*64+[65*32],32*65*64+[65*32]+32
-	dc.l	33*65*64,33*65*64+32,33*65*64+[65*32],33*65*64+[65*32]+32 ;down
-	dc.l	34*65*64,34*65*64+32,34*65*64+[65*32],34*65*64+[65*32]+32
-
-	dc.l	52*65*64,52*65*64+32			;25-28 killed enemies
-	dc.l	64*65*64+[65*32],64*65*64+[65*32]+32
-
-sv_ItemOffsets:
-; items, 29-48
-	dc.l	65*65*64,65*65*64+32,65*65*64+[65*32],65*65*64+[65*32]+32
-	dc.l	66*65*64,66*65*64+32,66*65*64+[65*32],66*65*64+[65*32]+32
-	dc.l	67*65*64,67*65*64+32,67*65*64+[65*32],67*65*64+[65*32]+32
-	dc.l	68*65*64,68*65*64+32,68*65*64+[65*32],68*65*64+[65*32]+32
-	dc.l	69*65*64,69*65*64+32,69*65*64+[65*32],69*65*64+[65*32]+32
-	;objects, 49-64
-	dc.l	70*65*64-16,70*65*64
-	dc.l	70*65*64+[65*32]-16,70*65*64+[65*32]
-	dc.l	70*65*64+[65*48]-16,70*65*64+[65*48]
-	dc.l	70*65*64+[65*16]-16,70*65*64+[65*16],71*65*64+[65*32]+32
-	dc.l	71*65*64+[65*32]-16,71*65*64+[65*32],71*65*64+[65*32]+16
-	dc.l	70*65*64+32,70*65*64+[65*32]+32,71*65*64,71*65*64+32
-
-sv_BloodOffsets:
-	dc.l	35*65*64,36*65*64,37*65*64		;blood & tables
-	dc.l	38*65*64,38*65*64+32,38*65*64+[65*32],38*65*64+[65*32]+32
-
-sv_AnimOffsets:
-	dc.l	0,23*65*64,24*65*64
-	dc.l	0,38*65*64+[65*32],38*65*64+[65*32]+32
-	dc.l	0,29*65*64,29*65*64+[65*32],30*65*64,30*65*64+[65*32]
-	dc.l	0,32*65*64,32*65*64+32,32*65*64+[65*32],32*65*64+[65*32]+32
-	dc.l	0,34*65*64,34*65*64+32,34*65*64+[65*32],34*65*64+[65*32]+32
-
-sv_Enemy1Offsets:
-	dc.l	40*65*64,40*65*64+[65*32],41*65*64,41*65*64+[65*32]
-	dc.l	42*65*64,42*65*64+[65*32],43*65*64,43*65*64+[65*32]
-	dc.l	44*65*64,44*65*64+[65*32],45*65*64,45*65*64+[65*32]
-	dc.l	46*65*64,46*65*64+[65*32],47*65*64,47*65*64+[65*32]
-	dc.l	48*65*64,48*65*64+[65*32],49*65*64,49*65*64+[65*32]
-	dc.l	50*65*64,50*65*64+[65*32],51*65*64,51*65*64+[65*32]
-sv_Enemy2Offsets:
-	dc.l	52*65*64+[65*32]
-	dc.l	53*65*64,53*65*64+[65*32],54*65*64,54*65*64+[65*32]
-	dc.l	55*65*64,55*65*64+[65*32],56*65*64,56*65*64+[65*32]
-	dc.l	57*65*64,57*65*64+[65*32],58*65*64,58*65*64+[65*32]
-	dc.l	59*65*64,59*65*64+[65*32],60*65*64,60*65*64+[65*32]
-	dc.l	61*65*64,61*65*64+[65*32],62*65*64,62*65*64+[65*32]
-	dc.l	63*65*64,63*65*64+[65*32],64*65*64
-
-sv_EnemyDirTab:
-	dc.w	52,56,52,56
-	dc.w	44,40,48,40
-	dc.w	32,36,32,36
-	dc.w	4,0,8,0
-	dc.w	12,16,12,16
-	dc.w	24,20,28,20
-
-	dc.l	0
-	ENDOFF
-end_offsets:
 
 ;-------------------------------------------------------------------
 ;---------------CONSTANTS:
@@ -11361,17 +11390,8 @@ sv_InSquarePos:	dc.w	0,0			;x,y in square. This MUST be directly after sv_Square
 
 ;---------------OTHER TABLES:
 
-GodModeCode:	dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$dd,-$d1,0	; hotkiwi - god mode
-EnergyCode:		dc.b	-$b5,-$cf,-$d7,-$91,-$bf,-$91,-$bf,0 	; hotmama
-AmmoCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$bd,-$bd,0	; hotkiss
-CardCode:		dc.b	-$b5,-$cf,-$d7,-$cd,-$cf,-$cd,-$bd,0	; hotkpops
-WallCode:		dc.b	-$d1,-$bb,-$bf,-$b5,-$cf,0				; idaho
-MapCode:		dc.b	-$af,-$cf,-$d9,-$d1,-$db,-$93,0			; lorien
-LevelCode:		dc.b	-$b1,-$d1,-$d7,-$d1,-$bf,-$d9,-$bf,0 	; kitiara
-BombCode:		dc.b	-$bf,-$af,-$d1,-$95,-$bf,-$95,-$bf,0 	; alibaba
 even
 
-				dc.l	0,$01020304
 	ENDOFF
 
 lc_items:
