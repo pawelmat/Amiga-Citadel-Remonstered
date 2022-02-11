@@ -6624,31 +6624,8 @@ sv_NextBit:
 		movem.l	(sp)+,ALL
 		rts
 
+
 ;-------------------------------------------------------------------
-; C2P - Copy SVGA format to Amiga screen (CPU) - by Kane/SCT, 06.02.1994
-; Tha main loop just about fits in cache: $f4
-;a1 - screen addr to start
-
-c2p_Copy_CPU_noStretch_Cache:
-		movem.l	ALL,-(sp)
-		move.l	lc_ChunkyBuffer(pc),a0
-		lea		row(a1),a2
-		lea		row(a2),a3
-		lea		row(a3),a4
-		lea		row(a4),a5
-
-		move	#5*row,d0
-		sub		sv_ViewWidth,d0
-		move	d0,a6			;scr modulo
-		move	sv_ViewWidth,d0
-		subq	#1,d0
-		move	d0,-(sp)		;width for dbf
-
-		move	sv_ViewHeigth,d7
-		subq	#1,d7
-		lea		-2(sp),sp
-		bra.s	sv2_Vertical
-
 ConvBits:	macro
 		add.b	d0,d0			;convert bits
 		addx.b	d1,d1
@@ -6661,8 +6638,174 @@ ConvBits:	macro
 		add.b	d0,d0
 		addx.b	d5,d5
 		endm
+		
+;-------------------------------------------------------------------
+; C2P - Copy SVGA format to Amiga screen (CPU) - by Kane/SCT, 06.02.1994
+; Tha main loop just about fits in cache: $f4
+;a1 - screen addr to start
 
+; ---- ADDX C2P C2P ----
+; c2p_Copy_CPU_noStretch_Cache:
+; 		movem.l	ALL,-(sp)
+; 		move.l	lc_ChunkyBuffer(pc),a0
+; 		lea		row(a1),a2
+; 		lea		row(a2),a3
+; 		lea		row(a3),a4
+; 		lea		row(a4),a5
+
+; 		move	#5*row,d0
+; 		move	sv_ViewWidth,d1
+; 		sub		d1,d0			; scr modulo
+; 		move	d0,-(sp)
+; 		subq	#1,d1
+; 		move	d1,-(sp)		; width for dbf
+; 		move	sv_ViewHeigth,d7
+; 		subq	#1,d7
+; 		move	d7,-(sp)		; heigth for dbf
+; 		bra.s	sv2_Vertical
+; 		nop
+
+; CNOP 0,16		; cache line alignment (16 bytes)
+; sv2_Vertical:
+; 		move	d7,(sp)
+; 		move	2(sp),d7
+; sv2_Horizontal:
+; 		move	d7,a6
+; 		move.b	(a0)+,d0
+; 		add.b	d0,d0			; X=a0
+; 		move.b	(a0)+,d1
+; 		addx.b	d0,d0			; D0=c0..a0, X=b0
+; 		move.b	(a0)+,d2
+; 		addx.b	d1,d1			; D1=b1..b0, X=a1
+; 		move.b	(a0)+,d3
+; 		addx.b	d0,d0			; D0=d0..a0a1, X=c0
+; 		move.b	(a0)+,d4
+; 		addx.b	d2,d2			; D2=b2..c0, X=a2
+; 		move.b	(a0)+,d5
+; 		addx.b	d0,d0			; D0=e0..a0a1a2, X=d0
+; 		move.b	(a0)+,d6
+; 		addx.b	d3,d3			; D3=b3..d0, X=a3
+; 		move.b	(a0)+,d7
+; 		addx.b	d0,d0			; D0=0..a0a1a2a3, X=e0
+; 		addx.b	d4,d4			; D4=b4..e0, X=a4
+; 		addx.b	d0,d0			; D0=0..a0a1a2a3a4, X=?
+; 		add.b	d5,d5			; D5=b5.., X=a5
+; 		addx.b	d0,d0			; D0=0..a0a1a2a3a4a5, X=?
+; 		add.b	d6,d6			; D5=b6.., X=a6
+; 		addx.b	d0,d0			; D0=0..a0a1a2a3a4a5a6, X=?
+; 		add.b	d7,d7			; D5=b7.., X=a7
+; 		addx.b	d0,d0			; D0=a0a1a2a3a4a5a6a7, X=?
+; 		move.b	d0,(a1)+		; bpl#1
+
+; 		move	d1,d0
+; 		andi	#%00000001,d0
+; 		andi	#%11111110,d1
+; 		add.b	d1,d1			; D1=c1..0000, X=b1
+; 		or		d0,d1			; D1=c1..b0, X=b1
+; 		addx.b	d1,d1			; D1=d1..b0b1, X=c1
+; 		addx.b	d2,d2			; D2=c2..c0c1, X=b2
+; 		addx.b	d1,d1			; D1=e1..b0b1b2, X=d1
+; 		addx.b	d3,d3			; D3=c3..d0d1, X=b3
+; 		addx.b	d1,d1			; D1=0..b0b1b2b3, X=e1
+; 		addx.b	d4,d4			; D4=c4..e0e1, X=b4
+; 		addx.b	d1,d1			; D1=0..b0b1b2b3b4, X=?
+; 		add.b	d5,d5			; D5=c5.., X=b5
+; 		addx.b	d1,d1			; D1=0..b0b1b2b3b4b5, X=?
+; 		add.b	d6,d6			; D5=c6.., X=b6
+; 		addx.b	d1,d1			; D1=0..b0b1b2b3b4b5b6, X=?
+; 		add.b	d7,d7			; D5=c7.., X=b7
+; 		addx.b	d1,d1			; D1=b0b1b2b3b4b5b6b7, X=?
+
+; 		move	d2,d0
+; 		move.b	d1,(a2)+		; bpl#2
+; 		andi	#%00000011,d0
+; 		andi	#%11111100,d2
+; 		add.b	d2,d2			; D2=d2..000000, X=c2
+; 		or		d0,d2			; D2=d2..c0c1, X=c2
+; 		addx.b	d2,d2			; D2=e2..c0c1c2, X=d2
+; 		addx.b	d3,d3			; D3=d3..d0d1d2, X=c3
+; 		addx.b	d2,d2			; D2=0..c0c1c2c3, X=e2
+; 		addx.b	d4,d4			; D4=d4..e0e1e2, X=c4
+; 		addx.b	d2,d2			; D2=0..c0c1c2c3c4, X=?
+; 		add.b	d5,d5			; D5=d5.., X=c5
+; 		addx.b	d2,d2			; D2=0..c0c1c2c3c4c5, X=?
+; 		add.b	d6,d6			; D5=d6.., X=c6
+; 		addx.b	d2,d2			; D2=0..c0c1c2c3c4c5c6, X=?
+; 		add.b	d7,d7			; D5=d7.., X=c7
+; 		addx.b	d2,d2			; D2=c0c1c2c3c4c5c6c7, X=?
+
+; 		move	d3,d0
+; 		move.b	d2,(a3)+		; bpl#3
+; 		andi	#%00000111,d0
+; 		andi	#%11111000,d3
+; 		add.b	d3,d3			; D3=e3..0000, X=d3
+; 		or		d0,d3			; D3=e3..d0d1d2, X=d3
+; 		addx.b	d3,d3			; D3=0..d0d1d2d3, X=e3
+; 		addx.b	d4,d4			; D4=e4..e0e1e2e3, X=d4
+; 		addx.b	d3,d3			; D3=0..d0d1d2d3d4, X=?
+; 		add.b	d5,d5			; D5=e5.., X=d5
+; 		addx.b	d3,d3			; D3=0..d0d1d2d3d4d5, X=?
+; 		add.b	d6,d6			; D5=e6.., X=d6
+; 		addx.b	d3,d3			; D3=0..d0d1d2d3d4d5d6, X=?
+; 		add.b	d7,d7			; D5=e7.., X=d7
+; 		addx.b	d3,d3			; D3=d0d1d2d3d4d5d6d7, X=?
+
+; 		move	d4,d0
+; 		move.b	d3,(a4)+		; bpl#4
+; 		andi	#%00001111,d0
+; 		andi	#%11110000,d4
+; 		add.b	d4,d4			; D4=0..00000000, X=e4
+; 		or		d0,d4			; D4=0..e0e1e2e3, X=e4
+; 		addx.b	d4,d4			; D4=0..e0e1e2e3e4, X=?
+; 		add.b	d5,d5			; D5=0.., X=e5
+; 		addx.b	d4,d4			; D4=0..e0e1e2e3e4e5, X=?
+; 		add.b	d6,d6			; D5=0.., X=e6
+; 		addx.b	d4,d4			; D4=0..e0e1e2e3e4e5e6, X=?
+; 		add.b	d7,d7			; D5=0.., X=e7
+; 		addx.b	d4,d4			; D4=e0e1e2e3e4e5e6e7, X=?
+; 		move.b	d4,(a5)+		; bpl#5
+
+; 		move	a6,d7
+;  		dbf		d7,sv2_Horizontal		
+
+; 		move	4(sp),d0
+; 		add		d0,a1			; add modulo
+; 		add		d0,a2
+; 		add		d0,a3
+; 		add		d0,a4
+; 		add		d0,a5
+
+; 		move	(sp),d7
+; 		dbf		d7,sv2_Vertical
+
+; sv2_endloop:
+; 		lea		6(sp),sp
+; 		movem.l	(sp)+,ALL
+; 		rts
+
+
+;---- Original C2P ----
+c2p_Copy_CPU_noStretch_Cache:
+		movem.l	ALL,-(sp)
+		move.l	lc_ChunkyBuffer(pc),a0
+		lea		row(a1),a2
+		lea		row(a2),a3
+		lea		row(a3),a4
+		lea		row(a4),a5
+
+		move	#5*row,d0
+		move	sv_ViewWidth,d1
+		sub		d1,d0
+		move	d0,a6			; scr modulo
+		subq	#1,d1
+		move	d1,-(sp)		; width for dbf
+
+		move	sv_ViewHeigth,d7
+		subq	#1,d7
+		lea		-2(sp),sp
+		bra.s	sv2_Vertical
 		nop
+
 CNOP 0,16		; cache line alignment (16 bytes)
 sv2_Vertical:
 		move	d7,(sp)			;save heigth
