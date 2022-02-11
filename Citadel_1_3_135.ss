@@ -26,11 +26,11 @@ DEBUGDATA:	equ	$80000			; for debug only. Deployed versions should not use it
 
 select_cache:	equ	0			;TODO: remove. 1-user selects cache
 
-;BASEF1:		equ	$07e00000		; Fast on a real A4000
+;BASEF1:		equ	$07e00000	; Fast on a real A4000
 BASEF1:		equ	$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $200000)
-;BASEF1:		equ	$00cf0000		; Fast on a real A500 (starts at $c00000)
-;BASEF1:		equ	$40400000			; Z3 fast. First 0.5MB memory. Hopefully Fast
-BASEF2:		equ	BASEF1+$80000		; Z3 fast. Second 0.5MB memory. Hopefully Fast
+;BASEF1:		equ	$00cf0000	; Fast on a real A500 (starts at $c00000)
+;BASEF1:		equ	$40400000	; Z3 fast. First 0.5MB memory. Hopefully Fast
+BASEF2:		equ	BASEF1+$80000	; Z3 fast. Second 0.5MB memory. Hopefully Fast
 
 CODESTART:	equ	$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
 
@@ -513,9 +513,9 @@ start:
 .sc_NoSave:
 
 		bsr		makeHBTable			; generate HB animation frames
+		bsr		makeCompassTable	; generate compass animation frames
 
 	;--- clear counters
-;		lea		sv_C2Save,a1		;zero counter first
 		move.l	lc_F2_C2Save(pc),a1
 		lea		sv_Counter2,a2
 		moveq	#[18*5]-1,d0
@@ -533,6 +533,17 @@ start:
 		move.b	(a1)+,3(a2)
 		lea		row(a2),a2
 		dbf		d0,.sc_ResItem
+
+		move.l	lc_F2_CompasSav(pc),a1
+		lea		sv_Compas,a2
+		moveq	#26,d0
+.sc_ResComp:	move.l	(a1)+,(a2)		;zero compass
+		move.l	(a1)+,row(a2)
+		move.l	(a1)+,2*row(a2)
+		move.l	(a1)+,3*row(a2)
+		move.l	(a1)+,4*row(a2)
+		lea		5*row(a2),a2
+		dbf		d0,.sc_ResComp
 
 		lea		start(pc),a1		;copy copper to chip
 		addi.l	#copper-start,a1
@@ -890,7 +901,7 @@ sv_Cloop0:
 		bsr		DebugCntShow
 .sv_nodebug:
 	CNTSTART 8
-		bsr		compass			; refresh compass
+		bsr		drawCompass		; refresh compass
 		bsr		sv_DoAnims		; animate walls (change between frames) and advance enemy walk animation
 		bsr		Anim_Objects	; animate moving objects such as doors, projectiles etc.
 		bsr		UpdateUserMap	; update user display-map
@@ -1622,7 +1633,7 @@ rm_HandGunUsed:					; input: d0 = weapon index: 0 (hand), 6 (handgun) etc.
 		move	d1,4(a1)
 		move.b	#1,(a1)
 
-		lea		oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea		sv_MAP,a3
 		moveq	#19,d7			;up to 8000
 .ChkCollision:	bsr.s	Object_Collision	;seek collision
@@ -1678,85 +1689,85 @@ seed:		dc.l	$12345678
 Object_Collision:
 		move.l	a4,-(sp)
 		moveq	#7,d6
-oc_LOOP:	move	#0,(a2)			;zero hit poses
+oc_LOOP: move	#0,(a2)			;zero hit poses
 		move	#0,8(a2)
 		ori.l	#$00010001,2(a1)
 		move	6(a1),d0		;actual pos X
 		move	d0,d1
 		andi	#$fc00,d0
-		add	2(a1),d1		;new pos X
+		add		2(a1),d1		;new pos X
 		andi	#$fc00,d1
-		cmp	d1,d0
+		cmp		d1,d0
 		beq.s	.oc_NotInX
-		smi	d2			;-1 if d1>d0
+		smi		d2			;-1 if d1>d0
 		bmi.s	.oc_x0
 		move	d0,d1
-.oc_x0:		ext	d2
-		add	d2,d1			;fix right margin
+.oc_x0:	ext		d2
+		add		d2,d1			;fix right margin
 		move	d1,2(a2)		;save x1 pos
 		move	d1,d0
 		moveq	#1,d2			;direction
-		sub	6(a1),d1		;x
+		sub		6(a1),d1		;x
 		bpl.s	.oc_x1
 		moveq	#3,d2
-.oc_x1:		muls	4(a1),d1		;x*dy
+.oc_x1:	muls	4(a1),d1		;x*dy
 		divs	2(a1),d1		;(x*dy)/dx
-		add	8(a1),d1
+		add		8(a1),d1
 		move	d1,4(a2)		;save y1 pos
 
-		lsr	#7,d0
+		lsr		#7,d0
 		andi	#63*8,d0
-		lsr	d1
+		lsr		d1
 		andi	#63*512,d1
-		add	d1,d0			;map offset
+		add		d1,d0			;map offset
 		move	d0,6(a2)		;save offset
-		add	d2,d0			;+dir
+		add		d2,d0			;+dir
 		move.b	(a3,d0.w),d4
-		bsr	br_ChkDoors
+		bsr		br_ChkDoors
 		beq.s	.oc_NotInX		;no wall there
 		move	#1,(a2)			;set hit1 flag
 .oc_NotInX:
 		move	8(a1),d0		;actual pos Y
 		move	d0,d1
 		andi	#$fc00,d0
-		add	4(a1),d1		;new pos Y
+		add		4(a1),d1		;new pos Y
 		andi	#$fc00,d1
-		cmp	d1,d0
+		cmp		d1,d0
 		beq.s	.oc_NotInY
-		smi	d2			;-1 if d1>d0
+		smi		d2			;-1 if d1>d0
 		bmi.s	.oc_y0
 		move	d0,d1
-.oc_y0:		ext	d2
-		add	d2,d1			;fix up margin
+.oc_y0:	ext		d2
+		add		d2,d1			;fix up margin
 		move	d1,12(a2)		;save y2 pos
 		move	d1,d0
 		moveq	#0,d2
-		sub	8(a1),d0		;y
+		sub		8(a1),d0		;y
 		bpl.s	.oc_y1
 		moveq	#2,d2
-.oc_y1:		muls	2(a1),d0		;y*dx
+.oc_y1:	muls	2(a1),d0		;y*dx
 		divs	4(a1),d0		;(y*dx)/dy
-		add	6(a1),d0
+		add		6(a1),d0
 		move	d0,10(a2)		;save x2 pos
 
-		lsr	#7,d0
+		lsr		#7,d0
 		andi	#63*8,d0
-		lsr	d1
+		lsr		d1
 		andi	#63*512,d1
-		add	d1,d0
+		add		d1,d0
 		move	d0,14(a2)		;save offset
-		add	d2,d0			;+dir
+		add		d2,d0			;+dir
 		move.b	(a3,d0.w),d4
-		bsr	br_ChkDoors
+		bsr		br_ChkDoors
 		beq.s	.oc_NotInY		;no wall there
 		move	#1,8(a2)		;set hit1 flag
 .oc_NotInY:
-		tst	(a2)			;choose hit wall
+		tst		(a2)			;choose hit wall
 		beq.s	.oc_FirstNot
-		tst	8(a2)
+		tst		8(a2)
 		beq.s	.oc_OnlyFirst
 		move	10(a1),d0		;old offset
-		cmp	14(a1),d0		;second hit is diz sqare?
+		cmp		14(a1),d0		;second hit is diz sqare?
 		beq.s	.oc_FN1
 .oc_OnlyFirst:	move	2(a2),6(a1)		;copy pos
 		move	4(a2),8(a1)
@@ -1764,22 +1775,22 @@ oc_LOOP:	move	#0,(a2)			;zero hit poses
 		bra.w	oc_WallHit
 .oc_FirstNot:	tst	8(a2)
 		beq.s	.oc_BothNot
-.oc_FN1:	move	10(a2),6(a1)
+.oc_FN1: move	10(a2),6(a1)
 		move	12(a2),8(a1)
 		move	14(a2),10(a1)
 		bra.w	oc_WallHit
 
 .oc_BothNot:	movem	2(a1),d0/d1
-		add	d0,6(a1)
-		add	d1,8(a1)
+		add		d0,6(a1)
+		add		d1,8(a1)
 		movem	6(a1),d0/d1
 		move	d0,d2
 		move	d1,d3
-		lsr	#7,d2
+		lsr		#7,d2
 		andi	#63*8,d2
-		lsr	d3
+		lsr		d3
 		andi	#63*512,d3
-		add	d3,d2
+		add		d3,d2
 		move	d2,10(a1)		;save offset
 		andi	#1023,d0		;in-square pos X
 		andi	#1023,d1		;Y
@@ -1791,7 +1802,7 @@ oc_LOOP:	move	#0,(a2)			;zero hit poses
 		beq.s	oc_okkk
 		cmpi.b	#3,d3			;only col's 1,2
 		bpl.w	oc_NoWallHit
-oc_okkk:	cmpi	#512-190,d0		;chk if in column
+oc_okkk: cmpi	#512-190,d0		;chk if in column
 		bmi.w	oc_NoWallHit
 		cmpi	#512-190,d1
 		bmi.w	oc_NoWallHit
@@ -1801,32 +1812,32 @@ oc_okkk:	cmpi	#512-190,d0		;chk if in column
 		bpl.w	oc_NoWallHit
 
 		cmpi.b	#18,d3			;beczka
-		bne	oc_WallHit
-		tst	eh_FirePos+4		;if exploding beczka
-		bne	oc_WallHit
+		bne		oc_WallHit
+		tst		eh_FirePos+4		;if exploding beczka
+		bne		oc_WallHit
 		cmpi.b	#4,(a1)			;if prad
-		beq	oc_WallHit
+		beq		oc_WallHit
 		movem.l	a2/d3/d4,-(sp)
-		lea	oc_beczkas(pc),a2
+		lea		oc_beczkas(pc),a2
 		moveq	#0,d3
-.bc_1:		cmp	(a2,d3.w),d2		;recorded beczka
+.bc_1:	cmp		(a2,d3.w),d2		;recorded beczka
 		beq.s	.bc_found
 		addq	#4,d3
 		cmpi	#16*4,d3
 		bne.s	.bc_1
 		moveq	#0,d3
-.bc_2:		tst	(a2,d3.w)		;found clear
+.bc_2:	tst		(a2,d3.w)		;found clear
 		beq.s	.bc_clr
 		addq	#4,d3
 		cmpi	#16*4,d3
 		bne.s	.bc_2
 		moveq	#0,d3			;first if no clear
-.bc_clr:	move	d2,(a2,d3.w)
+.bc_clr: move	d2,(a2,d3.w)
 .bc_found:	moveq	#30,d4
 		cmpi.b	#1,(a1)
 		bne.s	.bc_3
 		moveq	#5,d4
-.bc_3:		add	d4,2(a2,d3.w)
+.bc_3:	add		d4,2(a2,d3.w)
 		cmpi	#30,2(a2,d3.w)
 		bmi.s	.bc_4
 		move.l	#0,(a2,d3.w)
@@ -1834,9 +1845,9 @@ oc_okkk:	cmpi	#512-190,d0		;chk if in column
 		andi.b	#%11000000,6(a3,d2.w)	;item out of map
 		movem.l	(sp)+,a2/d3/d4
 		move	#-1,-(sp)		;if beczka
-		bra	oc_CheckError
-.bc_4:		movem.l	(sp)+,a2/d3/d4
-		bra	oc_WallHit
+		bra		oc_CheckError
+.bc_4:	movem.l	(sp)+,a2/d3/d4
+		bra		oc_WallHit
 
 oc_beczkas:	blk.l	16,0
 
@@ -1845,42 +1856,42 @@ oc_NoWallHit:	tst	sv_HitFlag
 		movem	6(a1),d0/d1		;player hit?
 		movem	sv_PosX,d2/d3
 		subi	#250,d2
-		cmp	d0,d2
+		cmp		d0,d2
 		bpl.s	oc_PlayerNot
 		addi	#500,d2
-		cmp	d0,d2
+		cmp		d0,d2
 		bmi.s	oc_PlayerNot
 		subi	#250,d3
-		cmp	d1,d3
+		cmp		d1,d3
 		bpl.s	oc_PlayerNot
 		addi	#500,d3
-		cmp	d1,d3
+		cmp		d1,d3
 		bpl.s	oc_MeHit
 
 
 oc_PlayerNot:	move	10(a1),d1		;Enemy hit?
 		moveq	#0,d5
 .oc_EnemyChk:	move	d1,d0
-		add	oc_AddTab(pc,d5.w),d0
+		add		oc_AddTab(pc,d5.w),d0
 		move.b	7(a3,d0.w),d0
 		beq.s	.oc_e9
 
-		lea	sv_EnemyData,a4		;EnemyTab
+		lea		sv_EnemyData,a4		;EnemyTab
 		andi	#$ff,d0
-		lsl	#4,d0
-		lea	(a4,d0.w),a4
+		lsl		#4,d0
+		lea		(a4,d0.w),a4
 		movem	4(a4),d2/d3		;X,Y of enemy
-		sub	6(a1),d2
+		sub		6(a1),d2
 		bpl.s	.oc_e1
-		neg	d2
-.oc_e1:		cmpi	#200,d2			;Xdelta < 256?
+		neg		d2
+.oc_e1:	cmpi	#200,d2			;Xdelta < 256?
 		bpl.s	.oc_e9
-		sub	8(a1),d3
+		sub		8(a1),d3
 		bpl.s	.oc_e2
-		neg	d3
-.oc_e2:		cmpi	#200,d3			;Ydelta too?
+		neg		d3
+.oc_e2:	cmpi	#200,d3			;Ydelta too?
 		bmi.s	oc_EnemyHit
-.oc_e9:		addq	#2,d5
+.oc_e9:	addq	#2,d5
 		cmpi	#9*2,d5
 		bne.s	.oc_EnemyChk
 
@@ -1892,10 +1903,10 @@ oc_NothingHit:	dbf	d6,oc_LOOP
 oc_AddTab:	dc.w	0,8,-8,512,-512,512-8,512+8,-512-8,-512+8
 
 oc_EnemyHit:	move	#3,-(sp)
-		bsr	EnemyHitServe
+		bsr		EnemyHitServe
 		bra.s	oc_CheckError
-oc_MeHit:	move	#2,-(sp)		;if player hit
-		bsr	oc_PlayerHit
+oc_MeHit: move	#2,-(sp)		;if player hit
+		bsr		oc_PlayerHit
 		bra.s	oc_CheckError
 oc_WallHit:	move	#1,-(sp)
 
@@ -1910,11 +1921,11 @@ oc_CheckError:	move	6(a1),d0		;object pos
 		move	d3,d5
 		addi	#512,d2
 		addi	#512,d3
-		sub	d0,d2
-		sub	d1,d3			;d2,d3 - vector 2
-		sub	sv_PosX,d0
+		sub		d0,d2
+		sub		d1,d3			;d2,d3 - vector 2
+		sub		sv_PosX,d0
 		muls	d2,d0
-		sub	sv_PosY,d1		;d0,d1 - vector	1
+		sub		sv_PosY,d1		;d0,d1 - vector	1
 		muls	d3,d1
 		add.l	d1,d0
 		bmi.w	oc_ColQuit		;quit if behind half
@@ -1925,45 +1936,45 @@ oc_CheckError:	move	6(a1),d0		;object pos
 		move	sv_PosY,d1
 		move	d1,d3
 		andi	#63*1024,d3
-		cmp	d2,d4			;if in the same square
+		cmp		d2,d4			;if in the same square
 		bne.s	oc_ErCont
-		cmp	d3,d5
+		cmp		d3,d5
 		beq.s	oc_SameSquare
 oc_ErCont:
-		sub	8(a1),d1		;dy
+		sub		8(a1),d1		;dy
 		moveq	#1,d2			;dir
 		moveq	#-8,d3
-		sub	6(a1),d0		;dx
+		sub		6(a1),d0		;dx
 		bne.s	.oc_No0
 		addq	#1,d0
-.oc_No0:	bmi.s	.oc_Xplus
+.oc_No0:bmi.s	.oc_Xplus
 		addi	#1024,d4
 		moveq	#3,d2
 		moveq	#8,d3
 .oc_Xplus:	sub	6(a1),d4		;x
 		muls	d1,d4
 		divs	d0,d4
-		add	8(a1),d4		;new y
+		add		8(a1),d4		;new y
 		andi	#63*1024,d4
-		cmp	d4,d5
+		cmp		d4,d5
 		beq.s	.oc_Yok
 		bmi.s	.oc_Yup
 		moveq	#0,d2
 		move	#-512,d3
 		bra.s	.oc_Yok
-.oc_Yup:	moveq	#2,d2
+.oc_Yup: moveq	#2,d2
 		move	#512,d3
-.oc_Yok:	movem	6(a1),d0/d1
-		lsr	#7,d0
+.oc_Yok: movem	6(a1),d0/d1
+		lsr		#7,d0
 		andi	#63*8,d0
-		lsr	d1
+		lsr		d1
 		andi	#63*512,d1
-		add	d1,d0
-		add	d3,d0			;shift
+		add		d1,d0
+		add		d3,d0			;shift
 		move	d0,d1
-		add	d2,d1			;wall dir
+		add		d2,d1			;wall dir
 		move.b	(a3,d1.w),d4
-		bsr	br_ChkDoors		;0 if no wall
+		bsr		br_ChkDoors		;0 if no wall
 		bne.s	oc_ColQuit		;wall there
 		move	d0,10(a1)		;save offset
 
@@ -2234,7 +2245,7 @@ rm_AmmoLoop:	move	d7,-(sp)
 		move	d1,4(a1)
 		move.b	#1,(a1)
 
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea	sv_MAP,a3
 		moveq	#24,d7			;up to 10000
 .ChkCollision:	bsr.w	Object_Collision	;seek collision
@@ -2306,7 +2317,7 @@ rm_BolterUsed:	tst	2(a1)
 .Efound:	move.b	#4,(a1)
 		move	#600/8,d1		;vector length
 		bsr.s	PrepareStruct
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea	sv_MAP,a3
 		bsr.w	Object_Collision	;seek collision
 		bne.s	.FirstHit		;if hit first time
@@ -2384,7 +2395,7 @@ rm_FlamerUsed:	tst	2(a1)
 .Efound:	move.b	#3,(a1)
 		move	#400/8,d1		;vector length
 		bsr.w	PrepareStruct
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea	sv_MAP,a3
 		bsr.w	Object_Collision	;seek collision
 		bmi.s	.rm_beczka3
@@ -2450,7 +2461,7 @@ rm_LauncherUsed:
 .Efound:	move.b	#5,(a1)
 		move	#600/8,d1		;vector length
 		bsr.w	PrepareStruct
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea	sv_MAP,a3
 		bsr.w	Object_Collision	;seek collision
 		bne.s	.FirstHit		;if hit first time
@@ -2478,7 +2489,7 @@ rm_LauncherUsed:
 ;-------------------------------------------------------------------
 ; animate dynamic objects such as shots etc.
 Anim_Objects:	
-		movem.l	ALL,-(sp)
+;		movem.l	ALL,-(sp)
 		move.l	lc_F2_ObjectTab(pc),a1
 		lea		sv_MAP,a3
 		moveq	#29,d7
@@ -2499,7 +2510,7 @@ ao_Seek: move.b	(a1),d0
 
 ao_StillSeek:	lea	12(a1),a1
 		dbf		d7,ao_seek
-		movem.l	(sp)+,ALL
+;		movem.l	(sp)+,ALL
 		rts
 
 
@@ -2517,7 +2528,7 @@ ao_OBJECT1:	move	(a1),d0
 		bra.s	ao_StillSeek
 
 ;---------------
-ao_PRAD:	move	(a1),d0
+ao_PRAD: move	(a1),d0
 		addq	#2,d0
 		move	d0,d1
 		andi	#$3e,d1
@@ -2525,23 +2536,23 @@ ao_PRAD:	move	(a1),d0
 		bne.s	.ao_p1
 		move	#0,(a1)			;hit nothing
 		bra.s	ao_StillSeek
-.ao_p1:		eori	#1,d0			;anim
+.ao_p1:	eori	#1,d0			;anim
 		move	d0,(a1)
 
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		bsr.w	Object_Collision	;seek collision
 		bne.s	.ao_p2			;if hit
 
 		andi	#$ff7f,(a1)
-		or	d1,(a1)			;before/behind
+		or		d1,(a1)			;before/behind
 		move	10(a1),d0
 		ori.b	#%10000000,6(a3,d0.w)	;put object on MAP
 		bra.s	ao_StillSeek
 
-.ao_p2:		move	10(a1),d0
+.ao_p2:	move	10(a1),d0
 		ori.b	#%10000000,6(a3,d0.w)	;put object on MAP
 		move	#$0200,d0
-		or	d1,d0
+		or		d1,d0
 		move	d0,(a1)			;wyladowanie
 		bra.w	ao_StillSeek
 
@@ -2557,7 +2568,7 @@ ao_FLAME:	move	(a1),d0
 .ao_f1:		eori	#1,d0			;anim
 		move	d0,(a1)
 
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		bsr.w	Object_Collision	;seek collision
 		bmi.w	ao_f2			;if hit beczka
 		bne.s	.ao_f2			;if hit
@@ -2601,7 +2612,7 @@ ao_ROCKET:	move	(a1),d0
 .ao_f1:		eori	#1,d0			;anim
 		move	d0,(a1)
 
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		bsr.w	Object_Collision	;seek collision
 		bne.s	ao_f2			;if hit
 		andi	#$ff7f,(a1)
@@ -2651,7 +2662,7 @@ ro_SetLoop:
 		move.l	(a5)+,2(a1)		;add
 		move	#$300,(a1)		;kula ognia
 		movem.l	a2/a4/a5/d5/d6,-(sp)
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		bsr.w	Object_Collision	;seek collision
 		movem.l	(sp)+,a2/a4/a5/d5/d6
 		tst	d0
@@ -2684,7 +2695,7 @@ ro_SetLoop2:
 		move	#$300,(a1)
 		moveq	#1,d6
 .ro_twice:	movem.l	a2/a4/a5/d6,-(sp)
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		bsr.w	Object_Collision	;seek collision
 		movem.l	(sp)+,a2/a4/a5/d6
 		tst	d0
@@ -3540,7 +3551,7 @@ es_PrepStruct0:	move.l	a1,-(sp)
 		andi	#63*512,d1
 		add	d1,d0			;map pos
 		move	d0,10(a1)
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea	sv_MAP,a3
 		rts
 
@@ -3612,7 +3623,7 @@ es_PrepStruct:	move.l	a1,-(sp)
 		andi	#63*512,d1
 		add	d1,d0			;map pos
 		move	d0,10(a1)
-		lea	oc_HitPos,a2
+		lea		lc_HitPos(pc),a2
 		lea	sv_MAP,a3
 		bsr	Object_Collision	;seek collision
 		rts
@@ -4473,26 +4484,78 @@ mc_clearScreen:
 
 		; --- CPU fill ceiling/floor
 cpuFill:
-		move.l	lc_ChunkyBuffer(pc),a1
 		move.l	sv_Fillcols,d0
-		lea		CUSTOM,a0
-		waitblt								; make sure previous C2P completed before clearing screen
 		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
-		bne.s	.FillFloorGap
+		bne		.FillFloorGap
 
-		move	lc_halfScreenBytes(a6),d2
-		lea		(a1,d2),a2
-		move	d2,d1
-		lsr		#6,d2
-		andi	#63,d1			; if no extra bytes after dividing by 64, then reduce by 1 pass
-		bne.s	.nor1
-		subq	#1,d2
-.nor1:	move	d2,d1
-		bsr.s	.floop
-		movea.l	a2,a1
-		move	d2,d1
- 		move.l	sv_Fillcols+4,d0
-		bra.s	.floop
+		moveq	#0,d7
+ 		move	lc_halfScreenBytes(a6),d7
+		move.l	d7,-(sp)
+		divu	#12*4*10,d7
+		move.l	d7,d0
+		andi.l	#$ffff0000,d0
+		bne.s	.sv_nosub
+		subi	#1,d7
+.sv_nosub:
+		move	d7,-(sp)
+		move.l	lc_screenBytes(a6),d0
+		move.l	a1,a6
+		move.l	a6,-(sp)
+		add.l	d0,a6
+
+		move.l	sv_Fillcols+4,d0
+		move.l	d0,d1
+		move.l	d0,d2
+		move.l	d1,d3
+		move.l	d2,d4
+		move.l	d3,d5
+		move.l	d4,d6
+		move.l	d0,a0
+		move.l	d1,a1
+		move.l	d2,a2
+		move.l	d3,a3
+		move.l	d4,a4
+
+		bsr.s	.sv_clr			; clear bottom half
+		move.l	(sp)+,a6		; chunkyu addr
+		move	(sp)+,d7		; half screen counter
+		move.l	(sp)+,d0		; half screen offset
+		add.l	d0,a6
+
+		move.l	sv_Fillcols,d0
+		move.l	d0,d1
+		move.l	d0,d2
+		move.l	d1,d3
+		move.l	d2,d4
+		move.l	d3,d5
+		move.l	d4,d6
+		move.l	d0,a0
+		move.l	d1,a1
+		move.l	d2,a2
+		move.l	d3,a3
+		move.l	d4,a4
+
+.sv_clr:
+.sv_c1:	REPT	10
+		movem.l	d0-d6/a0-a4,-(a6)
+		ENDR
+		dbf		d7,.sv_c1
+		rts
+
+; .oldCpuFill:
+; 		move	lc_halfScreenBytes(a6),d2
+; 		lea		(a1,d2),a2
+; 		move	d2,d1
+; 		lsr		#6,d2
+; 		andi	#63,d1			; if no extra bytes after dividing by 64, then reduce by 1 pass
+; 		bne.s	.nor1
+; 		subq	#1,d2
+; .nor1:	move	d2,d1
+; 		bsr.s	.floop
+; 		movea.l	a2,a1
+; 		move	d2,d1
+;  		move.l	sv_Fillcols+4,d0
+; 		bra.s	.floop
 
 .FillFloorGap:	
 		move	lc_floorBytes(a6),d1
@@ -5937,6 +6000,7 @@ lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after s
 
 lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
 lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
+lc_screenBytes:			dc.l	0				; equal to all chunky screen size in bytes (pixels)
 lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
 lc_halfScreenBlit:		dc.w	0				; BPLSIZE value for half of c2p screen (for floor filling)
 lc_floorGapBlit:		dc.w	0				; BPLSIZE for floor gap fill
@@ -5957,6 +6021,7 @@ lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
 ENDOFF
 
 lc_TextBuffer:			ds.b	20				; buffer for keys pressed to check for codes. 0.w index, 2.w changed flag, 4.w+16 buffer
+lc_HitPos:				dc.w	0,0,0,0,0,0,0,0	;flag,Xpos,Ypos,Offset
 
 ; addresses in Fast 2
 lc_F2_addresses:	; address, size
@@ -5979,8 +6044,10 @@ lc_F2_WindowSav:		dc.l	F2_WindowSav,0
 lc_F2_ItemBuf:			dc.l	F2_ItemBuf,0
 lc_F2_ItemSav:			dc.l	F2_ItemSav,0
 lc_F2_CompasSav:		dc.l	F2_CompasSav,0
+lc_F2_CompassFrames:	dc.l	F2_CompassFrames,0
 lc_F2_CardSav:			dc.l	F2_CardSav,0
 lc_F2_ObjectTab:		dc.l	F2_ObjectTab,0
+
 
 lc_F2_TopMem:		dc.l	F2_TopMem,0
 					dc.l	0
@@ -6039,7 +6106,7 @@ lc_soundList:	;list of all sounds used. Sound addr.l, length.w, freq.w
 		dc.l	0,0
 
 ; local additional texts
-txt_welcome:			dc.b	"CITADEL (REMASTERED)",0
+txt_welcome:			dc.b	"CITADEL (REMONSTERED)",0
 txt_welcome_bk:			dc.b	"WELCOME BACK!",0
 txt_fps_on:				dc.b	"FPS: ON",0
 txt_fps_off:			dc.b	"FPS: OFF",0
@@ -8195,12 +8262,62 @@ sc_EndScroll:
 		rts
 
 
+
+;-------------------------------------------------------------------
+; pre-generate compass animation frames
+COMP_ANIM_FRAMES:		equ		32		; number of heartbeat animation frames
+makeCompassTable:
+		move.l	lc_F2_CompassFrames(pc),a4
+		lea		compFrameAddr(pc),a5
+		moveq	#0,d6		; angle
+		moveq	#COMP_ANIM_FRAMES-1,d7
+.mc_loop:
+		move.l	a4,(a5)+
+		bsr		drawCompassFrame
+		addi	#[256/COMP_ANIM_FRAMES]*2,d6
+		lea		[27*4*5](a4),a4
+		dbf		d7,.mc_loop
+		rts
+
+; draw compass from pre-calculated frames
+drawCompass:
+		lea		compFrameAddr(pc),a1
+		lea		sv_Compas,a2
+		move	sv_angle,d6
+		lsr		#2,d6
+		andi	#[COMP_ANIM_FRAMES-1]<<2,d6
+;		add		d6,d6
+;		add		d6,d6
+		move.l	(a1,d6.w),a1
+;	move.l	24(a1),a1
+
+		moveq	#12,d0			; this will miss the last 27-th line
+.dc_loop:	
+		move.l	(a1)+,(a2)
+		move.l	(a1)+,row(a2)
+		move.l	(a1)+,2*row(a2)
+		move.l	(a1)+,3*row(a2)
+		move.l	(a1)+,4*row(a2)
+
+		move.l	(a1)+,5*row(a2)
+		move.l	(a1)+,6*row(a2)
+		move.l	(a1)+,7*row(a2)
+		move.l	(a1)+,8*row(a2)
+		move.l	(a1)+,9*row(a2)
+
+		lea		10*row(a2),a2
+		dbf		d0,.dc_loop
+
+		rts
+
+compFrameAddr:	blk.l	COMP_ANIM_FRAMES,0
 ;-------------------------------------------------------------------
 ; Draw the compass
-COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
+; In: a4 - compass frame, d6 - angle
+drawCompassFrame:	
+		movem.l	d0-d7/a1-a3,-(sp)
 		lea		sv_sinus,a1
 		lea		$80(a1),a2		;cosinus
-		move	sv_angle,d6
 		andi	#$1fe,d6
 		moveq	#0,d0			;wskazowka
 		moveq	#-11,d1
@@ -8211,46 +8328,44 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 		lea		sv_CompasClr,a1
 		lea		(a1),a2
 		moveq	#0,d2
-;		REPT	27
 		moveq	#26,d3
 .cclr:	move.l	d2,(a2)+
 		dbf		d3,.cclr
-;		ENDR
 
 		moveq	#16,d2			;center of compas
 		moveq	#13,d3
 
-		lea	.l_Octant(pc),a3
+		lea		.l_Octant(pc),a3
 		cmpi	d1,d3
 		bpl.s	.l_lineok
-		exg	d0,d2
-		exg	d1,d3
-.l_lineok:	moveq	#3,d4
+		exg		d0,d2
+		exg		d1,d3
+.l_lineok: moveq	#3,d4
 		move	d0,d5
 		move	d1,d6
-		sub	d3,d1
+		sub		d3,d1
 		bpl.s	.l_dr1
-		neg	d1
-.l_dr1:		sub	d2,d0
+		neg		d1
+.l_dr1:	sub		d2,d0
 		bpl.s	.l_dr2
 		eori	#%01,d4
-		neg	d0
-.l_dr2:		cmp	d0,d1
+		neg		d0
+.l_dr2:	cmp		d0,d1
 		bmi.s	.l_dr3
-		exg	d0,d1
+		exg		d0,d1
 		eori	#%10,d4
-.l_dr3:		move	d5,d7
+.l_dr3:	move	d5,d7
 		and.l	#$f,d7
-		ror	#4,d7
-		ori	#$0b4a,d7
+		ror		#4,d7
+		ori		#$0b4a,d7
 		swap	d7
 		move.b	(a3,d4.w),d7		;octant
-		add	d1,d1
-		add	d6,d6
-		add	d6,d6			;*4
+		add		d1,d1
+		add		d6,d6
+		add		d6,d6			;*4
 		and.l	#$fff0,d5
-		lsr	#3,d5
-		add	d6,d5
+		lsr		#3,d5
+		add		d6,d5
 		add.l	a1,d5				; address to use: draw the line in the clear area (sv_CompasClr)
 		lea		$dff000,a0
 		waitblt
@@ -8262,21 +8377,22 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 		move.l	d5,$54(a0)
 		sub		d0,d1
 		bpl.s	.l_dr4
-		ori	#$40,d7
-.l_dr4:		move	d1,$52(a0)
+		ori		#$40,d7
+.l_dr4:	move	d1,$52(a0)
 		move.l	d7,$40(a0)
 		sub	d0,d1
 		move	d1,$64(a0)
 		addq	#1,d0
-		lsl	#6,d0
+		lsl		#6,d0
 		addq	#2,d0
 		move	d0,$58(a0)
 
 		move.l	lc_F2_CompasSav(pc),a3
-		lea		sv_Compas,a2
+;		lea		sv_Compas,a2
+		move.l	a4,a2				; anim frame address
 		moveq	#26,d6
 		waitblt
-;		move	#$0440,$96(a0)		;blitter off...
+		move	#$0040,$96(a0)		;blitter off...
 		; copy compass back from the saved copy
 .l_RetComp:	
 		move.l	(a1)+,d0
@@ -8284,20 +8400,19 @@ COMPASS:	movem.l	d0-d7/a1-a3,-(sp)
 		not.l	d1
 		move.l	(a3)+,d2
 		or.l	d0,d2
-		move.l	d2,(a2)
+		move.l	d2,(a2)+
 		move.l	(a3)+,d2
 		and.l	d1,d2
-		move.l	d2,1*row(a2)
+		move.l	d2,(a2)+
 		move.l	(a3)+,d2
 		and.l	d1,d2
-		move.l	d2,2*row(a2)
+		move.l	d2,(a2)+
 		move.l	(a3)+,d2
 		and.l	d1,d2
-		move.l	d2,3*row(a2)
+		move.l	d2,(a2)+
 		move.l	(a3)+,d2
 		and.l	d1,d2
-		move.l	d2,4*row(a2)
-		lea		5*row(a2),a2
+		move.l	d2,(a2)+
 		dbf		d6,.l_RetComp
 
 		movem.l	(sp)+,d0-d7/a1-a3
@@ -10201,9 +10316,10 @@ mk_Wmt2: move	d2,(a3)+
 		dbf		d0,mk_Wmt2
 
 		move	sv_ViewHeigth,d2
-		lsr		#1,d2
 		mulu	d2,d1
-		move	d1,lc_halfScreenBytes(a6)		; save nr of bytes corresponding to half of the screen
+		move.l	d1,lc_screenBytes(a6)		; save nr of bytes corresponding to full chunky screen
+		lsr.l	#1,d1
+		move	d1,lc_halfScreenBytes(a6)		; save nr of bytes corresponding to half of the chunky screen
 
 		lea		(a2,d1.w),a2		;SCR tab middle
 		move.l	a2,8(a1)
@@ -10537,7 +10653,7 @@ sv_cont:
 		move	d0,sv_ViewWidth			; in bytes (pixels/8)
 		tst		sv_StrFlag
 		beq.s	sv_SWS1
-		move	#128,d1
+		move	#128,d1			; this causes screen distortion as it should be different for "size 4" which is used while stretching
 		bra.s	sv_SWS2
 sv_SWS1:	
 		move.l	d0,d1
@@ -10587,6 +10703,7 @@ sv_SWS2:
 		move.l	d2,sv_offset
 
 		lea		$dff000,a0
+		VBLANK
 ;		move.l	#$90f2c4,cop_borders
 		move.b	#$c9,cop_cont		;panel pos
 		move.b	#$ca,cop_cont2
@@ -10594,31 +10711,14 @@ sv_SWS2:
 		tst		sv_StrFlag			; is current screen stretched?
 		beq		sv_SWS7				; no - omit this section
 
-		move	#1,sv_StrFlag+2		; mark last screen as stretched
-;		tst		sv_StrFlag+2		; yes - was last stretched?
-;		beq.s	.sv_lastnot		;no
 ; -------- handle stretched screen ----------------
-		VBLANK
+		move	#1,sv_StrFlag+2		; mark last screen as stretched
 		move.l	#copper0,$80(a0)	; when going from normal to stretched then set copper0
 		move	#0,$88(a0)		
-		VBLANKR 2
-.sv_lastnot:
-		waitblt				;clear big screen
-		move	#$8040,$96(a0)		;blitter DMA on
-		move.l	#-1,$44(a0)
-		move.l	#$1000000,$40(a0)
-		move	#0,$66(a0)		;modulo
-		move.l	sv_Screen,d2
-		addi.l	#[16*row*5],d2
-		move.l	d2,$54(a0)
-		move	#[128*5*64]+20,$58(a0)	;clear screen 1
-		waitblt
-		move.l	sv_Screen+4,d2
-		addi.l	#[16*row*5],d2
-		move.l	d2,$54(a0)
-		move	#[128*5*64]+20,$58(a0)	;clear screen 2
-		waitblt
-
+ 		VBLANKR 2
+		waitblt					; wait for any copy to screen to finish
+		bsr		clearScreenCPUFull
+	
 		lea		cop2_area,a2
 		move.l	#$0108FFD8,d1
 		move.l	#$010aFFD8,d2
@@ -10662,7 +10762,7 @@ mk_cop3: addi.l	#$01000000,d0		;big/no panel
 		move.l	d0,(a2)+
 		move.l	d3,(a2)+
 		move.l	d4,(a2)+
-		dbf	d7,mk_cop3
+		dbf		d7,mk_cop3
 		move.l	#$2a01ff00,(a2)+
 		move.l	#$01000300,(a2)+
 		move.l	#RealCopper,d0		;next copper 1
@@ -10743,6 +10843,52 @@ mk_cop4:	addi.l	#$01000000,d0
 ;		move.l	a4,$80(a0)
 		bra.w	sv_SWS5
 
+; --------
+clearScreenCPUFull:
+		moveq	#0,d0					; clear 10 registers
+		move.l	d0,d1
+		move.l	d0,d2
+		move.l	d1,d3
+		move.l	d2,d4
+		move.l	d3,d5
+		move.l	d4,d6
+		move.l	d0,a1
+		move.l	d1,a2
+		move.l	d2,a3
+		move.l	sv_Screen,a4
+		addi.l	#[16+128]*row*5,a4
+		bsr.s	.sv_clr					; clear screen 1
+		move.l	sv_Screen+4,a4
+		addi.l	#[16+128]*row*5,a4		; clear screen 2
+.sv_clr:
+		move	#[[128*5]/10]-1,d7
+.sv_c1:	REPT	10
+		movem.l	d0-d6/a1-a3,-(a4)
+		ENDR
+		dbf		d7,.sv_c1
+		rts
+
+clearScreenCPUWindow:
+		moveq	#0,d0					; clear 6 registers
+		move.l	d0,d1
+		move.l	d0,d2
+		move.l	d1,d3
+		move.l	d2,d4
+		move.l	d3,d5
+		move.l	sv_Screen,a4
+		addi.l	#[16+128]*row*5-8,a4	; offet (40-24)/2 from the right
+		bsr.s	.sv_clr					; clear screen 1
+		move.l	sv_Screen+4,a4
+		addi.l	#[16+128]*row*5-8,a4	; clear screen 2
+.sv_clr:
+		move	#[[128*5]/10]-1,d7
+.sv_c1:	REPT	10
+		movem.l	d0-d5,-(a4)			; clear line of 6*4=24 bytes
+		lea		-16(a4),a4
+		ENDR
+		dbf		d7,.sv_c1
+		rts
+
 ; -------- handle non-stretched screen ----------------
 ; the code enters here if the current screen is not stretched
 sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
@@ -10793,27 +10939,11 @@ sv_SWS8:	move.l	(a2)+,(a1)+		;copy it to scr 2
 
 sv_SWS9:	
 		lea		$dff000,a0
-		waitblt
-		move	#$8040,$96(a0)		;blitter DMA on
-		move.l	#-1,$44(a0)
-		move.l	#$1000000,$40(a0)
-		move	#40-24,$66(a0)		;modulo
-		move.l	sv_Screen,d2
-		addi.l	#[16*row*5]+8,d2
-		move.l	d2,$54(a0)
-		move	#[128*5*64]+12,$58(a0)	;clear screen 1
-		waitblt
-		move.l	sv_Screen+4,d2
-		addi.l	#[16*row*5]+8,d2
-		move.l	d2,$54(a0)
-		move	#[128*5*64]+12,$58(a0)	;clear screen 2
-		waitblt
+		waitblt					; wait for any copy to screen to finish
+		bsr		clearScreenCPUWindow
 		move.l	#$90f2c4,cop_borders
 
 sv_SWS5:
-		lea		$dff000,a0
-		waitblt
-
 		lea		cop_ACTUAL,a1
 		move.l	#copper1_std,d1				; cop_screen is the usual non-stretched copperlist
 		tst		sv_StrFlag
@@ -11190,7 +11320,7 @@ cc_RequestTab:	dc.w	0,6,0,0,0		; 5*2 = 10 bytes
 ;0 quit, 2 window size key pressed, 4 c2p preference changed (blit_use), 6 RMB pressed (RMB_flag), 8 Rf2
 		dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys (up/down etc.)
 
-oc_HitPos:	dc.w	0,0,0,0, 0,0,0,0	;flag,Xpos,Ypos,Offset
+;oc_HitPos:	dc.w	0,0,0,0, 0,0,0,0	;flag,Xpos,Ypos,Offset
 
 play_sample:	dc.b	0,0,0,0
 play_volume:	dc.b	63,63,63,63
@@ -11278,22 +11408,25 @@ F2_AvLastVal:		rs.l	AVCNTS						; last read start_value for debug counters (l)
 F2_AvPtrs:			rs.w	AVCNTS						; rolling pointers into 16 debug counters (averages). Next free slot.w for each
 F2_AvData:			rs.w	AVCNTS*8					; space for debug data (averages). buffer for 8*data.w (each is 16 bytes)
 F2_ClearTo1:		rs.w	0							; clear up to here on start
+F2_Buf1:			rs.b	256
 F2_ChunkyBuf:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
+F2_Buf2:			rs.b	256
 F2_HeartSav:		rs.b	6*12*5						; 360 ($168)
 F2_HBFrames:		rs.b	6*12*5*HB_ANIM_FRAMES		; 18000 ($4650) - 50 frames
 F2_C1Save:			rs.b	18*5*6+4					; $21c + 4 bytes for "KANE"
 F2_C2Save:			rs.b	18*5*6+4					; $21c
-F2_LineTab:			rs.b	maxWallHeigth*2*4*2			; $15e0 (700 code addresses + 700 heigth tab addresses)
-F2_Htab:			rs.b	$1b80						; $1b34 round up to 1b80. Empirically found as this is a compressed table.
+F2_LineTab:			rs.b	maxWallHeigth*2*4*2+16		; $15e0 (700 code addresses + 700 heigth tab addresses)
+F2_Htab:			rs.b	$1c00						; $1b34 round up to 1c00. Empirically found as this is a compressed table.
 F2_UserMap:			rs.b	64*8						; $200 (64*8). User map is drawn here
 F2_FloorTab:		rs.b	screenMaxY+2				; $82 for max heigth 128. Pre-calced floor perspective
-F2_DeltaTabStart:	rs.b	600*4						; $12c0 together with DeltaTab (600*4 *2 = 4800)
-F2_DeltaTab:		rs.b	600*4						; This MUST be after F2_DeltaTabStart
-F2_ScrOffTab:		rs.b	256							; $100 offsets for chunky buffer rows
+F2_DeltaTabStart:	rs.b	616*4						; $12c0 together with DeltaTab (600*4 *2 = 4800)
+F2_DeltaTab:		rs.b	616*4						; This MUST be after F2_DeltaTabStart
+F2_ScrOffTab:		rs.b	256+16						; $100 offsets for chunky buffer rows
 F2_WindowSav:		rs.b	$28a0						; $28a0 saves main window borders
 F2_ItemBuf:			rs.b	540							; $21c (540) - buffer for item drawing
 F2_ItemSav:			rs.b	540							; $21c (540) - buffer for item background
 F2_CompasSav:		rs.b	540							; $21c (540) - buffer for compass background
+F2_CompassFrames:	rs.b	540*COMP_ANIM_FRAMES		; 17280 ($4380) - 32 frames
 F2_CardSav:			rs.b	24*5						; $78 - buffer for card counters
 F2_ObjectTab:		rs.b	12*32						; $168 (30 cells) - buffer for dynamic moving objects
 
