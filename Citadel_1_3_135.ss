@@ -1072,7 +1072,7 @@ interruptL3Vertb:
 
 		tst.l	play_sample
 		beq.s	.noSnd
-		bsr		play_sound
+		bsr		play_sound_pass
 .noSnd:
 		bsr		sc_DoScroll				; move scroll
 
@@ -5977,6 +5977,7 @@ make_tables_pass:		bra		make_tables
 DecrunchItems_pass:		bra		DecrunchItems
 Take_Items_pass:		bra		Take_Items
 sv_MAKE_SZUM_pass:		bra		sv_MAKE_SZUM
+play_sound_pass:		bra		play_sound
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -6519,35 +6520,47 @@ c2p_Copy:
 c2p_Copy_Blitter_noStretch:
 		movem.l	ALL,-(sp)
 
-; 	; copy buffer from fast to chip
-; 	move.l	lc_ChunkyBuffer(pc),a2
-; 	lea		sv_ChunkyBufC,a6			; Blitter C2P uses chunky buf in chip
-; 		move	lc_variables+lc_halfScreenBytes(pc),d2
-; 		move	d2,d1
-; 		lsr		#6,d2
-; 		andi	#63,d1			; if no extra bytes after dividing by 64, then reduce by 1 pass
-; 		bne.s	.nor1
-; 		subq	#1,d2
-; .nor1:
-; .floop:	rept	32
-; 		move.l	(a2)+,(a6)+		; fill in 64-byte chunks
-; 		endr
-; 		dbf		d2,.floop
-; 	lea		sv_ChunkyBufC,a6			; Blitter C2P uses chunky buf in chip
+		;copy buffer from fast to chip
+		move.l	lc_ChunkyBuffer(pc),a2
+		lea		sv_ChunkyBufC,a6			; Blitter C2P uses chunky buf in chip
+		move.l	lc_variables+lc_screenBytes(pc),d2
+		move.l	d2,d1
+		lsr.l	#6,d2
+ 		subq	#1,d2
+.flp1:	rept	16
+		move.l	(a2)+,(a6)+		; fill in 64-byte chunks
+		endr
+		dbf		d2,.flp1
+		andi	#63,d1
+		lsr		#2,d1
+		beq.s	.flno
+		subq	#1,d1
+.flp2:	move.l	(a2)+,(a6)+		; copy the rest
+		dbf		d1,.flp2
+.flno:
 
-		move.l	lc_ChunkyBuffer(pc),a6
+		lea		sv_ChunkyBufC,a6
 		lea		$dff000,a0
-		move	sv_ViewWidth,d1	;view window dim.
+		move	sv_ViewWidth,d1		;view window dim.
 		move	sv_ViewHeigth,d2
 		subq	#1,d2
-		move.l	sv_Consttab+40,a2
-		lea		-2(a2,d1.w),a2		;SVGA tab end addr
+;		move.l	sv_Consttab+40,a2
+;		lea		-2(a2,d1.w),a2		;SVGA tab end addr
+		move.l	lc_variables+lc_screenBytes(pc),d0
+		move	d1,d3
+		lsl		#3,d3
+		sub		d3,d0
+		add		d1,d0
+		lea		-2(a6,d0.w),a2
+
+		lea		sv_chunkyBufStart(pc),a4
+		move.l	a6,(a4)
+		move.l	a2,sv_chunkyBufEnd-sv_chunkyBufStart(a4)
 
 		move	d2,d0
 		mulu	#5*row,d0
 		add		d1,d0
 		lea		-2(a1,d0.w),a3		;screen end addr
-		movem.l	a6/a2,-(sp)			;save original tab
 
 		move	#5*row,d0
 		sub		d1,d0
@@ -6563,30 +6576,30 @@ c2p_Copy_Blitter_noStretch:
 
 		move	d1,d3			;d3 - width
 		addq	#1,d2
-		lsl	#6,d2
-		lsr	#1,d1
-		add	d1,d2			;d2 - Blit Size
+		lsl		#6,d2
+		lsr		#1,d1
+		add		d1,d2			;d2 - Blit Size
 
-;Copy table to screen loop...
-		lea	-1,a4			;shift start
-		sub	a5,a5			;0 in a5
+		lea		-1,a4			;shift start
+;		move.l	#0,a5			;0 in a5
 		move	#$0de4,d1		;Bltcon0 or value
 
 		moveq	#4,d7			;plane nr-1
-		move	#$8040,$96(a0)		;blitter DMA on..
+		move	#$8040,$96(a0)	;blitter DMA on..
 sv_PlanesCopy:
 		move	a4,d6			;shift pointer
 		move	#$8080,d5
 		moveq	#7,d4
 sv_Bits:
-		addq	#1,d6
+		addq.w	#1,d6
 		bmi.s	sv_BitMin
 		move	d6,d0
-		ror	#4,d0
-		or	d1,d0			;bltcon0
+		ror		#4,d0
+		or		d1,d0			;bltcon0
 		waitblt
 		move	d0,$40(a0)		;bltcon0,1
-		move	a5,$42(a0)
+;		move	a5,$42(a0)
+		move	#0,$42(a0)
 		move	d5,$70(a0)		;C dat
 		move.l	a6,$50(a0)		;A addr
 		move.l	a1,$4c(a0)		;B addr
@@ -6594,10 +6607,11 @@ sv_Bits:
 		move	d2,$58(a0)
 		bra.s	sv_NextBit
 
-sv_BitMin:	move	d6,d0
-		neg	d0
-		ror	#4,d0
-		or	d1,d0			;bltcon0
+sv_BitMin:	
+		move	d6,d0
+		neg		d0
+		ror		#4,d0
+		or		d1,d0			;bltcon0
 		waitblt
 		move	d0,$40(a0)		;bltcon0,1
 		move	#$0002,$42(a0)
@@ -6607,23 +6621,25 @@ sv_BitMin:	move	d6,d0
 		move.l	a3,$54(a0)		;D addr
 		move	d2,$58(a0)
 sv_NextBit:
-		lea	(a6,d3.w),a6		;next bit line
-		lea	(a2,d3.w),a2
-		lsr	d5			;mask next bit
-		dbf	d4,sv_bits		;7 bit loop
+		lea		(a6,d3.w),a6		;next bit line
+		lea		(a2,d3.w),a2
+		lsr		d5			;mask next bit
+		dbf		d4,sv_bits		;7 bit loop
 
-		movem.l	(sp),a6/a2		;restore bit tab
-		lea	row(a1),a1		;next screen plane
-		lea	row(a3),a3
+		move.l	sv_chunkyBufStart(pc),a6
+		move.l	sv_chunkyBufEnd(pc),a2
+		lea		row(a1),a1		;next screen plane
+		lea		row(a3),a3
 		subq.w	#1,a4			;shift next bit more
-		dbf	d7,sv_PlanesCopy
+		dbf		d7,sv_PlanesCopy
 
-;		move	#$440,$96(a0)		;blitter NASTY & DMA off
-		lea	8(sp),sp		;fix stack
 ;		waitblt						; TODo it seems to hang here, maybe because hte previous write to blitter without a wait??
+;		move	#$440,$96(a0)		;blitter NASTY & DMA off
 		movem.l	(sp)+,ALL
 		rts
 
+sv_chunkyBufStart:	dc.l	0
+sv_chunkyBufEnd:	dc.l	0
 
 ;-------------------------------------------------------------------
 ConvBits:	macro
@@ -10687,7 +10703,7 @@ mk_DT2:	move	d3,(a3)+
 		subq	#1,d2
 		mulu	d2,d1
 		lea		(a2,d1.w),a2
-		move.l	a2,40(a1)		;SVGA end addr - store in constants
+		move.l	a2,40(a1)		;SVGA end addr (minus 1 line) - store in constants
 
 		lea		fl_Dcont(pc),a2		;floor row modulos - SELF MODIFYING CODE!! (SMC)
 		lea		flc_Dcont_cpu(pc),a3
@@ -10891,9 +10907,10 @@ sv_SetWindowSize:
 		st		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in fast (ff)
 		bra.s	sv_cont
 .sv_cbChip:
-		move.l	#sv_ChunkyBufC,(a1)			; Blitter C2P uses chunky buf in chip
-		clr		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in chip (0)
-;	move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
+;		move.l	#sv_ChunkyBufC,(a1)			; Blitter C2P uses chunky buf in chip
+;		clr		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in chip (0)
+		move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
+		st		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in fast (ff)
 sv_cont:
 
 		moveq.l	#0,d0
@@ -11375,13 +11392,16 @@ sv_ConstTab:	equ	BASEC+$57000		;$46
 ;sv_DeltaTab:	equ	BASEC+$57100		;$12c0 (600*4 *2 = 4800)
 ;sv_ScrOffTab:	equ	BASEC+$58410		;$100
 sv_TextOffsets:	equ	BASEC+$58520		;$100 (to 128 texts)
+
 ;RealCopper:	equ	BASEC+$58630		;$da0	defined upper!
 ;sv_C1Save:	equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
 ;sv_C2Save:	equ	BASEC+$595f0		;$21c
 
-sv_ZeroTab:	equ	BASEC+$59820		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
+;sv_ZeroTab:	equ	BASEC+$59820		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
+sv_ZeroTab:	equ	BASEC+$5a000		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
 
-sv_ChunkyBufC:	equ	BASEC+$60a20	;chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
+;sv_ChunkyBufC:	equ	BASEC+$60a20	;chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
+sv_ChunkyBufC:	equ	BASEC+$60000	;chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
 									;This is the chip buffer for blitter
 
 ;sv_WindowSav:	equ	BASEC+$66d30		;$28a0 (do $695d0)
