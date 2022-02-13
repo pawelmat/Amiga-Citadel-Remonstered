@@ -65,21 +65,25 @@ VBLANKR:	MACRO		; \1 - repetitions
 .s1\@:	VBLANK
 		dbf		d0,.s1\@
 		ENDM
+LMB:	MACRO
+.s1\@:	btst.b	#6,$bfe001		;LMB presed?
+		bne.s	.s1\@
+		ENDM
 SCROLL:		MACRO		; \1 - offset of text
 		movem.l	d0/a1,-(sp)
 		move	sv_TextOffsets+[[\1]*2],d0
-		lea	sc_Text,a1
-		lea	(a1,d0.w),a1
+		lea		sc_Text,a1
+		lea		(a1,d0.w),a1
 		move.l	a1,sc_TextAddr+4
 		movem.l	(sp)+,d0/a1
 		ENDM
 SCROLL1:	MACRO			; d0 - offset of text
 		movem.l	d0/a1,-(sp)
-		add	d0,d0
-		lea	sv_TextOffsets,a1
+		add		d0,d0
+		lea		sv_TextOffsets,a1
 		move	(a1,d0.w),d0
-		lea	sc_Text,a1
-		lea	(a1,d0.w),a1
+		lea		sc_Text,a1
+		lea		(a1,d0.w),a1
 		move.l	a1,sc_TextAddr+4
 		movem.l	(sp)+,d0/a1
 		ENDM
@@ -248,6 +252,9 @@ start:
 		move	#$7fff,$9c(a0)		;INTREQ
 		move	#$00ff,$9e(a0)		;ADKONR
 
+		lea		lc_F1_addresses(pc),a1
+		move.l	lc_FastMem1(pc),d0
+		bsr		calcAddressTab		; calculate addresses to use in fast1
 		lea		lc_F2_addresses(pc),a1
 		move.l	lc_FastMem2(pc),d0
 		bsr		calcAddressTab		; calculate addresses to use in fast2
@@ -418,7 +425,7 @@ start:
 .sv_setdone:
 		move.l	sv_Screen,a1		;copy window to screen 2
 		move.l	sv_Screen+4,a2
-		move	#2000-1,d7			; 160*40*5 in longs and each long is copied 4x in the loop
+		move	#[[160*40*5]/16]-1,d7			; 160*40*5 in longs and each long is copied 4x in the loop
 .sv_CopWindow:	rept	4
 		move.l	(a1)+,(a2)+
 		endr
@@ -1078,7 +1085,7 @@ interruptL3Vertb:
 
 .nl_end:
 	CNTSTOP 2
-
+.nl_end2:
 		movem.l	(sp)+,ALL
 		move	#$20,$dff09c
 		move	#$20,$dff09c		; double just in case to prevent any error in emu or fast CPU from calling the int again too fast
@@ -1660,9 +1667,10 @@ rm_HGEnd:	bra	RMB_End
 ;
 ;out	d0 - random value
 ;
-GetRandom:	movem.l	a4,-(sp)
+GetRandom:	
+		move.l	a4,-(sp)
 		RANDOM	a4,d0
-		movem.l	(sp)+,a4
+		move.l	(sp)+,a4
 		rts
 
 SeedRandom:
@@ -1780,7 +1788,8 @@ oc_LOOP: move	#0,(a2)			;zero hit poses
 		move	14(a2),10(a1)
 		bra.w	oc_WallHit
 
-.oc_BothNot:	movem	2(a1),d0/d1
+.oc_BothNot:	
+		movem	2(a1),d0/d1
 		add		d0,6(a1)
 		add		d1,8(a1)
 		movem	6(a1),d0/d1
@@ -2628,7 +2637,8 @@ ao_f2:		cmpi	#2,d0			;player hit?
 
 
 ;---------------
-ro_SetExplode:	movem.l	ALL,-(sp)		;a2,a3 - don't touch
+ro_SetExplode:	
+		movem.l	ALL,-(sp)		;a2,a3 - don't touch
 		move	#1,eh_FirePos+4		;not destroy beczkas
 		move	2(a1),d0		;cofnij wybuch
 		asr	#3,d0
@@ -3074,7 +3084,7 @@ me_killed:	cmpi.b	#72,13(a3)
 
 ;-------------------------------------------------------------------
 ; Move enemy
-;a1 - MAP, a3 - ENEMY STRUCTURE, d5 - CNT (?? does not seem used?)
+;in: a1 - MAP, a3 - ENEMY STRUCTURE, d5 - CNT (?? does not seem used?), d0/d1 - enemy pos?
 me_MOVE:
 ;		movem.l	a2/a4,-(sp)
 		movem	4(a3),d2/d3
@@ -3087,7 +3097,7 @@ me_MOVE:
 		move	d3,-(sp)
 		move.b	#0,7(a1,d2.w)		;zero old enemy
 
-		movem	d0/d1,-(sp)
+		movem.w	d0/d1,-(sp)
 		add	4(a3),d0
 		add	6(a3),d1
 		move	d0,d6
@@ -3165,7 +3175,7 @@ me_PLAYER:	move	sv_PosX,d4		;X,Y of player
 		neg	d3
 .oc_e2:		cmpi	#300,d3
 		bpl.w	me_CORNERS
-		movem	(sp),d3/d4
+		movem.w	(sp),d3/d4
 		asr	#2,d3
 		asr	#2,d4
 		add	d3,sv_AddMove
@@ -3307,7 +3317,7 @@ cs_LOOP:	move	d3,d5
 		move	d4,d6			;d5/d6 - old
 		add	d1,d3
 		add	d2,d4			;d3/d4 - new pos
-		movem	d3/d4,-(sp)
+		movem.w	d3/d4,-(sp)
 
 		move	d5,d7
 		lsr	#7,d7
@@ -3408,7 +3418,7 @@ cs_UP:		move.b	(a1,d7.w),d4		;UP
 		bsr.s	cs_ChkDoors
 		bne.s	cs_hit
 
-cs_ContLoop:	movem	(sp)+,d3/d4
+cs_ContLoop:	movem.w	(sp)+,d3/d4
 		dbf	d0,cs_LOOP
 ;		move	(sp)+,d0
 		moveq	#0,d1			;ok
@@ -4735,7 +4745,7 @@ du_x2:		addq	#1,d0
 		rts
 
 ;-------------------------------------------------------------------
-DU_PUT:		movem	d0-d7,-(sp)
+DU_PUT:		movem.l	d0-d7,-(sp)
 		move	d0,d4
 		lsl	#3,d4
 		move	d1,d5
@@ -4780,7 +4790,7 @@ du_W:		move.b	3(a1,d4.w),d0
 		bsr.w	du_WALL
 du_Col:		move.b	5(a1,d4.w),d0
 		bsr.w	du_Collumn
-du_NotVisit:	movem	(sp)+,d0-d7
+du_NotVisit:	movem.l	(sp)+,d0-d7
 		cmp	sv_SquarePos,d0			;X pos
 		bne.w	.du_0
 		cmp	sv_SquarePos+2,d1		;Y
@@ -5233,10 +5243,10 @@ sh_W01:
 		move	#350,d3
 		mulu	d3,d1
 		divu	d4,d1
-		sub		d1,d3			;dY (91-350)
-		andi	#$fffc,d3		;cut 2 LSbits
-		move.l	sv_Consttab+20,a5
-		move.l	(a5,d3.w),a5		;700 tab
+		sub		d1,d3			;dY is range 91..350 to re-base to 0..260 (65*4) - heigth of wall scaled to 350?
+		andi	#$fffc,d3		;cut 2 LSbits from (0..260) to have a pointer to the address tab in sv_planes (65 entries)
+		move.l	sv_Consttab+20,a5	; sv_planes (700) tab
+		move.l	(a5,d3.w),a5	; get address of the right entry in the planes tab
 
 		exg		d0,d2
 		sub		d0,d2			;dX
@@ -5330,7 +5340,7 @@ shS_Walldir1:	eori	#0,d7			;fix wall direction
 		bne.w	shS_SaveZero1
 		move.b	#0,64*192(a2)		;mark column as drawn
 
-		movem	d0-d6,-(sp)		; TODO: d5 is not used
+		movem.w	d0-d6,-(sp)		; TODO: d5 is not used
 		moveq	#0,d0			;wall count
 		moveq	#0,d4			;screen count down
 		move	sv_Consttab+6,d6
@@ -5352,7 +5362,7 @@ shS_InnerPix1:	move.b	d1,(a2,d4.w)	; draw symetrically up and down
 		dbf		d3,shS_InnerPix1
 shS_NOPix1:	addq	#1,d0
 		bra.s	shS_Pixloop1
-shS_PixEnd1:	movem	(sp)+,d0-d6
+shS_PixEnd1:	movem.w	(sp)+,d0-d6
 
 shS_NoLine1:	dbf	d6,shS_Mloop1
 		bra		sh_exit2
@@ -5369,7 +5379,7 @@ shS_SaveZero1:	move.l	sv_ZeroPtr,a6
 ; d0 - start X pixel offset on screen
 ; d1-d4 interpolation
 ; (d5) - used inside
-; d6 - nr of pixel collumns to draw (wall width)
+; d6 - nr of pixel collumns to draw (dX wall width)
 ; (d7) - used inside
 
 ; a0 - scr tab middle
@@ -5400,7 +5410,7 @@ sh_Walldir1:	;eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inve
 
 		move	d7,d5
 		lsl		#6,d7
-		add		d5,d7				; *65 to get to the 
+		add		d5,d7				; X*65 to get to the right collumn in the texture
 		lea		(a3,d7.w),a1		;wall - middle pixel
 		tst.b	32(a1)
 		bne.s	sh_SaveZero1
@@ -5408,7 +5418,8 @@ sh_Walldir1:	;eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inve
 
 		jsr	(a6)				; copy 1 collumn with required Y stretching
 
-sh_NoLine1:	dbf	d6,sh_Mloop1
+sh_NoLine1:	
+		dbf	d6,sh_Mloop1
 		bra	sh_exit2
 
 ; save collumn for adding later because it has clear pixels
@@ -5479,7 +5490,7 @@ shS_Walldir2:	eori	#63,d7			;fix wall direction
 		bne.w	shS_SaveZero2
 		move.b	#0,64*192(a2)		;mark column as drawn
 
-		movem	d0-d6,-(sp)
+		movem.w	d0-d6,-(sp)
 		moveq	#0,d0			;wall count
 		moveq	#0,d4			;screen count down
 		move	sv_Consttab+6,d6
@@ -5501,7 +5512,7 @@ shS_InnerPix2:	move.b	d1,(a2,d4.w)
 		dbf	d3,shS_InnerPix2
 shS_NOPix2:	addq	#1,d0
 		bra.s	shS_Pixloop2
-shS_PixEnd2:	movem	(sp)+,d0-d6
+shS_PixEnd2:	movem.w	(sp)+,d0-d6
 
 shS_NoLine2:	dbf	d6,shS_Mloop2
 		lea	2(sp),sp
@@ -5599,7 +5610,8 @@ ShowCollumns:
 		add	d4,d4
 		add	d4,d4
 		lea		lc_CollumnOffsets(pc),a3
-sc_EnemyCont:	move	d2,-(sp)		;up/down/norm coll. flag
+sc_EnemyCont:	
+		move	d2,-(sp)		;up/down/norm coll. flag
 		move.l	(a3,d4.w),d4
 		move.l	sv_Consttab+12,a3
 		lea	32(a3,d4.l),a3		;required collumn start
@@ -6039,6 +6051,8 @@ lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after s
 lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
 lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
 lc_screenBytes:			dc.l	0				; equal to all chunky screen size in bytes (pixels)
+lc_screenPixX:			dc.l	0				; window size X in pixels (e.g. 192)
+lc_screenPixX4:			dc.l	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
 lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
 lc_halfScreenBlit:		dc.w	0				; BPLSIZE value for half of c2p screen (for floor filling)
 lc_floorGapBlit:		dc.w	0				; BPLSIZE for floor gap fill
@@ -6056,16 +6070,28 @@ lc_collumnDrawInd:		dc.w	0				; col. draw indicator
 lc_changeWeaponInd:		dc.w	0				; weapon to change index
 lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
 lc_lastCompassAngle:	dc.w	-1				; angle of last drawn compass
-;lc_c2p1x1_5_c5_scroffs:	dc.l 	0				; C2P start screen offset
-;lc_c2p1x1_5_c5_pixels:	dc.l 	0				; C2P nr of pixels
+lc_texelOrgCurrent:		dc.w	-1				; current texel arrangement. -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
+lc_texelOrgRequired:	dc.w	0				; required texel arrangement. 0 MSB (inverted - default), 1 LSB (standard)
 
 ENDOFF
 
 lc_TextBuffer:			ds.b	20				; buffer for keys pressed to check for codes. 0.w index, 2.w changed flag, 4.w+16 buffer
 lc_HitPos:				dc.w	0,0,0,0,0,0,0,0	;flag,Xpos,Ypos,Offset
 
+; addresses in Fast 1
+lc_F1_addresses:				; address, size
+lc_F1_Code:				dc.l	F1_Code,0
+lc_F1_FloorCode:		dc.l	F1_FloorCode,0
+lc_F1_Walls:			dc.l	F1_Walls,0
+lc_F1_Items:			dc.l	F1_Items,0
+lc_F1_Planes:			dc.l	F1_Planes,0
+lc_F1_WallCode:			dc.l	F1_WallCode,0
+
+lc_F1_TopMem:			dc.l	F1_TopMem,0
+						dc.l	0
+
 ; addresses in Fast 2
-lc_F2_addresses:	; address, size
+lc_F2_addresses:				; address, size
 lc_F2_AvLastVal:		dc.l	F2_AvLastVal,0
 lc_F2_AvPtrs:			dc.l	F2_AvPtrs,0
 lc_F2_AvData:			dc.l	F2_AvData,0
@@ -6091,8 +6117,8 @@ lc_F2_CardSav:			dc.l	F2_CardSav,0
 lc_F2_ObjectTab:		dc.l	F2_ObjectTab,0
 
 
-lc_F2_TopMem:		dc.l	F2_TopMem,0
-					dc.l	0
+lc_F2_TopMem:			dc.l	F2_TopMem,0
+						dc.l	0
 
 lc_soundList:	;list of all sounds used. Sound addr.l, length.w, freq.w
 		dc.l	sv_SAMPLES
@@ -6347,6 +6373,7 @@ fl_MkDeltas:
 		bra		fl_Draw_Cache_Blitter
 
 ; draw floor line by line using pre-generated code. Only used if cache not available
+; It handles CPU/blitter bit ordering (sv_WidthTable) in the jsr() generated code
 fl_Draw_NoCache:
 		move	d7,(sp)			;save H counter
 
@@ -6411,11 +6438,11 @@ fl_Draw_Cache_CPU:
 		move	sv_ConstTab+30,d5	;X counter/4 -1 (48-1 for size 5)
 
 .flc_DCode:	
-		REPT	4			; iterate over X (row) of the screen
+		REPT	4				; iterate over X (row) of the screen
 		add		a6,d7
 		addx	d3,d1			;inc texel Y offset
 		and		d4,d1			; do not replace by #63 immediate as it would be slower
-		add		(a0,d0.w*2),d1		;inc texel X offset = d0*64 (cycles: min 10+4=14)
+		add		(a0,d0.w*2),d1	;inc texel X offset = d0*64 (cycles: min 10+4=14)
 		add		a5,d6
 		move.b	(a1,d1.w),(a3)+	; copy pixel to floor
 		addx.b	d2,d0			;inc X in texture
@@ -6425,7 +6452,7 @@ fl_Draw_Cache_CPU:
 		ENDR
 		dbf		d5,.flc_DCode
 flc_Dcont_cpu:	
-		lea		2(a3),a3			; row size, -192 for size 5. This code is self-modified by make_tables to add the proper width
+		lea		2(a3),a3		; row size, -192 for size 5. This code is self-modified by make_tables to add the proper width
 
 		move.l	(sp)+,a0
 		move	(sp),d7
@@ -6451,7 +6478,7 @@ fl_Draw_CB_Loop:
 		move	2(a0,d2.w),d2		;Cx
 		bpl.s	.flc_D2
 		sub		a5,d6
-.flc_D2:	move	(a0,d3.w),a6		;Ry
+.flc_D2: move	(a0,d3.w),a6		;Ry
 		moveq	#0,d7			;RLy
 		move	2(a0,d3.w),d3		;Cy
 		bpl.s	.flc_D3
@@ -6826,7 +6853,8 @@ ConvBits:	macro
 ;-------------------------------------------------------------------
 ; 5-pass CPU transformation adapted from Kalms c2p1x1_5_c5_030.s
 
-BPLSIZE:	equ	192*128/8
+;BPLSIZE:	equ	192*128/8
+BPLSIZE:	equ	40
 
 ;a1 - screen addr to start
 ; c2p_Copy_CPU_noStretch_Cache:
@@ -6837,11 +6865,15 @@ BPLSIZE:	equ	192*128/8
 ; 		add.l	#BPLSIZE,a1
 ; 		move.l	lc_F2_ChunkyTempBuf(pc),a3
 
-; 		move.l	lc_variables+lc_screenBytes(pc),a2
-; 		add.l	a0,a2
-
 ; 		move.l	a1,-(sp)
 
+; 		move.l	lc_variables+lc_screenBytes(pc),d0
+; 		add.l	a0,d0
+; 		move.l	d0,-(sp)
+; 		move.l	lc_variables+lc_screenPixX(pc),a2
+; 		adda.l	a0,a2
+
+; 	; ----- start
 ; 		move.l	(a0)+,d1
 ; 		move.l	(a0)+,d5
 ; 		move.l	(a0)+,d0
@@ -6910,7 +6942,7 @@ BPLSIZE:	equ	192*128/8
 
 ; CNOP 0,16		; cache line alignment (16 bytes)
 ; .x1:
-; 		move.l	(a0)+,d1
+; 		move.l	(a0)+,d1			; 16 bytes
 ; 		move.l	(a0)+,d5
 ; 		move.l	(a0)+,d0
 ; 		move.l	(a0)+,d6
@@ -6953,10 +6985,13 @@ BPLSIZE:	equ	192*128/8
 ; 		move.w	d3,d1
 ; 		move.w	d7,d3
 
-; 		lsl.l	#6,d1			; Swap/Merge 2x4, part 1
-; 		lsl.l	#4,d3
-; 		or.l	d1,d3
-; 		move.l	d3,a4
+; 	lsl.l	#2,d1			; Swap/Merge 2x4, part 1
+; 	or.l	d1,d3
+; 	move.l	d3,(a3)+
+; 		; lsl.l	#6,d1			; Swap/Merge 2x4, part 1
+; 		; lsl.l	#4,d3
+; 		; or.l	d1,d3
+; 		; move.l	d3,a4
 
 ; 		move.l	(a0)+,d1
 ; 		move.l	(a0)+,d3
@@ -6979,7 +7014,7 @@ BPLSIZE:	equ	192*128/8
 
 ; 		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
 ; 		or.l	d0,d1
-; 		add.l	a4,d1
+; ;		add.l	a4,d1
 ; 		move.l	d1,(a3)+
 
 ; .start1:
@@ -7054,8 +7089,19 @@ BPLSIZE:	equ	192*128/8
 ; 		move.l	d3,a5
 
 ; 		cmpa.l	a0,a2
-; 		bne	.x1
+; 		bne		.x1
+
+
+; 		cmpa.l	(sp),a0
+; 		beq.s	.x1end
+; 	; TODO: calc correctly
+; 		add.l	#16+(BPLSIZE*4),a1
+; 		add.l	lc_variables+lc_screenPixX(pc),a2
+; 		bra		.x1
+
 ; .x1end:
+; 		lea		4(sp),sp
+
 ; 		move.l	d7,BPLSIZE(a1)
 ; 		move.l	a4,(a1)+
 ; 		move.l	a5,-BPLSIZE-4(a1)
@@ -7066,19 +7112,23 @@ BPLSIZE:	equ	192*128/8
 ; 		move.l	#$00ff00ff,d3
 
 ; 		move.l	lc_F2_ChunkyTempBuf(pc),a0
+; 		; move.l	lc_variables+lc_screenBytes(pc),d0
+; 		; lsr.l	#2,d0
+; 		; lea		(a0,d0.l),a2
 ; 		move.l	lc_variables+lc_screenBytes(pc),d0
 ; 		lsr.l	#2,d0
+; 		add.l	a0,d0
+; 		move.l	d0,-(sp)
+; 		move.l	lc_variables+lc_screenPixX4(pc),d0
 ; 		lea		(a0,d0.l),a2
 
 ; 		move.l	(a0)+,d0
 ; 		move.l	(a0)+,d1
-
 ; 		bra.s	.start2
 ; .x2:
 ; 		move.l	(a0)+,d0
 ; 		move.l	(a0)+,d1
-
-; 		move.l	d2,(a1)+
+; ;		move.l	d2,(a1)+
 ; .start2:
 ; 		move.l	d1,d2			; Swap 8x2
 ; 		lsr.l	#8,d2
@@ -7093,8 +7143,17 @@ BPLSIZE:	equ	192*128/8
 
 ; 		cmpa.l	a0,a2
 ; 		bne.s	.x2
+
+; 		cmpa.l	(sp),a0
+; 		beq.s	.x2end
+; 	; TODO: calc correctly
+; 		add.l	#16+(BPLSIZE*4),a1
+; 		add.l	lc_variables+lc_screenPixX4(pc),a2
+; 		bra.s	.x2
+
 ; .x2end:
-; 		move.l	d2,(a1)+
+; 		lea		4(sp),sp
+; ;		move.l	d2,(a1)+
 
 ; .none:
 ; 		movem.l	(sp)+,ALL
@@ -7739,8 +7798,9 @@ SelectNextItem:
 ;-------------------------------------------------------------------
 ;interrupt level 2 - test keys
 
-NewLev2:	
+NewLev2:
 		movem.l	d0-d4/a0-a2/a6,-(sp)
+;		movem.l	ALL,-(sp)
 		lea		CUSTOM,a0
 		moveq	#INTF_PORTS,d0
 		move	INTREQR(a0),d1			;check if is it level 2 interrupt
@@ -7765,10 +7825,15 @@ NewLev2:
 		dbf		d1,.wait1
 
 		and.b	#~(CIACRAF_SPMODE),CIAA+ciacra		;set input mode
-.end:	move.w	#INTF_PORTS,INTREQ(a0)
-		move.w	#INTF_PORTS,INTREQ(a0)
-		nop
+.end:
+;		move.w	#INTF_PORTS,INTREQ(a0)
+;		move.w	#INTF_PORTS,INTREQ(a0)
+;		nop
 		movem.l	(sp)+,d0-d4/a0-a2/a6
+;		movem.l(sp)+,ALL
+		move.w	#INTF_PORTS,CUSTOM+INTREQ
+		move.w	#INTF_PORTS,CUSTOM+INTREQ
+		nop
 		rte
 
 		
@@ -8190,7 +8255,7 @@ sv_ClipMovements:
 		lea		sv_MAP,a1
 
 
-		movem	d0-d3,-(sp)
+		movem.l	d0-d3,-(sp)
 		move	d1,d6
 		tst		sv_DoorFlag1+22		;not use if in prior_use!
 		bne.s	br_PriorD1
@@ -8205,7 +8270,7 @@ br_PriorD1:	move	d6,d1
 		moveq	#36,d2
 		moveq	#42,d3
 		bsr		br_Chk_OPEN
-br_PriorD2:	movem	(sp)+,d0-d3
+br_PriorD2:	movem.l	(sp)+,d0-d3
 
 
 
@@ -10765,12 +10830,12 @@ mc_optim:
 		cmpi	#4,d6
 		bmi.s	.mc_o1
 		subq	#2,d6
-		lea	(a2),a4
+		lea		(a2),a4
 .mc_s4:	move	-(a4),2(a4)
 		move	#$1547,(a4)
-		lea	-2(a4),a4
-		dbf	d6,.mc_s4
-		lea	2(a2),a2
+		lea		-2(a4),a4
+		dbf		d6,.mc_s4
+		lea		2(a2),a2
 		move.l	#$1e111547,(a4)		;m.(a1)+,d7   m.d7,x(a1)
 .mc_o1:	rts
 
@@ -10780,13 +10845,13 @@ make_PLANES:
 		movem.l	ALL,-(sp)
 		move.l	lc_FastMem1(pc),a1
 		addi.l	#sv_PLANES,a1			;addr table
-		lea		260(a1),a2			;plane table
+		lea		260(a1),a2			;plane table	 - 65 addresses (65*4=260 bytes) followd by 700 bytes data for every entry
 		lea		(a2),a3				;p.t. 2
 		move	#350,d6				;y' (max)
 		move.l	#500*[2^SHLeft],d7
 		divu	d6,d7				;z min(365)
 		addq	#1,d7				;366
-		move	#350,d6				;min Y = 91
+		move	#350,d6				;min Y = 91. Repeat loop (350-91)/4 = 65 times 
 mp_loop1:
 		move.l	#500*[2^SHLeft],d5
 		divu	d6,d5				;z'
@@ -10828,12 +10893,12 @@ mp_colloop:	move.b	d0,(a2)+			;pixel width
 		subi	#700,d0
 		beq.s	mp_LenOK
 		bmi.s	mp_Shorter
-		sub.l	d0,a2				;if >700
+		sub.l	d0,a2				;if >700 then nothing to add
 		bra.s	mp_LenOK
 mp_Shorter:	neg	d0
 		subq	#1,d0
 		move	#$3f,d2
-mp_AddCloop:	move.b	d2,(a2)+			;if <700
+mp_AddCloop:	move.b	d2,(a2)+			;if <700 then add the same data up to 700
 		dbf		d0,mp_AddCloop			;add $3f...
 mp_LenOK: lea	(a2),a3
 		subq	#4,d6
@@ -10853,14 +10918,14 @@ make_tables:
 		move.l	lc_FastMem1(pc),a2
 		addi.l	#fl_floors,a2			; floor code
 		lea		fl_DoJsr(pc),a3
-		move.l	a2,2(a3)				;fix jsr addr for floors
+		move.l	a2,2(a3)				; set jsr addr for floors
 		move	#191,d7					; copy the code 192 times - once for each pixel
 mk_DCD1:lea		(a1),a3
 		moveq	#[[fl_DcodeEnd-fl_DCode]/2]-1,d6
 mk_DCD2:move.w	(a3)+,(a2)+
 		dbf		d6,mk_DCD2
 		dbf		d7,mk_DCD1
-		move	#$4e75,(a2)+		;rts
+		move	#$4e75,(a2)				;rts
 
 		bsr		sv_MakeWidthTab		;make sv_width_tables
 
@@ -10880,6 +10945,11 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		move	d1,(a1)			;pixel width/2 (in words)
 		add		d1,d1			;*8
 		move	d1,6(a1)		;width in pixels (e.g. 192)
+		ext.l	d1
+		move.l	d1,lc_screenPixX(a6)	;width in pixels (e.g. 192)
+		move.l	d1,d0
+		lsr.l	#2,d0
+		move.l	d0,lc_screenPixX4(a6)	;width in pixels/4 (e.g. 192/4 = 48)
 
 		lea		shZ_WmulTab(pc),a3		; width mul table
 		moveq	#15,d0
@@ -11170,14 +11240,19 @@ sv_MakeWidthTab:
 		rts
 
 ;-------------------------------------------------------------------
-; fix pixel offsets into the chunky table in the auto-generated floor code 
+; fix pixel offsets into the chunky table in the auto-generated floor code and length of table (add trailing rts in the right place)
 mk_FixFloorMod:
 		movem.l	d0/d7/a1-a3,-(sp)
 		lea		sv_ConstTab,a1
 		move.l	lc_FastMem1(pc),a2
 		addi.l	#fl_Floors,a2				; floor code
-		move	mk_BraPos(pc),d0			; old addx position
-		move	#$de4e,(a2,d0.w)			; "add.w a6,d7" replaces old rts
+		; move	mk_BraPos(pc),d0			; old addx position
+		; move	#$de4e,(a2,d0.w)			; "add.w a6,d7" replaces old rts
+; 		move.l	mk_BraPos(pc),d0			; old addx position
+; 		beq.s	.ne
+; 		move.l	d0,a3
+; 		move	#$de4e,(a3)			; "add.w a6,d7" replaces old rts
+; .ne:	
 		lea		sv_WidthTable(pc),a3		; 1..192 for no CPU and more complex for blitter
 		move	6(a1),d7					;width in pixels (up to 192)
 		subq	#1,d7
@@ -11187,18 +11262,21 @@ mk_DCoffsets:
 		lea		30(a2),a2		;next pixel
 		dbf		d7,mk_DCoffsets
 
-		move	#$4e75,(a2)		;add rts
-		lea		fl_Dcode(pc),a3
-		sub.l	a3,a2
-		move	a2,d0
-		lea		mk_BraPos(pc),a2
-		move	d0,(a2)
+		move	#$4e75,(a2)		;add rts where it should be considering actual screen width
+
+		; lea		fl_Dcode(pc),a3
+		; sub.l	a3,a2
+		; move	a2,d0
+		; lea		mk_BraPos(pc),a2
+		; move	d0,(a2)
+		; lea		mk_BraPos(pc),a3
+		; move.l	a2,(a3)
 
 		bsr		clearCPUCache		; clear cache at the end to avoid issues after SMC and table re-calc
 		movem.l	(sp)+,d0/d7/a1-a3
 		rts
 
-mk_BraPos:	dc.w	0
+; mk_BraPos:	dc.l	0
 ;-------------------------------------------------------------------
 ; set new windows size.
 ; in: size in sv_size (2-6 -> 8 to 24 bytes wide screen)
@@ -11287,8 +11365,6 @@ sv_SWS2:
 
 ; -------- handle stretched screen ----------------
 		move	#1,sv_StrFlag+2		; mark last screen as stretched
-		move.l	#copper0,$80(a0)	; when going from normal to stretched then set copper0
-		move	#0,$88(a0)		
  		VBLANKR 2
 		waitblt					; wait for any copy to screen to finish
 		bsr		clearScreenCPUFull
@@ -11472,13 +11548,16 @@ sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
 		lea		$dff000,a0
 		VBLANK
 		move.l	#copper0,$80(a0)	; when going from normal to stretched then set copper0
-		move	#0,$88(a0)		
+		move	#0,$88(a0)
 		VBLANKR	2
 
 		; if the previous screen was stretched then copy borders back
 		move.l	lc_F2_WindowSav(pc),a1
 		move.l	sv_Screen,a2
-		addi.l	#[sv_Upoffset*5*row],a2
+		addi.l	#[sv_Upoffset*5*row],a2		; screen 1
+		move.l	a2,a4
+		move.l	sv_screen+4,a3
+		addi.l	#sv_UPoffset*row*5,a3		; screen 2
 		moveq	#0,d0
 		move	#[130*5]-1,d7	; should this be 128?
 .sv_GetWindow:	
@@ -11489,15 +11568,13 @@ sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
 		ENDR
 		move.l	(a1)+,(a2)+
 		move.l	(a1)+,(a2)+
-		dbf	d7,.sv_GetWindow
+		dbf		d7,.sv_GetWindow
 
 
-		move.l	sv_screen,a2
-		addi.l	#sv_UPoffset*row*5,a2
-		move.l	sv_screen+4,a1
-		addi.l	#sv_UPoffset*row*5,a1
+		move.l	a4,a2			; screen 1
+		move.l	a3,a1			; screen 2
 		move	#[[130*row*5]/16]-1,d0
-sv_SWS8:	move.l	(a2)+,(a1)+		;copy it to scr 2
+sv_SWS8: move.l	(a2)+,(a1)+		;copy it to scr 2
 		move.l	(a2)+,(a1)+
 		move.l	(a2)+,(a1)+
 		move.l	(a2)+,(a1)+
@@ -11524,6 +11601,7 @@ sv_SWS5:
 		beq.s	sv_SWS3
 		move.l	#copper2_str,d1				; if screen stretched then use this one
 sv_SWS3:
+		lea		$dff000,a0
 		VBLANK
 		bsr		clearCPUCache				; flush the caches to avoid any discrepancies after changing copperlists etc.
 		VBLANKR	2
@@ -11533,9 +11611,21 @@ sv_SWS3:
 		move.l	#RealCopper,$80(a0)
 		move	#0,$88(a0)
 		VBLANKR 2
+
 		movem.l	(sp)+,ALL
 		rts
 
+;-------------------------------------------------------------------
+; Check and rearrange textel arrangement
+setTexelArrangement:
+		lea		lc_variables(pc),a6
+		tst		lc_texelOrgCurrent(a6)
+		bpl		.known
+
+		nop
+.known:
+
+		rts
 
 ;-------------------------------------------------------------------
 ; decrunch new items gfx to the right location
@@ -11882,8 +11972,19 @@ basef_data: 		equ		$f570			; start of data in fast memory, following code
 fl_Floors:			equ		basef_data		; len 30*192 = 5760 ($1680) + 2 for RTS. END: $10bf2
 co_Walls:			equ		$10c00			;[320*4*65]*4=$14500 * 4
 co_Items:			equ		co_Walls+$42040	; start $52c40. Length 28080 = $6db0. End: $599f0
-sv_PLANES:			equ		$59e40			;$b1bc(700*[260/4]). End: $64ffc
+sv_PLANES:			equ		$59e40			;$b1bc(700*[260/4]). End: $64ffc -> WRONG! last entry oerwritten
 mc_code:			equ		$65000			;$1af00 - raster code. End $7ff00
+
+
+RSRESET
+F1_Code:			rs.b	$f570
+F1_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($1688). Actually only +2 is needed for RTS
+F1_Walls:			rs.b	320*4*65*2+(320*2+160)*65*2	; Walls and enemies. 83200+83200+52000+52000,  all: 270400 = $42040
+F1_Items:			rs.b	27*16*65					; Items. 27 1/4 narrow textures, 28080 = $6db0
+F1_Planes:			rs.b	65*4+65*700					; 65 addresses (260) followed by 65 700-byte entries. $b2c0
+F1_WallCode:		rs.b	$1af00						; Code to draw walls. $1af00
+
+F1_TopMem:			rs.w	0
 
 ; 83200+83200+52000+52000					; all: 270400 = $42040
 ; $14500 + $14500 + $19640 + $71c0 = $49200
@@ -11912,7 +12013,7 @@ F2_UserMap:			rs.b	64*8						; $200 (64*8). User map is drawn here
 F2_FloorTab:		rs.b	screenMaxY+2				; $82 for max heigth 128. Pre-calced floor perspective
 F2_DeltaTabStart:	rs.b	616*4						; $12c0 together with DeltaTab (600*4 *2 = 4800)
 F2_DeltaTab:		rs.b	616*4						; This MUST be after F2_DeltaTabStart
-F2_ScrOffTab:		rs.b	256+16						; $100 offsets for chunky buffer rows
+F2_ScrOffTab:		rs.b	256							; $100 offsets for chunky buffer rows
 F2_WindowSav:		rs.b	$28a0						; $28a0 saves main window borders
 F2_ItemBuf:			rs.b	540							; $21c (540) - buffer for item drawing
 F2_ItemSav:			rs.b	540							; $21c (540) - buffer for item background
@@ -11925,8 +12026,15 @@ F2_TopMem:			rs.w	0
 
 end:
 
-;PRINTT	"EXTENDED FAST 2 USED"
-;PRINTV  F2_TopMem
+IF F1_TopMem>$80000
+PRINTT	"Too much data in FAST1!"
+PRINTV  F1_TopMem
+ENDC
+
+IF F2_TopMem>$80000
+PRINTT	"Too much data in FAST2!"
+PRINTV  F2_TopMem
+ENDC
 
 IF [end-s+CODESTART]>basef_data
 PRINTT	"CODE TOO LONG!"
