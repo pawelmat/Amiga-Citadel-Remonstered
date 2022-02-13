@@ -755,7 +755,7 @@ sv_startFrame:
 		tst		lc_updateFrame(a6)
 		beq		.sv_noActionUpdate1
 	CNTSTART 4
-		bsr		CheckCodes
+		bsr		CheckCodes_pass
 		bsr		OpenCloseDoors
 		bsr		Take_Items_pass
 		bsr		Test_Counters
@@ -4490,89 +4490,108 @@ cpuFill:
 		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
 		bne		.FillFloorGap
 
-		moveq	#0,d7
- 		move	lc_halfScreenBytes(a6),d7
-		move.l	d7,-(sp)
-		divu	#12*4*10,d7
-		move.l	d7,d0
-		andi.l	#$ffff0000,d0
-		bne.s	.sv_nosub
-		subi	#1,d7
-.sv_nosub:
-		move	d7,-(sp)
-		move.l	lc_screenBytes(a6),d0
-		move.l	a1,a6
-		move.l	a6,-(sp)
-		add.l	d0,a6
+; 		moveq	#0,d7
+;  		move	lc_halfScreenBytes(a6),d7
+; 		move.l	d7,-(sp)
+; 		divu	#12*4*10,d7
+; 		move.l	d7,d0
+; 		andi.l	#$ffff0000,d0
+; 		bne.s	.sv_nosub
+; 		subi	#1,d7
+; .sv_nosub:
+; 		move	d7,-(sp)
+; 		move.l	lc_screenBytes(a6),d0
+; 		move.l	a1,a6
+; 		move.l	a6,-(sp)
+; 		add.l	d0,a6
 
-		move.l	sv_Fillcols+4,d0
-		move.l	d0,d1
-		move.l	d0,d2
-		move.l	d1,d3
-		move.l	d2,d4
-		move.l	d3,d5
-		move.l	d4,d6
-		move.l	d0,a0
-		move.l	d1,a1
-		move.l	d2,a2
-		move.l	d3,a3
-		move.l	d4,a4
+; 		move.l	sv_Fillcols+4,d0
+; 		move.l	d0,d1
+; 		move.l	d0,d2
+; 		move.l	d1,d3
+; 		move.l	d2,d4
+; 		move.l	d3,d5
+; 		move.l	d4,d6
+; 		move.l	d0,a0
+; 		move.l	d1,a1
+; 		move.l	d2,a2
+; 		move.l	d3,a3
+; 		move.l	d4,a4
 
-		bsr.s	.sv_clr			; clear bottom half
-		move.l	(sp)+,a6		; chunkyu addr
-		move	(sp)+,d7		; half screen counter
-		move.l	(sp)+,d0		; half screen offset
-		add.l	d0,a6
+; 		bsr.s	.sv_clr			; clear bottom half
+; 		move.l	(sp)+,a6		; chunkyu addr
+; 		move	(sp)+,d7		; half screen counter
+; 		move.l	(sp)+,d0		; half screen offset
+; 		add.l	d0,a6
 
-		move.l	sv_Fillcols,d0
-		move.l	d0,d1
-		move.l	d0,d2
-		move.l	d1,d3
-		move.l	d2,d4
-		move.l	d3,d5
-		move.l	d4,d6
-		move.l	d0,a0
-		move.l	d1,a1
-		move.l	d2,a2
-		move.l	d3,a3
-		move.l	d4,a4
+; 		move.l	sv_Fillcols,d0
+; 		move.l	d0,d1
+; 		move.l	d0,d2
+; 		move.l	d1,d3
+; 		move.l	d2,d4
+; 		move.l	d3,d5
+; 		move.l	d4,d6
+; 		move.l	d0,a0
+; 		move.l	d1,a1
+; 		move.l	d2,a2
+; 		move.l	d3,a3
+; 		move.l	d4,a4
 
-.sv_clr:
-.sv_c1:	REPT	10
-		movem.l	d0-d6/a0-a4,-(a6)
-		ENDR
-		dbf		d7,.sv_c1
-		rts
+; .sv_clr:
+; .sv_c1:	REPT	10
+; 		movem.l	d0-d6/a0-a4,-(a6)
+; 		ENDR
+; 		dbf		d7,.sv_c1
+; 		rts
 
-; .oldCpuFill:
-; 		move	lc_halfScreenBytes(a6),d2
-; 		lea		(a1,d2),a2
-; 		move	d2,d1
-; 		lsr		#6,d2
-; 		andi	#63,d1			; if no extra bytes after dividing by 64, then reduce by 1 pass
-; 		bne.s	.nor1
-; 		subq	#1,d2
-; .nor1:	move	d2,d1
-; 		bsr.s	.floop
-; 		movea.l	a2,a1
-; 		move	d2,d1
-;  		move.l	sv_Fillcols+4,d0
-; 		bra.s	.floop
+.oldCpuFill:
+		move	lc_halfScreenBytes(a6),d2
+		lea		(a1,d2),a2
+		move	d2,d3
+		lsr		#6,d2
+		subq	#1,d2
+		move	d2,d1
+		bsr.s	.floop			; upper half (ceiling)
+		andi	#63,d3			; if extra bytes after dividing by 64
+		lsr		#2,d3
+		move	d3,d4
+		beq.s	.nor1
+		subq	#1,d3
+.r1:	move.l	d0,(a1)+		; fill the rest
+		dbf		d3,.r1
+.nor1:
+		movea.l	a2,a1
+		move	d2,d1
+ 		move.l	sv_Fillcols+4,d0
+		bsr.s	.floop			; lower half (floor)
+		tst		d4
+		beq.s	.nor2
+		subq	#1,d4
+.r2:	move.l	d0,(a1)+		; fill the rest
+		dbf		d4,.r2
+.nor2:	rts
 
-.FillFloorGap:	
-		move	lc_floorBytes(a6),d1
-		lea		(a1,d1.w),a1
-		move	lc_floorGapBytes(a6),d1
-		move	d1,d2
-		lsr		#6,d1
-		andi	#63,d2			; if no extra bytes after dividing by 64, then reduce by 1 pass
-		bne.s	.floop
-		subq	#1,d1
 .floop:	rept	16
 		move.l	d0,(a1)+		; fill in 64-byte chunks
 		endr
 		dbf		d1,.floop
 		rts
+
+.FillFloorGap:	
+		move	lc_floorBytes(a6),d1
+		lea		(a1,d1.w),a1
+		move	lc_floorGapBytes(a6),d1
+		move	d1,d3
+		lsr		#6,d1
+		subq	#1,d1
+		bsr.s	.floop
+		andi	#63,d3			; if extra bytes after dividing by 64
+		lsr		#2,d3
+		beq.s	.nor3
+		subq	#1,d3
+.r3:	move.l	d0,(a1)+		; fill the rest
+		dbf		d3,.r3
+.nor3:	rts
 
 		; --- blitter fill ceiling/floor
 blitterFill:
@@ -5978,6 +5997,7 @@ DecrunchItems_pass:		bra		DecrunchItems
 Take_Items_pass:		bra		Take_Items
 sv_MAKE_SZUM_pass:		bra		sv_MAKE_SZUM
 play_sound_pass:		bra		play_sound
+CheckCodes_pass:		bra		CheckCodes
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -6036,6 +6056,8 @@ lc_collumnDrawInd:		dc.w	0				; col. draw indicator
 lc_changeWeaponInd:		dc.w	0				; weapon to change index
 lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
 lc_lastCompassAngle:	dc.w	-1				; angle of last drawn compass
+;lc_c2p1x1_5_c5_scroffs:	dc.l 	0				; C2P start screen offset
+;lc_c2p1x1_5_c5_pixels:	dc.l 	0				; C2P nr of pixels
 
 ENDOFF
 
@@ -6048,6 +6070,7 @@ lc_F2_AvLastVal:		dc.l	F2_AvLastVal,0
 lc_F2_AvPtrs:			dc.l	F2_AvPtrs,0
 lc_F2_AvData:			dc.l	F2_AvData,0
 lc_F2_ChunkyBuf:		dc.l	F2_ChunkyBuf,0
+lc_F2_ChunkyTempBuf:	dc.l	F2_ChunkyTempBuf,0
 lc_F2_HeartSav:			dc.l	F2_HeartSav,0
 lc_F2_HBFrames:			dc.l	F2_HBFrames,0
 lc_F2_C1Save:			dc.l	F2_C1Save,0
@@ -6799,6 +6822,290 @@ ConvBits:	macro
 ; 		movem.l	(sp)+,ALL
 ; 		rts
 
+
+;-------------------------------------------------------------------
+; 5-pass CPU transformation adapted from Kalms c2p1x1_5_c5_030.s
+
+BPLSIZE:	equ	192*128/8
+
+;a1 - screen addr to start
+; c2p_Copy_CPU_noStretch_Cache:
+; 		movem.l	ALL,-(sp)
+
+;  		move.l	lc_ChunkyBuffer(pc),a0
+; 		move.l	#$33333333,a6
+; 		add.l	#BPLSIZE,a1
+; 		move.l	lc_F2_ChunkyTempBuf(pc),a3
+
+; 		move.l	lc_variables+lc_screenBytes(pc),a2
+; 		add.l	a0,a2
+
+; 		move.l	a1,-(sp)
+
+; 		move.l	(a0)+,d1
+; 		move.l	(a0)+,d5
+; 		move.l	(a0)+,d0
+; 		move.l	(a0)+,d6
+
+; 		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
+; 		move.l	d5,d7
+; 		lsr.l	#4,d7
+; 		eor.l	d1,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d1
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d5
+
+; 		move.l	d6,d7
+; 		lsr.l	#4,d7
+; 		eor.l	d0,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d0
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d6
+
+; 		move.l	(a0)+,d3
+; 		move.l	(a0)+,d2
+
+; 		move.l	d2,d7			; Swap 4x1, part 2
+; 		lsr.l	#4,d7
+; 		eor.l	d3,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d3
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d2
+
+; 		move.w	d3,d7			; Swap 16x4, part 1
+; 		move.w	d1,d3
+; 		swap	d3
+; 		move.w	d3,d1
+; 		move.w	d7,d3
+
+; 		lsl.l	#2,d1			; Swap/Merge 2x4, part 1
+; 		or.l	d1,d3
+; 		move.l	d3,(a3)+
+
+; 		move.l	(a0)+,d1
+; 		move.l	(a0)+,d3
+
+; 		move.l	d3,d7
+; 		lsr.l	#4,d7
+; 		eor.l	d1,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d1
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d3
+
+; 		move.w	d1,d7			; Swap 16x4, part 2
+; 		move.w	d0,d1
+; 		swap	d1
+; 		move.w	d1,d0
+; 		move.w	d7,d1
+
+; 		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
+; 		or.l	d0,d1
+; 		move.l	d1,(a3)+
+
+; 		bra		.start1
+
+; CNOP 0,16		; cache line alignment (16 bytes)
+; .x1:
+; 		move.l	(a0)+,d1
+; 		move.l	(a0)+,d5
+; 		move.l	(a0)+,d0
+; 		move.l	(a0)+,d6
+
+; 		move.l	d7,BPLSIZE(a1)
+
+; 		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
+; 		move.l	d5,d7
+; 		lsr.l	#4,d7
+; 		eor.l	d1,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d1
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d5
+
+; 		move.l	d6,d7
+; 		lsr.l	#4,d7
+; 		eor.l	d0,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d0
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d6
+
+; 		move.l	(a0)+,d3
+; 		move.l	(a0)+,d2
+
+; 		move.l	a4,(a1)+
+
+; 		move.l	d2,d7			; Swap 4x1, part 2
+; 		lsr.l	#4,d7
+; 		eor.l	d3,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d3
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d2
+
+; 		move.w	d3,d7			; Swap 16x4, part 1
+; 		move.w	d1,d3
+; 		swap	d3
+; 		move.w	d3,d1
+; 		move.w	d7,d3
+
+; 		lsl.l	#6,d1			; Swap/Merge 2x4, part 1
+; 		lsl.l	#4,d3
+; 		or.l	d1,d3
+; 		move.l	d3,a4
+
+; 		move.l	(a0)+,d1
+; 		move.l	(a0)+,d3
+
+; 		move.l	a5,-BPLSIZE-4(a1)
+
+; 		move.l	d3,d7
+; 		lsr.l	#4,d7
+; 		eor.l	d1,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d1
+; 		lsl.l	#4,d7
+; 		eor.l	d7,d3
+
+; 		move.w	d1,d7			; Swap 16x4, part 2
+; 		move.w	d0,d1
+; 		swap	d1
+; 		move.w	d1,d0
+; 		move.w	d7,d1
+
+; 		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
+; 		or.l	d0,d1
+; 		add.l	a4,d1
+; 		move.l	d1,(a3)+
+
+; .start1:
+; 		move.w	d2,d7			; Swap 16x4, part 3 & 4
+; 		move.w	d5,d2
+; 		swap	d2
+; 		move.w	d2,d5
+; 		move.w	d7,d2
+
+; 		move.w	d3,d7
+; 		move.w	d6,d3
+; 		swap	d3
+; 		move.w	d3,d6
+; 		move.w	d7,d3
+
+; 		move.l	a6,d0
+
+; 		move.l	d2,d7			; Swap/Merge 2x4, part 3 & 4
+; 		lsr.l	#2,d7
+; 		eor.l	d5,d7
+; 		and.l	d0,d7
+; 		eor.l	d7,d5
+; 		lsl.l	#2,d7
+; 		eor.l	d7,d2
+
+; 		move.l	d3,d7
+; 		lsr.l	#2,d7
+; 		eor.l	d6,d7
+; 		and.l	d0,d7
+; 		eor.l	d7,d6
+; 		lsl.l	#2,d7
+; 		eor.l	d7,d3
+
+; 		move.l	#$00ff00ff,d4
+
+; 		move.l	d6,d7			; Swap 8x2, part 1
+; 		lsr.l	#8,d7
+; 		eor.l	d5,d7
+; 		and.l	d4,d7
+; 		eor.l	d7,d5
+; 		lsl.l	#8,d7
+; 		eor.l	d7,d6
+
+; 		move.l	#$55555555,d1
+
+; 		move.l	d6,d7			; Swap 1x2, part 1
+; 		lsr.l	d7
+; 		eor.l	d5,d7
+; 		and.l	d1,d7
+; 		eor.l	d7,d5
+; 		move.l	d5,BPLSIZE*2(a1)
+; 		add.l	d7,d7
+; 		eor.l	d6,d7
+
+; 		move.l	d3,d5			; Swap 8x2, part 2
+; 		lsr.l	#8,d5
+; 		eor.l	d2,d5
+; 		and.l	d4,d5
+; 		eor.l	d5,d2
+; 		lsl.l	#8,d5
+; 		eor.l	d5,d3
+
+; 		move.l	d3,d5			; Swap 1x2, part 2
+; 		lsr.l	d5
+; 		eor.l	d2,d5
+; 		and.l	d1,d5
+; 		eor.l	d5,d2
+; 		add.l	d5,d5
+; 		eor.l	d5,d3
+
+; 		move.l	d2,a4
+; 		move.l	d3,a5
+
+; 		cmpa.l	a0,a2
+; 		bne	.x1
+; .x1end:
+; 		move.l	d7,BPLSIZE(a1)
+; 		move.l	a4,(a1)+
+; 		move.l	a5,-BPLSIZE-4(a1)
+
+; 		move.l	(sp)+,a1
+; 		add.l	#BPLSIZE*3,a1
+
+; 		move.l	#$00ff00ff,d3
+
+; 		move.l	lc_F2_ChunkyTempBuf(pc),a0
+; 		move.l	lc_variables+lc_screenBytes(pc),d0
+; 		lsr.l	#2,d0
+; 		lea		(a0,d0.l),a2
+
+; 		move.l	(a0)+,d0
+; 		move.l	(a0)+,d1
+
+; 		bra.s	.start2
+; .x2:
+; 		move.l	(a0)+,d0
+; 		move.l	(a0)+,d1
+
+; 		move.l	d2,(a1)+
+; .start2:
+; 		move.l	d1,d2			; Swap 8x2
+; 		lsr.l	#8,d2
+; 		eor.l	d0,d2
+; 		and.l	d3,d2
+; 		eor.l	d2,d0
+; 		lsl.l	#8,d2
+; 		eor.l	d1,d2
+
+; 		add.l	d0,d0			; Merge 1x2
+; 		add.l	d0,d2
+
+; 		cmpa.l	a0,a2
+; 		bne.s	.x2
+; .x2end:
+; 		move.l	d2,(a1)+
+
+; .none:
+; 		movem.l	(sp)+,ALL
+; 		rts
+
+; PRINTT "C2P CPU loop size"
+; PRINTV .x1end-.x1
+; PRINTV .x1
+; PRINTV .x1end
+
+;-------------------------------------------------------------------
 
 ;---- Original C2P ----
 c2p_Copy_CPU_noStretch_Cache:
@@ -11594,6 +11901,7 @@ F2_ClearTo1:		rs.w	0							; clear up to here on start
 F2_Buf1:			rs.b	256
 F2_ChunkyBuf:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
 F2_Buf2:			rs.b	256
+F2_ChunkyTempBuf:	rs.b	(screenMaxX*screenMaxY)/4	; c2p temp chunky buffer ($1800)
 F2_HeartSav:		rs.b	6*12*5						; 360 ($168)
 F2_HBFrames:		rs.b	6*12*5*HB_ANIM_FRAMES		; 18000 ($4650) - 50 frames
 F2_C1Save:			rs.b	18*5*6+4					; $21c + 4 bytes for "KANE"
