@@ -1538,8 +1538,9 @@ drawCrosshairs:
 		lea		(a1,d1.w),a1				; add 4 more lines + sinus
 
 ;		move	#$30,d0						; colour: yellow
-		move	#$08,d0						; colour: white
+;		move	#$08,d0						; colour: white
 ;		move	#$50,d0						; colour: red
+		move	sv_FillCols+8,d0
 
 		move	lc_variables+lc_c2pType(pc),d1		; C2P: 0 - blitter, 1 - CPU
 		beq.s	.translateX
@@ -6056,8 +6057,9 @@ lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
 lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
 lc_screenBytes:			dc.l	0				; equal to all chunky screen size in bytes (pixels)
 lc_screenPixX:			dc.l	0				; window size X in pixels (e.g. 192)
-lc_screenPixX4:			dc.l	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
+lc_screenPixX4:			dc.w	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
 lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
+lc_quatScreenBytes:		dc.w	0				; equal to quater the chunky screen bytes (pixels)
 lc_halfScreenBlit:		dc.w	0				; BPLSIZE value for half of c2p screen (for floor filling)
 lc_floorGapBlit:		dc.w	0				; BPLSIZE for floor gap fill
 lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitter
@@ -6865,7 +6867,6 @@ c2p_Copy_CPU_noStretch_Cache:
 		movem.l	ALL,-(sp)
 
  		move.l	lc_ChunkyBuffer(pc),a0
-		move.l	#$33333333,a6
 		add.l	#BPLSIZE,a1
 		move.l	lc_F2_ChunkyTempBuf(pc),a3
 
@@ -6873,12 +6874,19 @@ c2p_Copy_CPU_noStretch_Cache:
 
 		move.l	lc_variables+lc_screenBytes(pc),d0
 		add.l	a0,d0
-		move.l	d0,-(sp)
+		move.l	d0,-(sp)			; end of chunky buffer
 		move.l	lc_variables+lc_screenPixX(pc),a2
-		adda.l	a0,a2
+		adda.l	a0,a2				; end of chunky line
 
-	; ----- start
-		move.l	(a0)+,d1
+		move.l	#$00ff00ff,a4
+		move.l	#$55555555,a5
+		move.l	#$33333333,a6
+		bra.s	.x1
+		nop
+
+CNOP 0,16		; cache line alignment (16 bytes)
+.x1:
+		move.l	(a0)+,d1			; 16 bytes (+16 read later)
 		move.l	(a0)+,d5
 		move.l	(a0)+,d0
 		move.l	(a0)+,d6
@@ -6942,85 +6950,6 @@ c2p_Copy_CPU_noStretch_Cache:
 		or.l	d0,d1
 		move.l	d1,(a3)+
 
-		bra		.start1
-
-CNOP 0,16		; cache line alignment (16 bytes)
-.x1:
-		move.l	(a0)+,d1			; 16 bytes
-		move.l	(a0)+,d5
-		move.l	(a0)+,d0
-		move.l	(a0)+,d6
-
-		move.l	d7,BPLSIZE(a1)
-
-		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
-		move.l	d5,d7
-		lsr.l	#4,d7
-		eor.l	d1,d7
-		and.l	d4,d7
-		eor.l	d7,d1
-		lsl.l	#4,d7
-		eor.l	d7,d5
-
-		move.l	d6,d7
-		lsr.l	#4,d7
-		eor.l	d0,d7
-		and.l	d4,d7
-		eor.l	d7,d0
-		lsl.l	#4,d7
-		eor.l	d7,d6
-
-		move.l	(a0)+,d3
-		move.l	(a0)+,d2
-
-		move.l	a4,(a1)+
-
-		move.l	d2,d7			; Swap 4x1, part 2
-		lsr.l	#4,d7
-		eor.l	d3,d7
-		and.l	d4,d7
-		eor.l	d7,d3
-		lsl.l	#4,d7
-		eor.l	d7,d2
-
-		move.w	d3,d7			; Swap 16x4, part 1
-		move.w	d1,d3
-		swap	d3
-		move.w	d3,d1
-		move.w	d7,d3
-
-	lsl.l	#2,d1			; Swap/Merge 2x4, part 1
-	or.l	d1,d3
-	move.l	d3,(a3)+
-		; lsl.l	#6,d1			; Swap/Merge 2x4, part 1
-		; lsl.l	#4,d3
-		; or.l	d1,d3
-		; move.l	d3,a4
-
-		move.l	(a0)+,d1
-		move.l	(a0)+,d3
-
-		move.l	a5,-BPLSIZE-4(a1)
-
-		move.l	d3,d7
-		lsr.l	#4,d7
-		eor.l	d1,d7
-		and.l	d4,d7
-		eor.l	d7,d1
-		lsl.l	#4,d7
-		eor.l	d7,d3
-
-		move.w	d1,d7			; Swap 16x4, part 2
-		move.w	d0,d1
-		swap	d1
-		move.w	d1,d0
-		move.w	d7,d1
-
-		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
-		or.l	d0,d1
-;		add.l	a4,d1
-		move.l	d1,(a3)+
-
 .start1:
 		move.w	d2,d7			; Swap 16x4, part 3 & 4
 		move.w	d5,d2
@@ -7052,7 +6981,7 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		lsl.l	#2,d7
 		eor.l	d7,d3
 
-		move.l	#$00ff00ff,d4
+		move.l	a4,d4
 
 		move.l	d6,d7			; Swap 8x2, part 1
 		lsr.l	#8,d7
@@ -7062,7 +6991,7 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		lsl.l	#8,d7
 		eor.l	d7,d6
 
-		move.l	#$55555555,d1
+		move.l	a5,d1
 
 		move.l	d6,d7			; Swap 1x2, part 1
 		lsr.l	d7
@@ -7075,6 +7004,7 @@ CNOP 0,16		; cache line alignment (16 bytes)
 
 		move.l	d3,d5			; Swap 8x2, part 2
 		lsr.l	#8,d5
+		move.l	d7,BPLSIZE(a1)
 		eor.l	d2,d5
 		and.l	d4,d5
 		eor.l	d5,d2
@@ -7086,54 +7016,40 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		eor.l	d2,d5
 		and.l	d1,d5
 		eor.l	d5,d2
+		move.l	d2,(a1)+
 		add.l	d5,d5
 		eor.l	d5,d3
-
-		move.l	d2,a4
-		move.l	d3,a5
+		move.l	d3,-BPLSIZE-4(a1)
 
 		cmpa.l	a0,a2
 		bne		.x1
 
-
+.x1t:
+	; TODO: calc correctly (SMC)
+		adda.w	#16+(BPLSIZE*4),a1		; next screen line = add 4 rows + screen border (40-24=16)
+	; TODO: SMC
+		adda.w	lc_variables+lc_screenPixX+2(pc),a2		; end of next chunky line
+	; TODO: SMC ?
 		cmpa.l	(sp),a0
-		beq.s	.x1end
-	; TODO: calc correctly
-		add.l	#16+(BPLSIZE*4),a1
-		add.l	lc_variables+lc_screenPixX(pc),a2
-		bra		.x1
+		bne		.x1
 
 .x1end:
 		lea		4(sp),sp
 
-		move.l	d7,BPLSIZE(a1)
-		move.l	a4,(a1)+
-		move.l	a5,-BPLSIZE-4(a1)
-
+	; now merge in the last bplane
 		move.l	(sp)+,a1
 		add.l	#BPLSIZE*3,a1
-
 		move.l	#$00ff00ff,d3
 
 		move.l	lc_F2_ChunkyTempBuf(pc),a0
-		; move.l	lc_variables+lc_screenBytes(pc),d0
-		; lsr.l	#2,d0
-		; lea		(a0,d0.l),a2
-		move.l	lc_variables+lc_screenBytes(pc),d0
-		lsr.l	#2,d0
-		add.l	a0,d0
-		move.l	d0,-(sp)
-		move.l	lc_variables+lc_screenPixX4(pc),d0
-		lea		(a0,d0.l),a2
+		move	lc_variables+lc_quatScreenBytes(pc),d0
+		lea		8(a0,d0.w),a3
+		move	lc_variables+lc_screenPixX4(pc),d0
+		lea		8(a0,d0.w),a2	; end of chunky line + allowance for last read (8 bytes)
 
 		move.l	(a0)+,d0
 		move.l	(a0)+,d1
-		bra.s	.start2
 .x2:
-		move.l	(a0)+,d0
-		move.l	(a0)+,d1
-		move.l	d2,(a1)+
-.start2:
 		move.l	d1,d2			; Swap 8x2
 		lsr.l	#8,d2
 		eor.l	d0,d2
@@ -7145,28 +7061,31 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		add.l	d0,d0			; Merge 1x2
 		add.l	d0,d2
 
+		move.l	(a0)+,d0
+		move.l	(a0)+,d1
+		move.l	d2,(a1)+
+
 		cmpa.l	a0,a2
 		bne.s	.x2
 
-		cmpa.l	(sp),a0
-		beq.s	.x2end
-	; TODO: calc correctly
-		add.l	#16+(BPLSIZE*4),a1
-		add.l	lc_variables+lc_screenPixX4(pc),a2
-		bra.s	.x2
+	; TODO: calc correctly (SMC)
+		adda.w	#16+(BPLSIZE*4),a1
+	; TODO: SMC
+		adda.w	lc_variables+lc_screenPixX4(pc),a2
 
+		cmpa.l	a0,a3
+		bne.s	.x2
 .x2end:
-		lea		4(sp),sp
-		move.l	d2,(a1)+
 
-.none:
 		movem.l	(sp)+,ALL
 		rts
 
-; PRINTT "C2P CPU loop size"
-; PRINTV .x1end-.x1
+PRINTT "C2P CPU loop size"
+PRINTV .x1t-.x1
+PRINTV .x1end-.x1
 ; PRINTV .x1
 ; PRINTV .x1end
+
 	ENDC
 
 ;-------------------------------------------------------------------
@@ -10950,7 +10869,7 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		move.l	d1,lc_screenPixX(a6)	;width in pixels (e.g. 192)
 		move.l	d1,d0
 		lsr.l	#2,d0
-		move.l	d0,lc_screenPixX4(a6)	;width in pixels/4 (e.g. 192/4 = 48)
+		move	d0,lc_screenPixX4(a6)	;width in pixels/4 (e.g. 192/4 = 48)
 
 		lea		shZ_WmulTab(pc),a3		; width mul table
 		moveq	#15,d0
@@ -10969,6 +10888,8 @@ mk_Wmt2: move	d2,(a3)+
 		move.l	a2,8(a1)
 		lea		64*192(a2),a3		;zero wall tab start
 		move.l	a3,44(a1)			; row just after screen, indicating which collumns drawn.
+		lsr.l	#1,d1
+		move	d1,lc_quatScreenBytes(a6)		; 1/4 of chunky byte tab length
 
 		move	sv_WallHeigth,d1
 		muls	sv_Size,d1		;scale screen
@@ -11645,6 +11566,10 @@ setTexelArrangement:
 		addx	d2,d2
 		move.b	d2,(a1,d0.w)
 		dbf		d0,.l1
+
+		move.l	#$08080808,sv_FillCols
+		move.l	#$07070707,sv_FillCols+4
+		move	#$10,sv_FillCols+8
 		bra.s	.convert
 
 .lsbToMsb:
@@ -11664,6 +11589,10 @@ setTexelArrangement:
 		lsl		#3,d2
 		move.b	d2,(a1,d0.w)
 		dbf		d0,.l2
+
+		move.l	#$10101010,sv_FillCols
+		move.l	#$e0e0e0e0,sv_FillCols+4
+		move	#$08,sv_FillCols+8
 
 .convert:										; change pixel arrangement in all textures
 		move.l	lc_F1_Walls(pc),a2
@@ -11835,7 +11764,7 @@ sv_sinus:		equ	BASEC+$54860		;$280
 ; end tables
 
 ;mc_Htab:	equ	BASEC+$54b00		;$1b34 round up to 1b80. Empirically found as this is a compressed table.
-sv_CompasClr:	equ	BASEC+$56770		;$6c
+sv_CompasClr:	equ	BASEC+$56770		;$6c - this MUST be in CHIP
 ;sv_CompasSav:	equ	BASEC+$567e0		;$21c
 sv_DATA_AREA:	equ	BASEC+$56a00		;$600
 sv_ConstTab:	equ	BASEC+$57000		;$46
@@ -11857,8 +11786,10 @@ sv_ChunkyBufC:	equ	BASEC+$60000	;chunky buffer ($6000 for 192x128 +  192 for dra
 
 ;sv_WindowSav:	equ	BASEC+$66d30		;$28a0 (do $695d0)
 ;sv_ItemBuf:		equ	BASEC+$69600		;$21c (do $634bc)
-screen2:		equ	BASEC+$69d00		;160*40*5=$7d00
-screen1:		equ	BASEC+$71a00		;($9c40 razem) - $7d00 main screen + bottom panel
+;screen2:		equ	BASEC+$69d00		;160*40*5=$7d00
+;screen1:		equ	BASEC+$71a00		;($9c40 razem) - $7d00 main screen + bottom panel
+screen2:		equ	BASEC+$68000		;160*40*5=$7d00
+screen1:		equ	BASEC+$70000		;($9c40 all for 200 lines of 40x5 bytes) - $7d00 main screen + bottom panel
 ; different areas on screen
 sv_ScrollArea:	equ	screen1+$7d00+$1770+40
 sv_Counter1:	equ	screen1+$7d00+$640+7
@@ -11902,6 +11833,7 @@ sv_ViewHeigth:	dc.w	screenMaxY				;24/128 - maximum
 sv_WallHeigth:	dc.w	450			;max 500 - percent
 
 sv_FillCols:	dc.l	$10101010,$e0e0e0e0	;background filling for ceiling and floor
+				dc.w	$08
 ;sv_FillCols:	dc.l	$f8f8f8f8,$e0e0e0e0	;background filling for ceiling and floor
 
 ;---------------DATA AREA:
