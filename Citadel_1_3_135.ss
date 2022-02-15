@@ -8,39 +8,42 @@
 ;After assembling this code is relocable although it uses some fixed addresses in CHIP
 
 ; for development set to 0. For deployment set to 1
-IS_EXE:		equ	0
+IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET	$220209
-BUILD:		SET	$01
+VERSION: 	SET		$220214
+BUILD:		SET		$01
 
-; 0 - 68000, 1 - 68020+
-CPU:		equ	1
+; CPU: 0 - 68000, 1 - 68020+
+CPU:		equ		1
 
-STRUCTURE:	equ	$7f800			; 128 bytes available
-ADDMEM:		equ	$7ffea			; 2nd 0.5 free memory
-VBR_BASE:	equ	$7ffee			; VBR to use by the game
-MC68000:	equ	$7fff2			; 0 - 68000, 1 - 68020+
-MEMORY:		equ	$7fff8			; 1st 0.5 free memory
-DEBUGDATA:	equ	$80000			; for debug only. Deployed versions should not use it
+; C2P: 0 - old, 1 - 1x1_C5
+C2P:		equ		1
 
-select_cache:	equ	0			;TODO: remove. 1-user selects cache
+STRUCTURE:	equ		$7f800			; 128 bytes available
+ADDMEM:		equ		$7ffea			; 2nd 0.5 free memory
+VBR_BASE:	equ		$7ffee			; VBR to use by the game
+MC68000:	equ		$7fff2			; 0 - 68000, 1 - 68020+
+MEMORY:		equ		$7fff8			; 1st 0.5 free memory
+DEBUGDATA:	equ		$80000			; for debug only. Deployed versions should not use it
 
-;BASEF1:		equ	$07e00000	; Fast on a real A4000
-BASEF1:		equ	$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $200000)
-;BASEF1:		equ	$00cf0000	; Fast on a real A500 (starts at $c00000)
-;BASEF1:		equ	$40400000	; Z3 fast. First 0.5MB memory. Hopefully Fast
-BASEF2:		equ	BASEF1+$80000	; Z3 fast. Second 0.5MB memory. Hopefully Fast
+select_cache:	equ	0				;TODO: remove. 1-user selects cache
 
-CODESTART:	equ	$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
+;BASEF1:	equ		$07e00000		; Fast on a real A4000
+BASEF1:		equ		$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $200000)
+;BASEF1:	equ		$00cf0000		; Fast on a real A500 (starts at $c00000)
+;BASEF1:	equ		$40400000		; Z3 fast. First 0.5MB memory. Hopefully Fast
+BASEF2:		equ		BASEF1+$80000	; Z3 fast. Second 0.5MB memory. Hopefully Fast
+
+CODESTART:	equ		$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
 
 	IFEQ		IS_EXE
-BASEC:		equ	$100000			; free 0.5 meg chip(A1200). If assembled on a machine with less than 1MB chip then change to 0
+BASEC:		equ		$100000			; free 0.5 meg chip(A1200). If assembled on a machine with less than 1MB chip then change to 0
 	ELSE
-BASEC:		equ	$000000			; deployed (exe) version must always use lower chip to work with the rest of the game
+BASEC:		equ		$000000			; deployed (exe) version must always use lower chip to work with the rest of the game
 	ENDC
 
-UPDATE_TIME:	equ	6			; minimum period (in frames) between game logic updates. Default is 6.
+UPDATE_TIME: equ	6			; minimum period (in frames) between game logic updates. Default is 6.
 
 	TTL		VIRTUAL_DESIGN_PRODUCTION
 	JUMPPTR		S
@@ -323,6 +326,17 @@ start:
 		st		lc_ledChange(a6)		; mark leds to be updated
 		bsr		SeedRandom				; initialise random seed
 
+	IFNE	IS_EXE
+		bsr		DecrunchItems_pass	; decrunch new items gfx to the right location
+	ENDC
+	IF C2P=0	; old
+		clr		lc_texelOrgRequired(a6)		; 0 MSB (inverted - default), 1 LSB (standard - new C2Ps)
+	ELSE		; new
+		move	#1,lc_texelOrgRequired(a6)
+	ENDC
+;		move	#1,lc_texelOrgRequired(a6)
+		bsr		setTexelArrangement_pass
+
 		lea		lc_soundList(pc),a3		;fix sounds- put a 0 on the first word
 .fix_s:	move.l	(a3)+,d0
 		beq.s	.fe
@@ -331,10 +345,6 @@ start:
 		lea		4(a3),a3		; skip freq/len
 		bra.s	.fix_s
 .fe:
-
-	IFNE	IS_EXE
-		bsr		DecrunchItems_pass	; decrunch new items gfx to the right location
-	ENDC
 
 		move.l	lc_F2_UserMap(pc),a1		;clr user map
 		moveq	#127,d0
@@ -552,19 +562,12 @@ start:
 		lea		5*row(a2),a2
 		dbf		d0,.sc_ResComp
 
-		lea		start(pc),a1		;copy copper to chip
+		lea		start(pc),a1			;copy copper to chip
 		addi.l	#copper-start,a1
 		lea		RealCopper,a2
 		move	#[[EndCopper-Copper]/2]-1,d0
 .sc_CopyCop:	move	(a1)+,(a2)+
 		dbf		d0,.sc_CopyCop
-
-; 		lea		start(pc),a1		;copy offsets to chip
-; 		addi.l	#st_offsets-start,a1
-; 		lea		sv_Offsets,a2
-; 		move	#[[End_offsets-st_Offsets]/2],d0
-; .sc_CopyOff:	move	(a1)+,(a2)+
-; 		dbf		d0,.sc_CopyOff
 
 		bsr		make_PLANES_pass
 		bsr		sv_SetWindowSize_pass	; recalculate windows related parameters and set window size
@@ -5205,7 +5208,7 @@ sh_W0:
 		tst.l	ab_BloodAdr				; if blood needs to be added then this contains addressses to be used
 		beq		sh_NoBlood
 		movem.l	ab_BloodAdr,a1/a2/a4	;add blood		- a1-blood, a2-dst buffer, a4-orig texture. TODO rewrite this as it's slow??
-		move	#259,d1
+		move	#259,d1					; 65 * 64 in total (including zero/transparency markers)
 AB_loop1:	
 		; total = 20 + 4*30 per 4 pixels = 140
 		; alternative:
@@ -5999,17 +6002,18 @@ calcAddressTab:
 ; JUMP EXTENSIONS
 ;-------------------------------------------------------------------
 
-make_planes_pass:		bra		make_planes
-sv_SetWindowSize_pass:	bra		sv_SetWindowSize
-sv_MakeWidthTab_pass:	bra		sv_MakeWidthTab
-mk_FixFloorMod_pass:	bra		mk_FixFloorMod
-DrawBomb_pass:			bra		DrawBomb
-make_tables_pass:		bra		make_tables
-DecrunchItems_pass:		bra		DecrunchItems
-Take_Items_pass:		bra		Take_Items
-sv_MAKE_SZUM_pass:		bra		sv_MAKE_SZUM
-play_sound_pass:		bra		play_sound
-CheckCodes_pass:		bra		CheckCodes
+make_planes_pass:			bra		make_planes
+sv_SetWindowSize_pass:		bra		sv_SetWindowSize
+sv_MakeWidthTab_pass:		bra		sv_MakeWidthTab
+mk_FixFloorMod_pass:		bra		mk_FixFloorMod
+DrawBomb_pass:				bra		DrawBomb
+make_tables_pass:			bra		make_tables
+DecrunchItems_pass:			bra		DecrunchItems
+Take_Items_pass:			bra		Take_Items
+sv_MAKE_SZUM_pass:			bra		sv_MAKE_SZUM
+play_sound_pass:			bra		play_sound
+CheckCodes_pass:			bra		CheckCodes
+setTexelArrangement_pass:	bra		setTexelArrangement
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -6081,7 +6085,6 @@ lc_HitPos:				dc.w	0,0,0,0,0,0,0,0	;flag,Xpos,Ypos,Offset
 ; addresses in Fast 1
 lc_F1_addresses:				; address, size
 lc_F1_Code:				dc.l	F1_Code,0
-lc_F1_FloorCode:		dc.l	F1_FloorCode,0
 lc_F1_Walls:			dc.l	F1_Walls,0
 lc_F1_Items:			dc.l	F1_Items,0
 lc_F1_Planes:			dc.l	F1_Planes,0
@@ -6115,7 +6118,8 @@ lc_F2_CompasSav:		dc.l	F2_CompasSav,0
 lc_F2_CompassFrames:	dc.l	F2_CompassFrames,0
 lc_F2_CardSav:			dc.l	F2_CardSav,0
 lc_F2_ObjectTab:		dc.l	F2_ObjectTab,0
-
+lc_F2_FloorCode:		dc.l	F2_FloorCode,0
+lc_F2_TexelConvTab:		dc.l	F2_TexelConvTab,0
 
 lc_F2_TopMem:			dc.l	F2_TopMem,0
 						dc.l	0
@@ -6552,7 +6556,6 @@ fl_DCodeEnd:
 ;Copy SVGA format to Amiga screen (blitter) - by Kane/SCT, 07.02.1994
 ; this is a blitter based chunky 2 planar
 ;a1 - screen addr to start
-
 c2p_Copy:
 		tst		sv_StrFlag							; blitter can only be used on a non-stretched screen
 		bne.s	.stretched
@@ -6852,320 +6855,323 @@ ConvBits:	macro
 
 ;-------------------------------------------------------------------
 ; 5-pass CPU transformation adapted from Kalms c2p1x1_5_c5_030.s
+	IF C2P=1
 
 ;BPLSIZE:	equ	192*128/8
 BPLSIZE:	equ	40
 
 ;a1 - screen addr to start
-; c2p_Copy_CPU_noStretch_Cache:
-; 		movem.l	ALL,-(sp)
+c2p_Copy_CPU_noStretch_Cache:
+		movem.l	ALL,-(sp)
 
-;  		move.l	lc_ChunkyBuffer(pc),a0
-; 		move.l	#$33333333,a6
-; 		add.l	#BPLSIZE,a1
-; 		move.l	lc_F2_ChunkyTempBuf(pc),a3
+ 		move.l	lc_ChunkyBuffer(pc),a0
+		move.l	#$33333333,a6
+		add.l	#BPLSIZE,a1
+		move.l	lc_F2_ChunkyTempBuf(pc),a3
 
-; 		move.l	a1,-(sp)
+		move.l	a1,-(sp)
 
-; 		move.l	lc_variables+lc_screenBytes(pc),d0
-; 		add.l	a0,d0
-; 		move.l	d0,-(sp)
-; 		move.l	lc_variables+lc_screenPixX(pc),a2
-; 		adda.l	a0,a2
+		move.l	lc_variables+lc_screenBytes(pc),d0
+		add.l	a0,d0
+		move.l	d0,-(sp)
+		move.l	lc_variables+lc_screenPixX(pc),a2
+		adda.l	a0,a2
 
-; 	; ----- start
-; 		move.l	(a0)+,d1
-; 		move.l	(a0)+,d5
-; 		move.l	(a0)+,d0
-; 		move.l	(a0)+,d6
+	; ----- start
+		move.l	(a0)+,d1
+		move.l	(a0)+,d5
+		move.l	(a0)+,d0
+		move.l	(a0)+,d6
 
-; 		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
-; 		move.l	d5,d7
-; 		lsr.l	#4,d7
-; 		eor.l	d1,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d1
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d5
+		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
+		move.l	d5,d7
+		lsr.l	#4,d7
+		eor.l	d1,d7
+		and.l	d4,d7
+		eor.l	d7,d1
+		lsl.l	#4,d7
+		eor.l	d7,d5
 
-; 		move.l	d6,d7
-; 		lsr.l	#4,d7
-; 		eor.l	d0,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d0
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d6
+		move.l	d6,d7
+		lsr.l	#4,d7
+		eor.l	d0,d7
+		and.l	d4,d7
+		eor.l	d7,d0
+		lsl.l	#4,d7
+		eor.l	d7,d6
 
-; 		move.l	(a0)+,d3
-; 		move.l	(a0)+,d2
+		move.l	(a0)+,d3
+		move.l	(a0)+,d2
 
-; 		move.l	d2,d7			; Swap 4x1, part 2
-; 		lsr.l	#4,d7
-; 		eor.l	d3,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d3
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d2
+		move.l	d2,d7			; Swap 4x1, part 2
+		lsr.l	#4,d7
+		eor.l	d3,d7
+		and.l	d4,d7
+		eor.l	d7,d3
+		lsl.l	#4,d7
+		eor.l	d7,d2
 
-; 		move.w	d3,d7			; Swap 16x4, part 1
-; 		move.w	d1,d3
-; 		swap	d3
-; 		move.w	d3,d1
-; 		move.w	d7,d3
+		move.w	d3,d7			; Swap 16x4, part 1
+		move.w	d1,d3
+		swap	d3
+		move.w	d3,d1
+		move.w	d7,d3
 
-; 		lsl.l	#2,d1			; Swap/Merge 2x4, part 1
-; 		or.l	d1,d3
-; 		move.l	d3,(a3)+
+		lsl.l	#2,d1			; Swap/Merge 2x4, part 1
+		or.l	d1,d3
+		move.l	d3,(a3)+
 
-; 		move.l	(a0)+,d1
-; 		move.l	(a0)+,d3
+		move.l	(a0)+,d1
+		move.l	(a0)+,d3
 
-; 		move.l	d3,d7
-; 		lsr.l	#4,d7
-; 		eor.l	d1,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d1
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d3
+		move.l	d3,d7
+		lsr.l	#4,d7
+		eor.l	d1,d7
+		and.l	d4,d7
+		eor.l	d7,d1
+		lsl.l	#4,d7
+		eor.l	d7,d3
 
-; 		move.w	d1,d7			; Swap 16x4, part 2
-; 		move.w	d0,d1
-; 		swap	d1
-; 		move.w	d1,d0
-; 		move.w	d7,d1
+		move.w	d1,d7			; Swap 16x4, part 2
+		move.w	d0,d1
+		swap	d1
+		move.w	d1,d0
+		move.w	d7,d1
 
-; 		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
-; 		or.l	d0,d1
-; 		move.l	d1,(a3)+
+		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
+		or.l	d0,d1
+		move.l	d1,(a3)+
 
-; 		bra		.start1
+		bra		.start1
 
-; CNOP 0,16		; cache line alignment (16 bytes)
-; .x1:
-; 		move.l	(a0)+,d1			; 16 bytes
-; 		move.l	(a0)+,d5
-; 		move.l	(a0)+,d0
-; 		move.l	(a0)+,d6
+CNOP 0,16		; cache line alignment (16 bytes)
+.x1:
+		move.l	(a0)+,d1			; 16 bytes
+		move.l	(a0)+,d5
+		move.l	(a0)+,d0
+		move.l	(a0)+,d6
 
-; 		move.l	d7,BPLSIZE(a1)
+		move.l	d7,BPLSIZE(a1)
 
-; 		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
-; 		move.l	d5,d7
-; 		lsr.l	#4,d7
-; 		eor.l	d1,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d1
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d5
+		move.l	#$0f0f0f0f,d4		; Swap 4x1, part 1
+		move.l	d5,d7
+		lsr.l	#4,d7
+		eor.l	d1,d7
+		and.l	d4,d7
+		eor.l	d7,d1
+		lsl.l	#4,d7
+		eor.l	d7,d5
 
-; 		move.l	d6,d7
-; 		lsr.l	#4,d7
-; 		eor.l	d0,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d0
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d6
+		move.l	d6,d7
+		lsr.l	#4,d7
+		eor.l	d0,d7
+		and.l	d4,d7
+		eor.l	d7,d0
+		lsl.l	#4,d7
+		eor.l	d7,d6
 
-; 		move.l	(a0)+,d3
-; 		move.l	(a0)+,d2
+		move.l	(a0)+,d3
+		move.l	(a0)+,d2
 
-; 		move.l	a4,(a1)+
+		move.l	a4,(a1)+
 
-; 		move.l	d2,d7			; Swap 4x1, part 2
-; 		lsr.l	#4,d7
-; 		eor.l	d3,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d3
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d2
+		move.l	d2,d7			; Swap 4x1, part 2
+		lsr.l	#4,d7
+		eor.l	d3,d7
+		and.l	d4,d7
+		eor.l	d7,d3
+		lsl.l	#4,d7
+		eor.l	d7,d2
 
-; 		move.w	d3,d7			; Swap 16x4, part 1
-; 		move.w	d1,d3
-; 		swap	d3
-; 		move.w	d3,d1
-; 		move.w	d7,d3
+		move.w	d3,d7			; Swap 16x4, part 1
+		move.w	d1,d3
+		swap	d3
+		move.w	d3,d1
+		move.w	d7,d3
 
-; 	lsl.l	#2,d1			; Swap/Merge 2x4, part 1
-; 	or.l	d1,d3
-; 	move.l	d3,(a3)+
-; 		; lsl.l	#6,d1			; Swap/Merge 2x4, part 1
-; 		; lsl.l	#4,d3
-; 		; or.l	d1,d3
-; 		; move.l	d3,a4
+	lsl.l	#2,d1			; Swap/Merge 2x4, part 1
+	or.l	d1,d3
+	move.l	d3,(a3)+
+		; lsl.l	#6,d1			; Swap/Merge 2x4, part 1
+		; lsl.l	#4,d3
+		; or.l	d1,d3
+		; move.l	d3,a4
 
-; 		move.l	(a0)+,d1
-; 		move.l	(a0)+,d3
+		move.l	(a0)+,d1
+		move.l	(a0)+,d3
 
-; 		move.l	a5,-BPLSIZE-4(a1)
+		move.l	a5,-BPLSIZE-4(a1)
 
-; 		move.l	d3,d7
-; 		lsr.l	#4,d7
-; 		eor.l	d1,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d1
-; 		lsl.l	#4,d7
-; 		eor.l	d7,d3
+		move.l	d3,d7
+		lsr.l	#4,d7
+		eor.l	d1,d7
+		and.l	d4,d7
+		eor.l	d7,d1
+		lsl.l	#4,d7
+		eor.l	d7,d3
 
-; 		move.w	d1,d7			; Swap 16x4, part 2
-; 		move.w	d0,d1
-; 		swap	d1
-; 		move.w	d1,d0
-; 		move.w	d7,d1
+		move.w	d1,d7			; Swap 16x4, part 2
+		move.w	d0,d1
+		swap	d1
+		move.w	d1,d0
+		move.w	d7,d1
 
-; 		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
-; 		or.l	d0,d1
-; ;		add.l	a4,d1
-; 		move.l	d1,(a3)+
+		lsl.l	#2,d0			; Swap/Merge 2x4, part 2
+		or.l	d0,d1
+;		add.l	a4,d1
+		move.l	d1,(a3)+
 
-; .start1:
-; 		move.w	d2,d7			; Swap 16x4, part 3 & 4
-; 		move.w	d5,d2
-; 		swap	d2
-; 		move.w	d2,d5
-; 		move.w	d7,d2
+.start1:
+		move.w	d2,d7			; Swap 16x4, part 3 & 4
+		move.w	d5,d2
+		swap	d2
+		move.w	d2,d5
+		move.w	d7,d2
 
-; 		move.w	d3,d7
-; 		move.w	d6,d3
-; 		swap	d3
-; 		move.w	d3,d6
-; 		move.w	d7,d3
+		move.w	d3,d7
+		move.w	d6,d3
+		swap	d3
+		move.w	d3,d6
+		move.w	d7,d3
 
-; 		move.l	a6,d0
+		move.l	a6,d0
 
-; 		move.l	d2,d7			; Swap/Merge 2x4, part 3 & 4
-; 		lsr.l	#2,d7
-; 		eor.l	d5,d7
-; 		and.l	d0,d7
-; 		eor.l	d7,d5
-; 		lsl.l	#2,d7
-; 		eor.l	d7,d2
+		move.l	d2,d7			; Swap/Merge 2x4, part 3 & 4
+		lsr.l	#2,d7
+		eor.l	d5,d7
+		and.l	d0,d7
+		eor.l	d7,d5
+		lsl.l	#2,d7
+		eor.l	d7,d2
 
-; 		move.l	d3,d7
-; 		lsr.l	#2,d7
-; 		eor.l	d6,d7
-; 		and.l	d0,d7
-; 		eor.l	d7,d6
-; 		lsl.l	#2,d7
-; 		eor.l	d7,d3
+		move.l	d3,d7
+		lsr.l	#2,d7
+		eor.l	d6,d7
+		and.l	d0,d7
+		eor.l	d7,d6
+		lsl.l	#2,d7
+		eor.l	d7,d3
 
-; 		move.l	#$00ff00ff,d4
+		move.l	#$00ff00ff,d4
 
-; 		move.l	d6,d7			; Swap 8x2, part 1
-; 		lsr.l	#8,d7
-; 		eor.l	d5,d7
-; 		and.l	d4,d7
-; 		eor.l	d7,d5
-; 		lsl.l	#8,d7
-; 		eor.l	d7,d6
+		move.l	d6,d7			; Swap 8x2, part 1
+		lsr.l	#8,d7
+		eor.l	d5,d7
+		and.l	d4,d7
+		eor.l	d7,d5
+		lsl.l	#8,d7
+		eor.l	d7,d6
 
-; 		move.l	#$55555555,d1
+		move.l	#$55555555,d1
 
-; 		move.l	d6,d7			; Swap 1x2, part 1
-; 		lsr.l	d7
-; 		eor.l	d5,d7
-; 		and.l	d1,d7
-; 		eor.l	d7,d5
-; 		move.l	d5,BPLSIZE*2(a1)
-; 		add.l	d7,d7
-; 		eor.l	d6,d7
+		move.l	d6,d7			; Swap 1x2, part 1
+		lsr.l	d7
+		eor.l	d5,d7
+		and.l	d1,d7
+		eor.l	d7,d5
+		move.l	d5,BPLSIZE*2(a1)
+		add.l	d7,d7
+		eor.l	d6,d7
 
-; 		move.l	d3,d5			; Swap 8x2, part 2
-; 		lsr.l	#8,d5
-; 		eor.l	d2,d5
-; 		and.l	d4,d5
-; 		eor.l	d5,d2
-; 		lsl.l	#8,d5
-; 		eor.l	d5,d3
+		move.l	d3,d5			; Swap 8x2, part 2
+		lsr.l	#8,d5
+		eor.l	d2,d5
+		and.l	d4,d5
+		eor.l	d5,d2
+		lsl.l	#8,d5
+		eor.l	d5,d3
 
-; 		move.l	d3,d5			; Swap 1x2, part 2
-; 		lsr.l	d5
-; 		eor.l	d2,d5
-; 		and.l	d1,d5
-; 		eor.l	d5,d2
-; 		add.l	d5,d5
-; 		eor.l	d5,d3
+		move.l	d3,d5			; Swap 1x2, part 2
+		lsr.l	d5
+		eor.l	d2,d5
+		and.l	d1,d5
+		eor.l	d5,d2
+		add.l	d5,d5
+		eor.l	d5,d3
 
-; 		move.l	d2,a4
-; 		move.l	d3,a5
+		move.l	d2,a4
+		move.l	d3,a5
 
-; 		cmpa.l	a0,a2
-; 		bne		.x1
+		cmpa.l	a0,a2
+		bne		.x1
 
 
-; 		cmpa.l	(sp),a0
-; 		beq.s	.x1end
-; 	; TODO: calc correctly
-; 		add.l	#16+(BPLSIZE*4),a1
-; 		add.l	lc_variables+lc_screenPixX(pc),a2
-; 		bra		.x1
+		cmpa.l	(sp),a0
+		beq.s	.x1end
+	; TODO: calc correctly
+		add.l	#16+(BPLSIZE*4),a1
+		add.l	lc_variables+lc_screenPixX(pc),a2
+		bra		.x1
 
-; .x1end:
-; 		lea		4(sp),sp
+.x1end:
+		lea		4(sp),sp
 
-; 		move.l	d7,BPLSIZE(a1)
-; 		move.l	a4,(a1)+
-; 		move.l	a5,-BPLSIZE-4(a1)
+		move.l	d7,BPLSIZE(a1)
+		move.l	a4,(a1)+
+		move.l	a5,-BPLSIZE-4(a1)
 
-; 		move.l	(sp)+,a1
-; 		add.l	#BPLSIZE*3,a1
+		move.l	(sp)+,a1
+		add.l	#BPLSIZE*3,a1
 
-; 		move.l	#$00ff00ff,d3
+		move.l	#$00ff00ff,d3
 
-; 		move.l	lc_F2_ChunkyTempBuf(pc),a0
-; 		; move.l	lc_variables+lc_screenBytes(pc),d0
-; 		; lsr.l	#2,d0
-; 		; lea		(a0,d0.l),a2
-; 		move.l	lc_variables+lc_screenBytes(pc),d0
-; 		lsr.l	#2,d0
-; 		add.l	a0,d0
-; 		move.l	d0,-(sp)
-; 		move.l	lc_variables+lc_screenPixX4(pc),d0
-; 		lea		(a0,d0.l),a2
+		move.l	lc_F2_ChunkyTempBuf(pc),a0
+		; move.l	lc_variables+lc_screenBytes(pc),d0
+		; lsr.l	#2,d0
+		; lea		(a0,d0.l),a2
+		move.l	lc_variables+lc_screenBytes(pc),d0
+		lsr.l	#2,d0
+		add.l	a0,d0
+		move.l	d0,-(sp)
+		move.l	lc_variables+lc_screenPixX4(pc),d0
+		lea		(a0,d0.l),a2
 
-; 		move.l	(a0)+,d0
-; 		move.l	(a0)+,d1
-; 		bra.s	.start2
-; .x2:
-; 		move.l	(a0)+,d0
-; 		move.l	(a0)+,d1
-; ;		move.l	d2,(a1)+
-; .start2:
-; 		move.l	d1,d2			; Swap 8x2
-; 		lsr.l	#8,d2
-; 		eor.l	d0,d2
-; 		and.l	d3,d2
-; 		eor.l	d2,d0
-; 		lsl.l	#8,d2
-; 		eor.l	d1,d2
+		move.l	(a0)+,d0
+		move.l	(a0)+,d1
+		bra.s	.start2
+.x2:
+		move.l	(a0)+,d0
+		move.l	(a0)+,d1
+		move.l	d2,(a1)+
+.start2:
+		move.l	d1,d2			; Swap 8x2
+		lsr.l	#8,d2
+		eor.l	d0,d2
+		and.l	d3,d2
+		eor.l	d2,d0
+		lsl.l	#8,d2
+		eor.l	d1,d2
 
-; 		add.l	d0,d0			; Merge 1x2
-; 		add.l	d0,d2
+		add.l	d0,d0			; Merge 1x2
+		add.l	d0,d2
 
-; 		cmpa.l	a0,a2
-; 		bne.s	.x2
+		cmpa.l	a0,a2
+		bne.s	.x2
 
-; 		cmpa.l	(sp),a0
-; 		beq.s	.x2end
-; 	; TODO: calc correctly
-; 		add.l	#16+(BPLSIZE*4),a1
-; 		add.l	lc_variables+lc_screenPixX4(pc),a2
-; 		bra.s	.x2
+		cmpa.l	(sp),a0
+		beq.s	.x2end
+	; TODO: calc correctly
+		add.l	#16+(BPLSIZE*4),a1
+		add.l	lc_variables+lc_screenPixX4(pc),a2
+		bra.s	.x2
 
-; .x2end:
-; 		lea		4(sp),sp
-; ;		move.l	d2,(a1)+
+.x2end:
+		lea		4(sp),sp
+		move.l	d2,(a1)+
 
-; .none:
-; 		movem.l	(sp)+,ALL
-; 		rts
+.none:
+		movem.l	(sp)+,ALL
+		rts
 
 ; PRINTT "C2P CPU loop size"
 ; PRINTV .x1end-.x1
 ; PRINTV .x1
 ; PRINTV .x1end
+	ENDC
 
 ;-------------------------------------------------------------------
 
+	IF C2P=0
 ;---- Original C2P ----
 c2p_Copy_CPU_noStretch_Cache:
 		movem.l	ALL,-(sp)
@@ -7277,7 +7283,7 @@ sv2_endloop:
 
 ;PRINTT "C2P CPU loop size"
 ;PRINTV sv2_endloop-sv2_Vertical
-
+	ENDC
 ;-------------------------------------------------------------------
 ;CPU C2P copy to Amiga screen + stretch
 ; This version does NOT fit in a 256byte cache
@@ -9619,9 +9625,8 @@ ci_NewWeapon:
 		addi	#12,d1
 ci_NotCards:	add	d1,d1			;*4
 		move.l	(a1,d1.w),d0
-		move.l	lc_FastMem1(pc),a1
-		addi.l	#co_Walls,a1
-		lea	(a1,d0.l),a1		;item start
+		move.l	lc_F1_Walls(pc),a1
+		lea		(a1,d0.l),a1		;item start
 		move.l	lc_F2_ItemBuf(pc),a2
 
 		move.l	#$80000000,d0		;for or
@@ -10650,9 +10655,7 @@ db_4:	andi	#$f000,(a2)
 ;No input...
 mc_MakeCode:
 		movem.l	ALL,-(sp)
-		move.l	lc_FastMem1(pc),a1
-;		lea	(a1),a5
-		addi.l	#mc_code,a1		;addr table
+		move.l	lc_F1_WallCode(pc),a1
 		lea		[maxWallHeigth*4](a1),a2	;code table
 		move.l	lc_F2_Htab(pc),a5		;Heigth table - this has 360 addresses followed by "cells" i.e. pixel size table entries
 		lea		[maxWallHeigth*4](a5),a6
@@ -10843,8 +10846,7 @@ mc_optim:
 ;Make plane tables ... no input. This has to be called only once
 make_PLANES:
 		movem.l	ALL,-(sp)
-		move.l	lc_FastMem1(pc),a1
-		addi.l	#sv_PLANES,a1			;addr table
+		move.l	lc_F1_Planes(pc),a1
 		lea		260(a1),a2			;plane table	 - 65 addresses (65*4=260 bytes) followd by 700 bytes data for every entry
 		lea		(a2),a3				;p.t. 2
 		move	#350,d6				;y' (max)
@@ -10915,8 +10917,7 @@ make_tables:
 
 		; --- generate code to draw floors for the no-cache mode. It generates the whole floor in one go.
 		lea		fl_DCode(pc),a1			; floor code template
-		move.l	lc_FastMem1(pc),a2
-		addi.l	#fl_floors,a2			; floor code
+		move.l	lc_F2_FloorCode(pc),a2
 		lea		fl_DoJsr(pc),a3
 		move.l	a2,2(a3)				; set jsr addr for floors
 		move	#191,d7					; copy the code 192 times - once for each pixel
@@ -11020,15 +11021,11 @@ mk_FTend: move	d0,(a3)				; on first word remember nr of rows to draw -1
 		or		d2,d0
 		move	d0,lc_floorGapBlit(a6)	; BLTSIZE for ceiling/floor gap
 
-		move.l	lc_FastMem1(pc),a3
-		lea		(a3),a4
-		lea		(a3),a5
-		addi.l	#co_Walls,a3
+		move.l	lc_F1_Walls(pc),a3
 		move.l	a3,12(a1)				; sv_Consttab+12 - wall textures start
-		lea		(a4),a3
-		addi.l	#mc_code,a4
+		move.l	lc_F1_WallCode(pc),a4
 		move.l	a4,16(a1)
-		addi.l	#sv_PLANES,a5
+		move.l	lc_F1_Planes(pc),a5
 		move.l	a5,20(a1)
 		move.l	lc_F2_Htab(pc),a3
 		move.l	a3,24(a1)
@@ -11244,15 +11241,7 @@ sv_MakeWidthTab:
 mk_FixFloorMod:
 		movem.l	d0/d7/a1-a3,-(sp)
 		lea		sv_ConstTab,a1
-		move.l	lc_FastMem1(pc),a2
-		addi.l	#fl_Floors,a2				; floor code
-		; move	mk_BraPos(pc),d0			; old addx position
-		; move	#$de4e,(a2,d0.w)			; "add.w a6,d7" replaces old rts
-; 		move.l	mk_BraPos(pc),d0			; old addx position
-; 		beq.s	.ne
-; 		move.l	d0,a3
-; 		move	#$de4e,(a3)			; "add.w a6,d7" replaces old rts
-; .ne:	
+		move.l	lc_F2_FloorCode(pc),a2
 		lea		sv_WidthTable(pc),a3		; 1..192 for no CPU and more complex for blitter
 		move	6(a1),d7					;width in pixels (up to 192)
 		subq	#1,d7
@@ -11264,19 +11253,10 @@ mk_DCoffsets:
 
 		move	#$4e75,(a2)		;add rts where it should be considering actual screen width
 
-		; lea		fl_Dcode(pc),a3
-		; sub.l	a3,a2
-		; move	a2,d0
-		; lea		mk_BraPos(pc),a2
-		; move	d0,(a2)
-		; lea		mk_BraPos(pc),a3
-		; move.l	a2,(a3)
-
 		bsr		clearCPUCache		; clear cache at the end to avoid issues after SMC and table re-calc
 		movem.l	(sp)+,d0/d7/a1-a3
 		rts
 
-; mk_BraPos:	dc.l	0
 ;-------------------------------------------------------------------
 ; set new windows size.
 ; in: size in sv_size (2-6 -> 8 to 24 bytes wide screen)
@@ -11618,14 +11598,89 @@ sv_SWS3:
 ;-------------------------------------------------------------------
 ; Check and rearrange textel arrangement
 setTexelArrangement:
+		movem.l	ALL,-(sp)
 		lea		lc_variables(pc),a6
-		tst		lc_texelOrgCurrent(a6)
-		bpl		.known
+		tst		lc_texelOrgCurrent(a6)	; -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
+		bpl.s	.known
 
-		nop
-.known:
+		; determine if these are MSB (old, default) or LSB (for new C2P, standard) textures
+		move.l	lc_F1_Walls(pc),a1		; first texture, first collumn
+		lea		65*32(a1),a2			; first texture, middle collumn
+		moveq	#0,d1
+		moveq	#15,d0
+.det1:	or.l	(a1)+,d1
+		or.l	(a2)+,d1
+		dbf		d0,.det1
+		move.l	d1,d2
+		andi.l	#$e0e0e0e0,d1			; if bits on MSB then old format
+		bne.s	.old
+		move	#1,lc_texelOrgCurrent(a6)	; new
+		bra.s	.known
+.old:	move	#0,lc_texelOrgCurrent(a6)	; old
 
+		; here it's already known what the arrangement is
+.known:	move	lc_texelOrgCurrent(a6),d0
+		move	lc_texelOrgRequired(a6),d1	; 0 MSB (inverted - default), 1 LSB (standard)
+		cmp		d0,d1
+		beq		.exit						; if current == required then exit
+
+		move	d1,lc_texelOrgCurrent(a6)
+
+		move.l	lc_F2_TexelConvTab,a1
+		tst		d1
+		beq.s	.lsbToMsb
+
+		move	#255,d0					; MSB -> LSB
+.l1:	moveq	#0,d2
+		move	d0,d1
+		lsr		#4,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		move.b	d2,(a1,d0.w)
+		dbf		d0,.l1
+		bra.s	.convert
+
+.lsbToMsb:
+		move	#255,d0					; LSB -> MSB
+.l2:	moveq	#0,d2
+		move	d0,d1
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsr		#1,d1
+		addx	d2,d2
+		lsl		#3,d2
+		move.b	d2,(a1,d0.w)
+		dbf		d0,.l2
+
+.convert:										; change pixel arrangement in all textures
+		move.l	lc_F1_Walls(pc),a2
+		moveq	#0,d1
+		move	#(320*4*2)+(320*2+160)*2-1,d0	; go through walls and enemies
+.lop1:
+		REPT	64
+		move.b	(a2),d1
+		move.b	(a1,d1.w),(a2)+
+		ENDR
+		lea		1(a2),a2						; skip zero/transparency byte
+		dbf		d0,.lop1
+
+.exit:	movem.l	(sp)+,ALL
 		rts
+
+
 
 ;-------------------------------------------------------------------
 ; decrunch new items gfx to the right location
@@ -11633,8 +11688,7 @@ DecrunchItems:
 	IFNE	IS_EXE
 		movem.l	d0/a0/a1,-(sp)
 		lea		lc_items(pc),a0
-		move.l	lc_FastMem1(pc),a1
-		addi.l	#co_Items,a1
+		move.l	lc_F1_Items(pc),a1
 		move.l	#lc_items_end-lc_items,d0
 		bsr		PPDoDecrunch
 		movem.l	(sp)+,d0/a0/a1
@@ -11948,11 +12002,10 @@ sv_RotSpeed:	dc.w	12				; nominal for old versions is 12 but it's scaled to fps
 sv_SquarePos:	dc.w	0,0			;x,y of 1024-square
 sv_InSquarePos:	dc.w	0,0			;x,y in square. This MUST be directly after sv_SquarePos.
 
-;---------------OTHER TABLES:
-
 even
-
 	ENDOFF
+;---------------OTHER TABLES:
+; in EXE version load bolt-on gfx here, for decrunching into the right place
 
 lc_items:
 	IFNE	IS_EXE
@@ -11968,17 +12021,8 @@ STR_GODMODE:		equ		53				; byte, god mode 0=off, 1=on (hex $35 in Structure)
 STR_CROSSHAIRS:		equ		54				; 0=on, 1=off
 
 ; --------- FAST 1 offsets -------------
-basef_data: 		equ		$f570			; start of data in fast memory, following code
-fl_Floors:			equ		basef_data		; len 30*192 = 5760 ($1680) + 2 for RTS. END: $10bf2
-co_Walls:			equ		$10c00			;[320*4*65]*4=$14500 * 4
-co_Items:			equ		co_Walls+$42040	; start $52c40. Length 28080 = $6db0. End: $599f0
-sv_PLANES:			equ		$59e40			;$b1bc(700*[260/4]). End: $64ffc -> WRONG! last entry oerwritten
-mc_code:			equ		$65000			;$1af00 - raster code. End $7ff00
-
-
 RSRESET
-F1_Code:			rs.b	$f570
-F1_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($1688). Actually only +2 is needed for RTS
+F1_Code:			rs.b	$10c00						; MUST be this for compatibility with Citadel 1 server which preloads data
 F1_Walls:			rs.b	320*4*65*2+(320*2+160)*65*2	; Walls and enemies. 83200+83200+52000+52000,  all: 270400 = $42040
 F1_Items:			rs.b	27*16*65					; Items. 27 1/4 narrow textures, 28080 = $6db0
 F1_Planes:			rs.b	65*4+65*700					; 65 addresses (260) followed by 65 700-byte entries. $b2c0
@@ -11992,7 +12036,6 @@ F1_TopMem:			rs.w	0
 
 ; --------- FAST 2 offsets -------------
 AVCNTS:		equ		16					; number of average counters
-
 RSRESET
 F2_Empty:			rs.b	16							; this is for any temp data
 F2_AvLastVal:		rs.l	AVCNTS						; last read start_value for debug counters (l)
@@ -12021,6 +12064,8 @@ F2_CompasSav:		rs.b	540							; $21c (540) - buffer for compass background
 F2_CompassFrames:	rs.b	540*COMP_ANIM_FRAMES		; 17280 ($4380) - 32 frames
 F2_CardSav:			rs.b	24*5						; $78 - buffer for card counters
 F2_ObjectTab:		rs.b	12*32						; $168 (30 cells) - buffer for dynamic moving objects
+F2_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($1688). Actually only +2 is needed for RTS
+F2_TexelConvTab:	rs.b	256							; texture conversion tab: MSB to LSB or the other way round
 
 F2_TopMem:			rs.w	0
 
@@ -12036,7 +12081,7 @@ PRINTT	"Too much data in FAST2!"
 PRINTV  F2_TopMem
 ENDC
 
-IF [end-s+CODESTART]>basef_data
+IF [end-s+CODESTART]>F1_Walls
 PRINTT	"CODE TOO LONG!"
 PRINTV  end-s, basef_data-CODESTART
 ENDC
@@ -12048,14 +12093,14 @@ ENDC
 ;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
 
->extern	"Assets/W1A",BASEF1+co_Walls,-1
->extern	"Assets/W1B",BASEF1+co_Walls+83200,-1
->extern	"Assets/E1A",BASEF1+co_Walls+83200+83200,-1
->extern	"Assets/E1B",BASEF1+co_Walls+83200+83200+52000,-1
+>extern	"Assets/W1A",BASEF1+F1_Walls,-1
+>extern	"Assets/W1B",BASEF1+F1_Walls+83200,-1
+>extern	"Assets/E1A",BASEF1+F1_Walls+83200+83200,-1
+>extern	"Assets/E1B",BASEF1+F1_Walls+83200+83200+52000,-1
 >extern	"Assets/M1A",sv_MAP,-1
 >extern	"Assets/C1A",sc_colors,-1
 	IFEQ	IS_EXE
->extern	"Assets/ITEMS01.VIR",BASEF1+co_Items
+>extern	"Assets/ITEMS01.VIR",BASEF1+F1_Items
 	ENDC
 >extern	"Assets/WINDOW1.RAW",screen1,-1
 >extern	"Assets/TABLES.DAT",sv_bomba,-1			; chaostab, fonts etc.
