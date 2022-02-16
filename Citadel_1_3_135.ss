@@ -11,7 +11,7 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220214
+VERSION: 	SET		$220216
 BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
@@ -423,7 +423,7 @@ start:
 		lsr		#1,d0
 		move	d0,14(a1)
 
-
+.sv_setdone:
 		move.l	lc_FastMem2(pc),a1		; clear FAST2 tables
 		move.l	#F2_ClearTo1/16,d1		; might go a bit above the end address but that should also be empty
 		clr.l	d0
@@ -432,49 +432,25 @@ start:
 		ENDR
 		dbf		d1,.cf2a
 
-.sv_setdone:
-		move.l	sv_Screen,a1		;copy window to screen 2
-		move.l	sv_Screen+4,a2
-		move	#[[160*40*5]/16]-1,d7			; 160*40*5 in longs and each long is copied 4x in the loop
-.sv_CopWindow:	rept	4
-		move.l	(a1)+,(a2)+
-		endr
-		dbf	d7,.sv_CopWindow
-
-		lea		Screen1+[sv_Upoffset*5*row],a1
-		move.l	lc_F2_WindowSav(pc),a2
-		move	#[130*5]-1,d7
-.sv_SavWindow:	move.l	(a1)+,(a2)+		;save only outer parts of the middle part of the window
-		move.l	(a1)+,(a2)+
-		lea		24(a1),a1
-		move.l	(a1)+,(a2)+
-		move.l	(a1)+,(a2)+
-		dbf		d7,.sv_SavWindow
-
-		lea		sv_ScrollArea-34,a1	;clear scroll area
-		moveq	#0,d0
-		moveq	#6,d1
-.sc_c0: moveq	#7,d2
-.sc_Clear: move.l	d0,(a1)+
-		dbf		d2,.sc_Clear
-		move	d0,(a1)+
-		lea		[5*40]-34(a1),a1
-		dbf		d1,.sc_c0
-
-		move.l	lc_F2_ObjectTab(pc),a1		;clr objects
-		moveq	#29,d1
-.sc_Clear2:	move	#0,(a1)
-		lea		12(a1),a1
-		dbf		d1,.sc_Clear2
 
 	;--- save elements of the screen which have to be used later
-		lea		sv_Counter1,a1		;save counters
-		lea		sv_Counter2,a2
-;		lea		sv_C1Save,a3
 		move.l	lc_F2_C1Save(pc),a3
 		cmpi.l	#"KANE",18*6*5(a3)		; do not save counters if they have already been saved. Required by the server which does not reload all gfx.
 		beq.w	.sc_NoSave
-;		lea		sv_C2Save,a4
+
+		; relocate main screen to its target position - only once and then leave it there
+; 		lea		screenLoad,a1
+; 		lea		screen1,a2
+; 		move	#[[200*40*5]/40]-1,d0
+; .relocScreen:
+; 		REPT	10
+; 		move.l	(a1)+,(a2)+
+; 		ENDR
+; 		dbf		d0,.relocScreen
+
+		lea		sv_Counter1,a1		;save counters
+		lea		sv_Counter2,a2
+		move.l	lc_F2_C1Save(pc),a3
 		move.l	lc_F2_C2Save(pc),a4
 		moveq	#[18*5]-1,d0
 .sc_sc0: moveq	#5,d1
@@ -527,12 +503,48 @@ start:
 		move	(a1)+,(a2)+
 		lea		row-6(a1),a1
 		dbf		d0,.sc_SavHt
+	;--- end save ---------------------------------- 
 .sc_NoSave:
+
+		move.l	sv_Screen,a1		;copy window to screen 2
+		move.l	sv_Screen+4,a2
+		move	#[[160*40*5]/16]-1,d7			; 160*40*5 in longs and each long is copied 4x in the loop
+.sv_CopWindow:	rept	4
+		move.l	(a1)+,(a2)+
+		endr
+		dbf	d7,.sv_CopWindow
+
+		lea		Screen1+[sv_Upoffset*5*row],a1
+		move.l	lc_F2_WindowSav(pc),a2
+		move	#[130*5]-1,d7
+.sv_SavWindow:	move.l	(a1)+,(a2)+		;save only outer parts of the middle part of the window
+		move.l	(a1)+,(a2)+
+		lea		24(a1),a1
+		move.l	(a1)+,(a2)+
+		move.l	(a1)+,(a2)+
+		dbf		d7,.sv_SavWindow
 
 		bsr		makeHBTable			; generate HB animation frames
 		bsr		makeCompassTable	; generate compass animation frames
 
+
 	;--- clear counters
+		lea		sv_ScrollArea-34,a1			;clear scroll area
+		moveq	#0,d0
+		moveq	#6,d1
+.sc_c0: moveq	#7,d2
+.sc_Clear: move.l	d0,(a1)+
+		dbf		d2,.sc_Clear
+		move	d0,(a1)+
+		lea		[5*40]-34(a1),a1
+		dbf		d1,.sc_c0
+
+		move.l	lc_F2_ObjectTab(pc),a1		;clr objects
+		moveq	#29,d1
+.sc_Clear2:	move	#0,(a1)
+		lea		12(a1),a1
+		dbf		d1,.sc_Clear2
+
 		move.l	lc_F2_C2Save(pc),a1
 		lea		sv_Counter2,a2
 		moveq	#[18*5]-1,d0
@@ -811,7 +823,7 @@ sv_startFrame:
 		clr		lc_floorBottomDelayed(a6)
 		lea		CUSTOM,a0
 		waitblt
-		move	sv_Fillcols+4,$74(a0)		; clean second half. NOTE: there MUST be no blitter actions between clearScreen and here
+		move	lc_colFloor(a6),$74(a0)		; clean second half. NOTE: there MUST be no blitter actions between clearScreen and here
 		move	lc_halfScreenBlit(a6),$58(a0)
 .sv_noDelayedFloor:
 
@@ -1540,7 +1552,7 @@ drawCrosshairs:
 ;		move	#$30,d0						; colour: yellow
 ;		move	#$08,d0						; colour: white
 ;		move	#$50,d0						; colour: red
-		move	sv_FillCols+8,d0
+		move	lc_colCrosshairs(a6),d0
 
 		move	lc_variables+lc_c2pType(pc),d1		; C2P: 0 - blitter, 1 - CPU
 		beq.s	.translateX
@@ -4500,7 +4512,7 @@ mc_clearScreen:
 cpuFill:
 		lea		CUSTOM,a0
 		waitblt								; this is needed in the case c2p blitter is used and cache is also used
-		move.l	sv_Fillcols,d0
+		move.l	lc_colCeiling(a6),d0
 		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
 		bne		.FillFloorGap
 
@@ -4576,7 +4588,7 @@ cpuFill:
 .nor1:
 		movea.l	a2,a1
 		move	d2,d1
- 		move.l	sv_Fillcols+4,d0
+ 		move.l	lc_colFloor(a6),d0
 		bsr.s	.floop			; lower half (floor)
 		tst		d4
 		beq.s	.nor2
@@ -4625,7 +4637,7 @@ blitterFill:
 		waitblt
 		move	#$8040,$96(a0)				;blitter DMA on
 		move.l	#-1,$44(a0)					; Blitter first+last word mask for source A
-		move	sv_Fillcols,$74(a0)			; ceiling colour (Blitter source A data register)
+		move	lc_colFloor(a6),$74(a0)			; ceiling colour (Blitter source A data register)
 		move	#0,$66(a0)					; Blitter modulo for dest D
 		move.l	#$01f00000,$40(a0)			; Blitter control register 0 (USED + copy mode)
 		move.l	a1,$54(a0)	; D addr
@@ -6078,6 +6090,10 @@ lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
 lc_lastCompassAngle:	dc.w	-1				; angle of last drawn compass
 lc_texelOrgCurrent:		dc.w	-1				; current texel arrangement. -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
 lc_texelOrgRequired:	dc.w	0				; required texel arrangement. 0 MSB (inverted - default), 1 LSB (standard)
+lc_colCeiling:			dc.l	$10101010		; ceiling colour
+lc_colFloor:			dc.l	$e0e0e0e0		; floor colour
+lc_colCrosshairs:		dc.w	$08				; crosshairs colour
+lc_colDisturbances:		dc.l	$88888888		; disturbances colour
 
 ENDOFF
 
@@ -9501,6 +9517,7 @@ copyCounter:
 ; CHANGE WEAPON
 ; in: d0 - new weapon, a6 - lc_variables
 ci_NewWeapon:	
+		lea		lc_variables(pc),a6
 		lea		sv_Items,a1
 		ext		d0
 		andi	#$fffe,d0
@@ -9550,14 +9567,48 @@ ci_NotCards:	add	d1,d1			;*4
 
 		move.l	#$80000000,d0		;for or
 		moveq	#31,d1
-ci_DecodeI1:	lea	(a2),a3			;add item to background
-		lea	10(a1),a1
-		move.l	d0,d4
-		not.l	d4			;for and
+ci_DecodeI1:	
+		lea		(a2),a3			;add item to background
+		lea		10(a1),a1
+		move.l	d0,d4			; d0: for OR
+		not.l	d4				; d4: for AND
 		move	#21,d2
-ci_DecodeI2:	move.b	(a1)+,d3
-		beq.s	ci_DecodeI3
+ci_DecodeI2:	
+		move.b	(a1)+,d3
+		beq		ci_DecodeI3
 
+		tst		lc_texelOrgCurrent(a6)	; 0 MSB (inverted - default), 1 LSB (standard)
+		beq.s	msbBits
+
+				; LSB bit arrangement
+		lsr		#1,d3
+		bcs.s	.ci_di00
+		and.l	d4,(a3)
+		bra.s	.ci_di01
+.ci_di00:	or.l	d0,(a3)
+.ci_di01:	lsr		#1,d3
+		bcs.s	.ci_di10
+		and.l	d4,4(a3)
+		bra.s	.ci_di11
+.ci_di10:	or.l	d0,4(a3)
+.ci_di11:	lsr		#1,d3
+		bcs.s	.ci_di20
+		and.l	d4,8(a3)
+		bra.s	.ci_di21
+.ci_di20:	or.l	d0,8(a3)
+.ci_di21:	lsr		#1,d3
+		bcs.s	.ci_di30
+		and.l	d4,12(a3)
+		bra.s	.ci_di31
+.ci_di30:	or.l	d0,12(a3)
+.ci_di31:	lsr		#1,d3
+		bcs.s	.ci_di40
+		and.l	d4,16(a3)
+		bra.s	ci_DecodeI3
+.ci_di40:	or.l	d0,16(a3)
+		bra.s	ci_DecodeI3
+
+msbBits:		; MSB bit arrangement
 		add.b	d3,d3
 		bcs.s	.ci_di00
 		and.l	d4,(a3)
@@ -9584,11 +9635,12 @@ ci_DecodeI2:	move.b	(a1)+,d3
 		bra.s	ci_DecodeI3
 .ci_di40:	or.l	d0,16(a3)
 
-ci_DecodeI3:	lea	4*5(a3),a3
-		dbf	d2,ci_DecodeI2
-		lea	33(a1),a1		;vir to 65 - next row
+ci_DecodeI3: 
+		lea		4*5(a3),a3
+		dbf		d2,ci_DecodeI2	; one row top->bottom
+		lea		33(a1),a1		;vir to 65 - next row
 		lsr.l	d0
-		dbf	d1,ci_DecodeI1
+		dbf		d1,ci_DecodeI1	; iterate over all rows
 
 ci_NotPresent:	rts
 
@@ -9634,7 +9686,8 @@ ci_DWMain:
 		lea		sv_ChaosTab,a3
 		lea		ci_200MulTab(pc),a4
 		move	#31,d1
-ci_DWLoop:	move	(a3,d0.w),d2
+ci_DWLoop:	
+		move	(a3,d0.w),d2
 		move	d2,d3
 		lsr		#5,d3
 		add		d3,d3
@@ -9645,7 +9698,7 @@ ci_DWLoop:	move	(a3,d0.w),d2
 		lsr		#3,d4
 		add		d4,d5			;bytes in buf
 		add		d4,d3			;bytes
-		not		d2			;bits
+		not		d2				;bits
 		andi	#7,d2
 
 		move.b	(a1,d5.w),d4
@@ -10426,15 +10479,17 @@ sv_rotate:
 ;-------------------------------------------------------------------
 ;make szum on screen if hit...
 sv_MAKE_SZUM:
-		movem.l	a1-a4/d0-d4,-(sp)
+		movem.l	a1-a6/d0-d4,-(sp)
+		lea		lc_variables(pc),a6
 		move.l	lc_ChunkyBuffer(pc),a1
 		move.l	lc_F2_ScrOffTab(pc),a3
+		move.l	lc_colDisturbances(a6),d3
 		move	sv_ViewWidth,d4
 		lsr		#2,d4
 		subq	#1,d4
 		move	sv_size,d0
 		subq	#1,d0
-		lsl		#3,d0					; nr of lines depends on window size. E.g. size 5 (sv_size=6) has 5 * 8 = 40 lines
+		lsl		#2,d0					; nr of lines depends on window size. E.g. size 5 (sv_size=6) has 5 * 8 = 40 lines
 .sv_MS02:
 		RANDOM	a2,d1
 		move.l	d1,d2
@@ -10447,17 +10502,12 @@ sv_MAKE_SZUM:
 		lea		(a1,d1.w),a4			; start of row
 		move	d4,d2
 .sv_MS03:	
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
-		move.l	#$88888888,(a4)+
+		REPT	8
+		move.l	d3,(a4)+
+		ENDR
 		dbf		d2,.sv_MS03
 		dbf		d0,.sv_MS02
-		movem.l	(sp)+,a1-a4/d0-d4
+		movem.l	(sp)+,a1-a6/d0-d4
 		rts
 
 ;-------------------------------------------------------------------
@@ -11543,11 +11593,11 @@ setTexelArrangement:
 .known:	move	lc_texelOrgCurrent(a6),d0
 		move	lc_texelOrgRequired(a6),d1	; 0 MSB (inverted - default), 1 LSB (standard)
 		cmp		d0,d1
-		beq		.exit						; if current == required then exit
+		beq		.setColours						; if current == required then exit
 
 		move	d1,lc_texelOrgCurrent(a6)
 
-		move.l	lc_F2_TexelConvTab,a1
+		move.l	lc_F2_TexelConvTab(pc),a1
 		tst		d1
 		beq.s	.lsbToMsb
 
@@ -11566,10 +11616,6 @@ setTexelArrangement:
 		addx	d2,d2
 		move.b	d2,(a1,d0.w)
 		dbf		d0,.l1
-
-		move.l	#$08080808,sv_FillCols
-		move.l	#$07070707,sv_FillCols+4
-		move	#$10,sv_FillCols+8
 		bra.s	.convert
 
 .lsbToMsb:
@@ -11590,25 +11636,46 @@ setTexelArrangement:
 		move.b	d2,(a1,d0.w)
 		dbf		d0,.l2
 
-		move.l	#$10101010,sv_FillCols
-		move.l	#$e0e0e0e0,sv_FillCols+4
-		move	#$08,sv_FillCols+8
-
 .convert:										; change pixel arrangement in all textures
-		move.l	lc_F1_Walls(pc),a2
+		move.l	lc_F1_Walls(pc),a2				; convert walls and enemies
 		moveq	#0,d1
-		move	#(320*4*2)+(320*2+160)*2-1,d0	; go through walls and enemies
-.lop1:
+		move	#(320*4*2)+(320*2+160)*2-1,d0
+		bsr.s	.convertLoop
+
+		move.l	lc_F1_Items(pc),a2					; convert items
+		move	#27*16-1,d0
+		bsr.s	.convertLoop
+
+.setColours:
+		tst		lc_texelOrgCurrent(a6)	; 0 MSB (inverted - default), 1 LSB (standard)
+		beq.s	.msbColours
+
+		; set colours of different on-screen overlays
+		; LSB
+		move.l	#$08080808,lc_colCeiling(a6)
+		move.l	#$07070707,lc_colFloor(a6)
+		move	#$10,lc_colCrosshairs(a6)
+		move.l	#$11111111,lc_colDisturbances(a6)
+		bra.s	.exit
+.msbColours:
+		; MSB
+		move.l	#$10101010,lc_colCeiling(a6)
+		move.l	#$e0e0e0e0,lc_colFloor(a6)
+		move	#$08,lc_colCrosshairs(a6)
+		move.l	#$88888888,lc_colDisturbances(a6)
+
+.exit:	
+		movem.l	(sp)+,ALL
+		rts
+
+.convertLoop:
 		REPT	64
 		move.b	(a2),d1
 		move.b	(a1,d1.w),(a2)+
 		ENDR
 		lea		1(a2),a2						; skip zero/transparency byte
-		dbf		d0,.lop1
-
-.exit:	movem.l	(sp)+,ALL
+		dbf		d0,.convertLoop
 		rts
-
 
 
 ;-------------------------------------------------------------------
@@ -11764,14 +11831,14 @@ sv_sinus:		equ	BASEC+$54860		;$280
 ; end tables
 
 ;mc_Htab:	equ	BASEC+$54b00		;$1b34 round up to 1b80. Empirically found as this is a compressed table.
-sv_CompasClr:	equ	BASEC+$56770		;$6c - this MUST be in CHIP
+;sv_CompasClr:	equ	BASEC+$56770		;$6c - this MUST be in CHIP
 ;sv_CompasSav:	equ	BASEC+$567e0		;$21c
-sv_DATA_AREA:	equ	BASEC+$56a00		;$600
-sv_ConstTab:	equ	BASEC+$57000		;$46
+;sv_DATA_AREA:	equ	BASEC+$56a00		;$600
+;sv_ConstTab:	equ	BASEC+$57000		;$46
 ;sv_FloorTab:	equ	BASEC+$57050		;$8c for 140 lines, $80 for 128. Allocated $b0 =176 here.
 ;sv_DeltaTab:	equ	BASEC+$57100		;$12c0 (600*4 *2 = 4800)
 ;sv_ScrOffTab:	equ	BASEC+$58410		;$100
-sv_TextOffsets:	equ	BASEC+$58520		;$100 (to 128 texts)
+;sv_TextOffsets:	equ	BASEC+$58520		;$100 (to 128 texts)
 
 ;RealCopper:	equ	BASEC+$58630		;$da0	defined upper!
 ;sv_C1Save:	equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
@@ -11789,7 +11856,7 @@ sv_ChunkyBufC:	equ	BASEC+$60000	;chunky buffer ($6000 for 192x128 +  192 for dra
 ;screen2:		equ	BASEC+$69d00		;160*40*5=$7d00
 ;screen1:		equ	BASEC+$71a00		;($9c40 razem) - $7d00 main screen + bottom panel
 screen2:		equ	BASEC+$68000		;160*40*5=$7d00
-screen1:		equ	BASEC+$70000		;($9c40 all for 200 lines of 40x5 bytes) - $7d00 main screen + bottom panel
+screen1:		equ	BASEC+$71a00		;DO NOT MOVE ($9c40 all for 200 lines of 40x5 bytes) - $7d00 main screen + bottom panel
 ; different areas on screen
 sv_ScrollArea:	equ	screen1+$7d00+$1770+40
 sv_Counter1:	equ	screen1+$7d00+$640+7
@@ -11803,8 +11870,14 @@ sv_DebugPos1:	equ	screen1+[20*40*5]		; debug counter positions for screens 1 and
 sv_DebugPos2:	equ	screen2+[20*40*5]
 
 ;sv_LineTab:	equ	BASEC+$7b800		;$15e0 (heigths) ($1900)
-sc_colors:	equ	BASEC+$7d600		;$40 (64)
-sc_Text:	equ	BASEC+$7d642		;$1b58 (7000)
+sc_colors:		equ	BASEC+$7d600		;$40 (64)	- DO NOT MOVE
+sc_Text:		equ	BASEC+$7d642		;$1b58 max (7000)	- DO NOT MOVE
+sv_CompasClr:	equ	BASEC+$7f1a0		;$6c - this MUST be in CHIP
+sv_DATA_AREA:	equ	BASEC+$7f220		;$1a0
+sv_TextOffsets:	equ	BASEC+$7f500		;$100 (to 128 texts)
+sv_ConstTab:	equ	BASEC+$7f600		;$46
+; Do not exceed $7f800 because that's where the server keeps STRUCTURE and other data
+
 ;ChangeCopper:	equ	BASEC+$7f1a0		;$1c		 - not used
 ;sv_ObjectTab:	equ	BASEC+$7f1d0		;$168 (30 cells)
 ;sv_HeartSav:	equ	BASEC+$7f340		;$12c (300)
@@ -11815,8 +11888,6 @@ sc_Text:	equ	BASEC+$7d642		;$1b58 (7000)
 Oryginal_Data:
 
 	OFFSET	sv_DATA_AREA			; size is about $300
-
-
 ;---------------PREFERENCES:
 screenMaxX:	equ		192		; in pixels
 screenMaxY:	equ		128		; in pixels
@@ -11832,9 +11903,7 @@ sv_ViewWidth:	dc.w	screenMaxX/8			;view window dims in bytes - max 192 pixels = 
 sv_ViewHeigth:	dc.w	screenMaxY				;24/128 - maximum
 sv_WallHeigth:	dc.w	450			;max 500 - percent
 
-sv_FillCols:	dc.l	$10101010,$e0e0e0e0	;background filling for ceiling and floor
-				dc.w	$08
-;sv_FillCols:	dc.l	$f8f8f8f8,$e0e0e0e0	;background filling for ceiling and floor
+;sv_FillCols:	dc.l	$10101010,$e0e0e0e0	;background filling for ceiling and floor
 
 ;---------------DATA AREA:
 ;sv_ChunkyBuffer:	dc.l	0		; SVGA (chunky) screen - in chip for blitter c2p, otherwise in fast
@@ -11936,6 +12005,11 @@ sv_InSquarePos:	dc.w	0,0			;x,y in square. This MUST be directly after sv_Square
 
 even
 	ENDOFF
+
+End_OData:
+
+; PRINTT	"Chip data block size"
+; PRINTV  End_OData-Oryginal_Data
 ;---------------OTHER TABLES:
 ; in EXE version load bolt-on gfx here, for decrunching into the right place
 
@@ -11945,7 +12019,6 @@ lc_items:
 	ENDC
 lc_items_end:
 
-End_OData:
 
 ; --------- STRUCTURE offsets -------------
 STR_DISTURBANCES:	equ		52				; byte, on-creen disturbaces, 0=on, 1=off
