@@ -5279,7 +5279,11 @@ sh_Dok:	sub		d5,d4
 		divu	d2,d4			;R
 		moveq	#0,d6
 		moveq	#0,d1			;wybrana
-		subq	#1,d2
+
+		cmpi	#maxWallHeigth*2,d2		; just in case limit to max the table can handle to protect from corner cases
+		bmi.s	.nc
+		move	#maxWallHeigth*2,d2
+.nc:	subq	#1,d2
 
 	; TODO: depending on mode (cache or not), this can be optimised to calc and save less things
 		move	d5,d7
@@ -6068,12 +6072,12 @@ lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after s
 lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
 lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
 lc_screenBytes:			dc.l	0				; equal to all chunky screen size in bytes (pixels)
-lc_screenPixX:			dc.l	0				; window size X in pixels (e.g. 192)
+lc_screenPixX:			dc.w	0				; window size X in pixels (e.g. 192)
 lc_screenPixX4:			dc.w	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
 lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
 lc_quatScreenBytes:		dc.w	0				; equal to quater the chunky screen bytes (pixels)
-lc_halfScreenBlit:		dc.w	0				; BPLSIZE value for half of c2p screen (for floor filling)
-lc_floorGapBlit:		dc.w	0				; BPLSIZE for floor gap fill
+lc_halfScreenBlit:		dc.w	0				; equal to value for half of c2p screen (for floor filling)
+lc_floorGapBlit:		dc.w	0				; size of the  floor gap fill (in chunky pixels)
 lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitter
 lc_scrollBitsLeft:		dc.w	0				; how many bits of the scroll left on screen (0..272)
 lc_doFlash:				dc.w	0				; >0 - flash screen
@@ -6297,8 +6301,6 @@ EVEN
 ;-------------------------------------------------------------------
 ;Draw textured floors and ceilings...
 ; The main loop fits in 020 cache ($a0)
-
-DRAW_CEILING: equ 1		;0 - draw only floors, 1 - draw floors and ceilings(default)
 ShowFloor:	
 		tst		sv_Floor			; 0 - no floors, 1 - textured floors
 		beq.w	fl_quit
@@ -6468,9 +6470,7 @@ fl_Draw_Cache_CPU:
 		add		a5,d6
 		move.b	(a1,d1.w),(a3)+	; copy pixel to floor
 		addx.b	d2,d0			;inc X in texture
-		IFNE	DRAW_CEILING
 		move.b	(a2,d1.w),(a4)+	; copy pixel to ceiling
-		ENDC
 		ENDR
 		dbf		d5,.flc_DCode
 flc_Dcont_cpu:	
@@ -6521,9 +6521,7 @@ fl_Draw_CB_Loop:
 		add		a5,d6
 		move.b	(a1,d1.w),(a3,d4.w)	; copy pixel to floor
 		addx.b	d2,d0			;inc X in texture
-		IFNE	DRAW_CEILING
 		move.b	(a2,d1.w),(a4,d4.w)	; copy pixel to ceiling
-		ENDC
 		ENDR
 		dbf		d5,.flc_DCode
 flc_Dcont_blitter:	
@@ -6561,13 +6559,11 @@ fl_DCode:	; length: 30 single segment, *192 = 5760 all
 		move	d0,d5
 		and		d4,d1
 		add		d5,d5
-		add		(a0,d5.w),d1		;wall pixel offset
+		add		(a0,d5.w),d1	; *64 = wall pixel offset
 		add		a5,d6			;here to omit Mem Wait
 		move.b	(a1,d1.w),2(a3)
 		addx.b	d2,d0			;inc X
-		IFNE	DRAW_CEILING
 		move.b	(a2,d1.w),4(a4)
-		ENDC
 ;		endr
 fl_DCodeEnd:
 ;------------------------------------------------------------------------
@@ -6587,6 +6583,31 @@ c2p_Copy:
 		bne		c2p_Copy_CPU_Stretch_Cache
 		bra		c2p_Copy_CPU_Stretch_noCache
 
+;------------------------------------------------------------------------
+; Initialise C2P routines
+c2p_Init:
+		lea		lc_variables(pc),a6
+		move	#row,d0				; next screen line = add 4 rows + screen border which depends on screen size (40-24=16)
+		move	d0,d1
+		lsl		#2,d0				; *4 (bitplanes)
+		move	sv_ViewWidth,d2
+		sub		d2,d1				; row - width = screen modulo
+		addi	d1,d0
+		lea		c2p1x1c5_nextScrLine1(pc),a1
+		move	d0,2(a1)
+		lea		c2p1x1c5_nextScrLine2(pc),a1
+		move	d0,2(a1)
+
+		move	lc_screenPixX(a6),d0	; end of next chunky line
+		lea		c2p1x1c5_nextChunkyLine1(pc),a1
+		move	d0,2(a1)
+		move	lc_screenPixX4(a6),d0	; end of next chunky line in temp buffer (lines are 1/4 or main chunky lines)
+		lea		c2p1x1c5_nextChunkyLine2(pc),a1
+		move	d0,2(a1)
+		rts
+
+
+;------------------------------------------------------------------------
 		; --- Blitter non-stretched
 c2p_Copy_Blitter_noStretch:
 		movem.l	ALL,-(sp)
@@ -6727,163 +6748,16 @@ ConvBits:	macro
 		endm
 		
 ;-------------------------------------------------------------------
-; C2P - Copy SVGA format to Amiga screen (CPU) - by Kane/SCT, 06.02.1994
-; Tha main loop just about fits in cache: $f4
-;a1 - screen addr to start
-
-; ---- ADDX C2P C2P ----
-; c2p_Copy_CPU_noStretch_Cache:
-; 		movem.l	ALL,-(sp)
-; 		move.l	lc_ChunkyBuffer(pc),a0
-; 		lea		row(a1),a2
-; 		lea		row(a2),a3
-; 		lea		row(a3),a4
-; 		lea		row(a4),a5
-
-; 		move	#5*row,d0
-; 		move	sv_ViewWidth,d1
-; 		sub		d1,d0			; scr modulo
-; 		move	d0,-(sp)
-; 		subq	#1,d1
-; 		move	d1,-(sp)		; width for dbf
-; 		move	sv_ViewHeigth,d7
-; 		subq	#1,d7
-; 		move	d7,-(sp)		; heigth for dbf
-; 		bra.s	sv2_Vertical
-; 		nop
-
-; CNOP 0,16		; cache line alignment (16 bytes)
-; sv2_Vertical:
-; 		move	d7,(sp)
-; 		move	2(sp),d7
-; sv2_Horizontal:
-; 		move	d7,a6
-; 		move.b	(a0)+,d0
-; 		add.b	d0,d0			; X=a0
-; 		move.b	(a0)+,d1
-; 		addx.b	d0,d0			; D0=c0..a0, X=b0
-; 		move.b	(a0)+,d2
-; 		addx.b	d1,d1			; D1=b1..b0, X=a1
-; 		move.b	(a0)+,d3
-; 		addx.b	d0,d0			; D0=d0..a0a1, X=c0
-; 		move.b	(a0)+,d4
-; 		addx.b	d2,d2			; D2=b2..c0, X=a2
-; 		move.b	(a0)+,d5
-; 		addx.b	d0,d0			; D0=e0..a0a1a2, X=d0
-; 		move.b	(a0)+,d6
-; 		addx.b	d3,d3			; D3=b3..d0, X=a3
-; 		move.b	(a0)+,d7
-; 		addx.b	d0,d0			; D0=0..a0a1a2a3, X=e0
-; 		addx.b	d4,d4			; D4=b4..e0, X=a4
-; 		addx.b	d0,d0			; D0=0..a0a1a2a3a4, X=?
-; 		add.b	d5,d5			; D5=b5.., X=a5
-; 		addx.b	d0,d0			; D0=0..a0a1a2a3a4a5, X=?
-; 		add.b	d6,d6			; D5=b6.., X=a6
-; 		addx.b	d0,d0			; D0=0..a0a1a2a3a4a5a6, X=?
-; 		add.b	d7,d7			; D5=b7.., X=a7
-; 		addx.b	d0,d0			; D0=a0a1a2a3a4a5a6a7, X=?
-; 		move.b	d0,(a1)+		; bpl#1
-
-; 		move	d1,d0
-; 		andi	#%00000001,d0
-; 		andi	#%11111110,d1
-; 		add.b	d1,d1			; D1=c1..0000, X=b1
-; 		or		d0,d1			; D1=c1..b0, X=b1
-; 		addx.b	d1,d1			; D1=d1..b0b1, X=c1
-; 		addx.b	d2,d2			; D2=c2..c0c1, X=b2
-; 		addx.b	d1,d1			; D1=e1..b0b1b2, X=d1
-; 		addx.b	d3,d3			; D3=c3..d0d1, X=b3
-; 		addx.b	d1,d1			; D1=0..b0b1b2b3, X=e1
-; 		addx.b	d4,d4			; D4=c4..e0e1, X=b4
-; 		addx.b	d1,d1			; D1=0..b0b1b2b3b4, X=?
-; 		add.b	d5,d5			; D5=c5.., X=b5
-; 		addx.b	d1,d1			; D1=0..b0b1b2b3b4b5, X=?
-; 		add.b	d6,d6			; D5=c6.., X=b6
-; 		addx.b	d1,d1			; D1=0..b0b1b2b3b4b5b6, X=?
-; 		add.b	d7,d7			; D5=c7.., X=b7
-; 		addx.b	d1,d1			; D1=b0b1b2b3b4b5b6b7, X=?
-
-; 		move	d2,d0
-; 		move.b	d1,(a2)+		; bpl#2
-; 		andi	#%00000011,d0
-; 		andi	#%11111100,d2
-; 		add.b	d2,d2			; D2=d2..000000, X=c2
-; 		or		d0,d2			; D2=d2..c0c1, X=c2
-; 		addx.b	d2,d2			; D2=e2..c0c1c2, X=d2
-; 		addx.b	d3,d3			; D3=d3..d0d1d2, X=c3
-; 		addx.b	d2,d2			; D2=0..c0c1c2c3, X=e2
-; 		addx.b	d4,d4			; D4=d4..e0e1e2, X=c4
-; 		addx.b	d2,d2			; D2=0..c0c1c2c3c4, X=?
-; 		add.b	d5,d5			; D5=d5.., X=c5
-; 		addx.b	d2,d2			; D2=0..c0c1c2c3c4c5, X=?
-; 		add.b	d6,d6			; D5=d6.., X=c6
-; 		addx.b	d2,d2			; D2=0..c0c1c2c3c4c5c6, X=?
-; 		add.b	d7,d7			; D5=d7.., X=c7
-; 		addx.b	d2,d2			; D2=c0c1c2c3c4c5c6c7, X=?
-
-; 		move	d3,d0
-; 		move.b	d2,(a3)+		; bpl#3
-; 		andi	#%00000111,d0
-; 		andi	#%11111000,d3
-; 		add.b	d3,d3			; D3=e3..0000, X=d3
-; 		or		d0,d3			; D3=e3..d0d1d2, X=d3
-; 		addx.b	d3,d3			; D3=0..d0d1d2d3, X=e3
-; 		addx.b	d4,d4			; D4=e4..e0e1e2e3, X=d4
-; 		addx.b	d3,d3			; D3=0..d0d1d2d3d4, X=?
-; 		add.b	d5,d5			; D5=e5.., X=d5
-; 		addx.b	d3,d3			; D3=0..d0d1d2d3d4d5, X=?
-; 		add.b	d6,d6			; D5=e6.., X=d6
-; 		addx.b	d3,d3			; D3=0..d0d1d2d3d4d5d6, X=?
-; 		add.b	d7,d7			; D5=e7.., X=d7
-; 		addx.b	d3,d3			; D3=d0d1d2d3d4d5d6d7, X=?
-
-; 		move	d4,d0
-; 		move.b	d3,(a4)+		; bpl#4
-; 		andi	#%00001111,d0
-; 		andi	#%11110000,d4
-; 		add.b	d4,d4			; D4=0..00000000, X=e4
-; 		or		d0,d4			; D4=0..e0e1e2e3, X=e4
-; 		addx.b	d4,d4			; D4=0..e0e1e2e3e4, X=?
-; 		add.b	d5,d5			; D5=0.., X=e5
-; 		addx.b	d4,d4			; D4=0..e0e1e2e3e4e5, X=?
-; 		add.b	d6,d6			; D5=0.., X=e6
-; 		addx.b	d4,d4			; D4=0..e0e1e2e3e4e5e6, X=?
-; 		add.b	d7,d7			; D5=0.., X=e7
-; 		addx.b	d4,d4			; D4=e0e1e2e3e4e5e6e7, X=?
-; 		move.b	d4,(a5)+		; bpl#5
-
-; 		move	a6,d7
-;  		dbf		d7,sv2_Horizontal		
-
-; 		move	4(sp),d0
-; 		add		d0,a1			; add modulo
-; 		add		d0,a2
-; 		add		d0,a3
-; 		add		d0,a4
-; 		add		d0,a5
-
-; 		move	(sp),d7
-; 		dbf		d7,sv2_Vertical
-
-; sv2_endloop:
-; 		lea		6(sp),sp
-; 		movem.l	(sp)+,ALL
-; 		rts
-
-
+; C2P - Copy SVGA format to Amiga screen (CPU)
 ;-------------------------------------------------------------------
 ; 5-pass CPU transformation adapted from Kalms c2p1x1_5_c5_030.s
-	IF C2P=1
-
-;BPLSIZE:	equ	192*128/8
-BPLSIZE:	equ	40
 
 ;a1 - screen addr to start
 c2p_Copy_CPU_noStretch_Cache:
 		movem.l	ALL,-(sp)
 
  		move.l	lc_ChunkyBuffer(pc),a0
-		add.l	#BPLSIZE,a1
+		add.l	#row,a1
 		move.l	lc_F2_ChunkyTempBuf(pc),a3
 
 		move.l	a1,-(sp)
@@ -6891,17 +6765,19 @@ c2p_Copy_CPU_noStretch_Cache:
 		move.l	lc_variables+lc_screenBytes(pc),d0
 		add.l	a0,d0
 		move.l	d0,-(sp)			; end of chunky buffer
-		move.l	lc_variables+lc_screenPixX(pc),a2
+		moveq	#0,d1
+		move	lc_variables+lc_screenPixX(pc),d1
+		move.l	d1,a2
 		adda.l	a0,a2				; end of chunky line
 
 		move.l	#$00ff00ff,a4
 		move.l	#$55555555,a5
 		move.l	#$33333333,a6
-		bra.s	.x1
+		bra.s	c2p1x1c5_x1
 		nop
 
 CNOP 0,16		; cache line alignment (16 bytes)
-.x1:
+c2p1x1c5_x1:
 		move.l	(a0)+,d1			; 16 bytes (+16 read later)
 		move.l	(a0)+,d5
 		move.l	(a0)+,d0
@@ -6966,7 +6842,7 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		or.l	d0,d1
 		move.l	d1,(a3)+
 
-.start1:
+c2p1x1c5_start1:
 		move.w	d2,d7			; Swap 16x4, part 3 & 4
 		move.w	d5,d2
 		swap	d2
@@ -7014,13 +6890,13 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		eor.l	d5,d7
 		and.l	d1,d7
 		eor.l	d7,d5
-		move.l	d5,BPLSIZE*2(a1)
+		move.l	d5,row*2(a1)
 		add.l	d7,d7
 		eor.l	d6,d7
 
 		move.l	d3,d5			; Swap 8x2, part 2
 		lsr.l	#8,d5
-		move.l	d7,BPLSIZE(a1)
+		move.l	d7,row(a1)
 		eor.l	d2,d5
 		and.l	d4,d5
 		eor.l	d5,d2
@@ -7035,26 +6911,25 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		move.l	d2,(a1)+
 		add.l	d5,d5
 		eor.l	d5,d3
-		move.l	d3,-BPLSIZE-4(a1)
+		move.l	d3,-row-4(a1)
 
 		cmpa.l	a0,a2
-		bne		.x1
-
-.x1t:
-	; TODO: calc correctly (SMC)
-		adda.w	#16+(BPLSIZE*4),a1		; next screen line = add 4 rows + screen border (40-24=16)
-	; TODO: SMC
-		adda.w	lc_variables+lc_screenPixX+2(pc),a2		; end of next chunky line
-	; TODO: SMC ?
+		bne		c2p1x1c5_x1
+ccc:
+c2p1x1c5_nextScrLine1:				; SMC
+		adda.w	#16+(row*4),a1		; next screen line = add 4 rows + screen border (40-24=16)
+c2p1x1c5_nextChunkyLine1:			; SMC
+;		adda.w	lc_variables+lc_screenPixX+2(pc),a2		; end of next chunky line
+		adda.w	#0,a2
 		cmpa.l	(sp),a0
-		bne		.x1
+		bne		c2p1x1c5_x1
 
-.x1end:
+c2p1x1c5_x1end:
 		lea		4(sp),sp
 
 	; now merge in the last bplane
 		move.l	(sp)+,a1
-		add.l	#BPLSIZE*3,a1
+		add.l	#row*3,a1
 		move.l	#$00ff00ff,d3
 
 		move.l	lc_F2_ChunkyTempBuf(pc),a0
@@ -7065,7 +6940,7 @@ CNOP 0,16		; cache line alignment (16 bytes)
 
 		move.l	(a0)+,d0
 		move.l	(a0)+,d1
-.x2:
+c2p1x1c5_x2:
 		move.l	d1,d2			; Swap 8x2
 		lsr.l	#8,d2
 		eor.l	d0,d2
@@ -7082,143 +6957,26 @@ CNOP 0,16		; cache line alignment (16 bytes)
 		move.l	d2,(a1)+
 
 		cmpa.l	a0,a2
-		bne.s	.x2
+		bne.s	c2p1x1c5_x2
 
-	; TODO: calc correctly (SMC)
-		adda.w	#16+(BPLSIZE*4),a1
-	; TODO: SMC
-		adda.w	lc_variables+lc_screenPixX4(pc),a2
+c2p1x1c5_nextScrLine2:				; SMC
+		adda.w	#16+(row*4),a1
+c2p1x1c5_nextChunkyLine2:			; SMC
+;		adda.w	lc_variables+lc_screenPixX4(pc),a2
+		adda.w	#0,a2
 
 		cmpa.l	a0,a3
-		bne.s	.x2
-.x2end:
+		bne.s	c2p1x1c5_x2
+c2p1x1c5_x2end:
 
 		movem.l	(sp)+,ALL
 		rts
 
 PRINTT "C2P CPU loop size"
-PRINTV .x1t-.x1
-PRINTV .x1end-.x1
-; PRINTV .x1
-; PRINTV .x1end
-
-	ENDC
+PRINTV c2p1x1c5_x1end-c2p1x1c5_x1
 
 ;-------------------------------------------------------------------
 
-	IF C2P=0
-;---- Original C2P ----
-c2p_Copy_CPU_noStretch_Cache:
-		movem.l	ALL,-(sp)
-		move.l	lc_ChunkyBuffer(pc),a0
-		lea		row(a1),a2
-		lea		row(a2),a3
-		lea		row(a3),a4
-		lea		row(a4),a5
-
-		move	#5*row,d0
-		move	sv_ViewWidth,d1
-		sub		d1,d0
-		move	d0,a6			; scr modulo
-		subq	#1,d1
-		move	d1,-(sp)		; width for dbf
-
-		move	sv_ViewHeigth,d7
-		subq	#1,d7
-		lea		-2(sp),sp
-		bra.s	sv2_Vertical
-		nop
-
-CNOP 0,16		; cache line alignment (16 bytes)
-sv2_Vertical:
-		move	d7,(sp)			;save heigth
-		move	2(sp),d7		;width
-sv2_Horizontal:	
-		move.b	(a0)+,d0		;all 1 or all 0
-		move.b	d0,d6
-		smi		d1				; if d6 neg then 11111111 otherwise 00000000 (LSB)
-		add.b	d0,d0
-		smi		d2
-		add.b	d0,d0
-		smi		d3
-		add.b	d0,d0
-		smi		d4
-		add.b	d0,d0
-		smi		d5				; MSB - bitplane 5
-
-		move.b	(a0)+,d0
-		cmp.b	d0,d6			;next bit same?
-		bne.s	sv2_bit2
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv2_bit3
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv2_bit4
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv2_bit5
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv2_bit6
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv2_bit7
-		bra		sv2_bit8_1
-
-		; move.b	(a0)+,d0
-		; cmp.b	d0,d6
-		; bne		sv2_bit8
-		; bra		sv2_bitsok
-
-sv2_bit2:	ConvBits
-		move.b	(a0)+,d0
-sv2_bit3:	ConvBits
-		move.b	(a0)+,d0
-sv2_bit4:	ConvBits
-		move.b	(a0)+,d0
-sv2_bit5:	ConvBits
-		move.b	(a0)+,d0
-sv2_bit6:	ConvBits
-sv2_bit7_1:	move.b	(a0)+,d0
-sv2_bit7:	ConvBits
-sv2_bit8_1:	move.b	(a0)+,d0
-sv2_bit8:	;ConvBits
-
-sv2_bitsok:
-		add.b	d0,d0			;convert bits
-		addx.b	d1,d1
-		add.b	d0,d0
-		move.b	d1,(a1)+		;copy to screen
-		addx.b	d2,d2
-		add.b	d0,d0
-		move.b	d2,(a2)+
-		addx.b	d3,d3
-		add.b	d0,d0
-		move.b	d3,(a3)+
-		addx.b	d4,d4
-		add.b	d0,d0
-		move.b	d4,(a4)+
-		addx.b	d5,d5
-		move.b	d5,(a5)+
-		dbf		d7,sv2_Horizontal
-
-		add		a6,a1			;add modulo
-		add		a6,a2
-		add		a6,a3
-		add		a6,a4
-		add		a6,a5
-		move	(sp),d7
-		dbf		d7,sv2_Vertical
-
-sv2_endloop:
-		lea		4(sp),sp
-		movem.l	(sp)+,ALL
-		rts
-
-;PRINTT "C2P CPU loop size"
-;PRINTV sv2_endloop-sv2_Vertical
-	ENDC
 ;-------------------------------------------------------------------
 ;CPU C2P copy to Amiga screen + stretch
 ; This version does NOT fit in a 256byte cache
@@ -10626,7 +10384,7 @@ mc_MakeCode:
 		movem.l	ALL,-(sp)
 		move.l	lc_F1_WallCode(pc),a1
 		lea		[maxWallHeigth*4](a1),a2	;code table
-		move.l	lc_F2_Htab(pc),a5		;Heigth table - this has 360 addresses followed by "cells" i.e. pixel size table entries
+		move.l	lc_F2_Htab(pc),a5		;Heigth table - this has 360 addresses followed by "cells" i.e. pixel size table entries, each 33 bytes
 		lea		[maxWallHeigth*4](a5),a6
 		move.l	a2,(a1)+		;fix zero
 		move	#$4e75,(a2)+		;rts
@@ -10916,7 +10674,7 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		add		d1,d1			;*8
 		move	d1,6(a1)		;width in pixels (e.g. 192)
 		ext.l	d1
-		move.l	d1,lc_screenPixX(a6)	;width in pixels (e.g. 192)
+		move	d1,lc_screenPixX(a6)	;width in pixels (e.g. 192)
 		move.l	d1,d0
 		lsr.l	#2,d0
 		move	d0,lc_screenPixX4(a6)	;width in pixels/4 (e.g. 192/4 = 48)
@@ -11134,7 +10892,10 @@ mk_DouT2:	dbf	d3,mk_DTloop
 
 		; --- set fl. pixel offsets in floor generating code (used if no cache)
 		; also clears CPU cache
-		bsr		mk_FixFloorMod	
+		bsr		mk_FixFloorMod		; update floor modulos
+		bsr		c2p_Init			; initialise C2Ps with new parameters
+		bsr		clearCPUCache		; clear cache at the end to avoid issues after SMC and table re-calc
+
 		movem.l	(sp)+,ALL
 		rts
 
@@ -11224,7 +10985,6 @@ mk_DCoffsets:
 
 		move	#$4e75,(a2)		;add rts where it should be considering actual screen width
 
-		bsr		clearCPUCache		; clear cache at the end to avoid issues after SMC and table re-calc
 		movem.l	(sp)+,d0/d7/a1-a3
 		rts
 
@@ -12055,7 +11815,7 @@ F2_HeartSav:		rs.b	6*12*5						; 360 ($168)
 F2_HBFrames:		rs.b	6*12*5*HB_ANIM_FRAMES		; 18000 ($4650) - 50 frames
 F2_C1Save:			rs.b	18*5*6+4					; $21c + 4 bytes for "KANE"
 F2_C2Save:			rs.b	18*5*6+4					; $21c
-F2_LineTab:			rs.b	maxWallHeigth*2*4*2+16		; $15e0 (700 code addresses + 700 heigth tab addresses)
+F2_LineTab:			rs.b	maxWallHeigth*2*4*2+$200	; $15e0 (700 code addresses + 700 heigth tab addresses) + $200 buffer
 F2_Htab:			rs.b	$1c00						; $1b34 round up to 1c00. Empirically found as this is a compressed table.
 F2_UserMap:			rs.b	64*8						; $200 (64*8). User map is drawn here
 F2_FloorTab:		rs.b	screenMaxY+2				; $82 for max heigth 128. Pre-calced floor perspective
