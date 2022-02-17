@@ -11,7 +11,7 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220216
+VERSION: 	SET		$220217
 BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
@@ -6572,16 +6572,17 @@ fl_DCodeEnd:
 ;a1 - screen addr to start
 c2p_Copy:
 		tst		sv_StrFlag							; blitter can only be used on a non-stretched screen
-		bne.s	.stretched
+		; bne.s	.stretched
+ 		bne		c2p_CPU_Stretch_Cache
 
 		move	lc_variables+lc_c2pType(pc),d0		; C2P: 0 - blitter, 1 - CPU
-		bne		c2p_Copy_CPU_noStretch_Cache
-		bra.s	c2p_Copy_Blitter_noStretch
+		bne		c2p_CPU_noStretch_Cache
+		bra.s	c2p_Blitter_noStretch
 
-.stretched:
-		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
-		bne		c2p_Copy_CPU_Stretch_Cache
-		bra		c2p_Copy_CPU_Stretch_noCache
+; .stretched:
+; 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
+; 		bne		c2p_CPU_Stretch_Cache
+; 		bra		c2p_CPU_Stretch_noCache
 
 ;------------------------------------------------------------------------
 ; Initialise C2P routines
@@ -6604,12 +6605,16 @@ c2p_Init:
 		move	lc_screenPixX4(a6),d0	; end of next chunky line in temp buffer (lines are 1/4 or main chunky lines)
 		lea		c2p1x1c5_nextChunkyLine2(pc),a1
 		move	d0,2(a1)
+
+		move	lc_screenPixX(a6),d0	; end of next chunky line
+		lea		c2p2x1c5_nextChunkyLine1(pc),a1
+		move	d0,2(a1)
 		rts
 
 
 ;------------------------------------------------------------------------
 		; --- Blitter non-stretched
-c2p_Copy_Blitter_noStretch:
+c2p_Blitter_noStretch:
 		movem.l	ALL,-(sp)
 
 		;copy buffer from fast to chip
@@ -6734,26 +6739,12 @@ sv_chunkyBufStart:	dc.l	0
 sv_chunkyBufEnd:	dc.l	0
 
 ;-------------------------------------------------------------------
-ConvBits:	macro
-		add.b	d0,d0			;convert bits
-		addx.b	d1,d1
-		add.b	d0,d0
-		addx.b	d2,d2
-		add.b	d0,d0
-		addx.b	d3,d3
-		add.b	d0,d0
-		addx.b	d4,d4
-		add.b	d0,d0
-		addx.b	d5,d5
-		endm
-		
-;-------------------------------------------------------------------
 ; C2P - Copy SVGA format to Amiga screen (CPU)
 ;-------------------------------------------------------------------
 ; 5-pass CPU transformation adapted from Kalms c2p1x1_5_c5_030.s
 
 ;a1 - screen addr to start
-c2p_Copy_CPU_noStretch_Cache:
+c2p_CPU_noStretch_Cache:
 		movem.l	ALL,-(sp)
 
  		move.l	lc_ChunkyBuffer(pc),a0
@@ -6915,11 +6906,11 @@ c2p1x1c5_start1:
 
 		cmpa.l	a0,a2
 		bne		c2p1x1c5_x1
-ccc:
+
 c2p1x1c5_nextScrLine1:				; SMC
 		adda.w	#16+(row*4),a1		; next screen line = add 4 rows + screen border (40-24=16)
 c2p1x1c5_nextChunkyLine1:			; SMC
-;		adda.w	lc_variables+lc_screenPixX+2(pc),a2		; end of next chunky line
+;		adda.w	lc_variables+lc_screenPixX(pc),a2		; end of next chunky line
 		adda.w	#0,a2
 		cmpa.l	(sp),a0
 		bne		c2p1x1c5_x1
@@ -6972,236 +6963,148 @@ c2p1x1c5_x2end:
 		movem.l	(sp)+,ALL
 		rts
 
+; PRINTT "C2P CPU loop size"
+; PRINTV c2p1x1c5_x1end-c2p1x1c5_x1
+
+;-------------------------------------------------------------------
+;CPU copy to Amiga screen + stretch... fits in cache
+; 5bpl CPU transformation adapted from Kalms c2p2x1_6_c5_030
+
+;no input
+c2p_CPU_Stretch_Cache:
+		movem.l	ALL,-(sp)
+
+		move.l	sv_screen,a1				; override screen start (as it's for 1x1 size 4 window)
+		lea		sv_UpOffset*row*5(a1),a1
+ 		move.l	lc_ChunkyBuffer(pc),a0
+
+		move.l	lc_variables+lc_screenBytes(pc),a2
+		adda.l	a0,a2					; end of chunky buffer
+
+		moveq	#0,d1
+		move	lc_variables+lc_screenPixX(pc),d1
+		move.l	d1,a5
+		adda.l	a0,a5				; end of chunky line
+
+		move.l	#$55555555,d5
+		move.l	#$33333333,a3
+		move.l	#$0f0f0f0f,a4
+		move.l	#$00ff00ff,a6
+
+c2p2x1c5_x:
+		move.l	(a0)+,d0
+		move.l	(a0)+,d1
+		move.l	(a0)+,d2
+		move.l	(a0)+,d3
+
+		move.w	d2,d7			; Swap 16x2
+		move.w	d0,d2
+		swap	d2
+		move.w	d2,d0
+		move.w	d7,d2
+
+		move.w	d3,d7
+		move.w	d1,d3
+		swap	d3
+		move.w	d3,d1
+		move.w	d7,d3
+
+		move.l	a4,d6
+		move.l	d2,d7			; Swap 4x2
+		lsr.l	#4,d7
+		eor.l	d0,d7
+		and.l	d6,d7
+		eor.l	d7,d0
+		lsl.l	#4,d7
+		eor.l	d7,d2
+
+		move.l	d3,d7
+		lsr.l	#4,d7
+		eor.l	d1,d7
+		and.l	d6,d7
+		eor.l	d7,d1
+		lsl.l	#4,d7
+		eor.l	d7,d3
+
+		move.l	a6,d6
+		move.l	d1,d7			; Swap 8x1, part 1
+		lsr.l	#8,d7
+		eor.l	d0,d7
+		and.l	d6,d7
+		eor.l	d7,d0
+		lsl.l	#8,d7
+		eor.l	d7,d1
+
+c2p2x1c5_start:
+		lsl.l	#2,d0			; Merge 2x1, part 1
+		or.l	d0,d1
+		move.l	d1,d7
+
+		move.l	d3,d1			; Swap 8x1, part 2
+		lsr.l	#8,d1
+		eor.l	d2,d1
+		and.l	d6,d1
+
+		move.l	d7,d4
+		lsr.l	d4
+		eor.l	d7,d4
+		and.l	d5,d4
+		add.l	d4,d4
+		eor.l	d7,d4
+
+		eor.l	d1,d2
+		lsl.l	#8,d1
+		eor.l	d1,d3
+		move.l	d4,row*4(a1)
+
+		move.l	a3,d6
+		move.l	d3,d1			; Swap 2x1, part 2
+		lsr.l	#2,d1
+		eor.l	d2,d1
+		and.l	d6,d1
+		eor.l	d1,d2
+		lsl.l	#2,d1
+		eor.l	d1,d3
+
+		move.l	d2,d7
+		lsr.l	d7
+		eor.l	d2,d7
+		and.l	d5,d7
+		eor.l	d7,d2
+		move.l	d2,row*3(a1)
+		eor.l	d7,d2
+		add.l	d7,d7
+		eor.l	d7,d2
+
+		move.l	d3,d7
+		move.l	d2,row*2(a1)
+		lsr.l	d7
+		eor.l	d3,d7
+		and.l	d5,d7
+		eor.l	d7,d3
+		move.l	d3,row(a1)
+		eor.l	d7,d3
+		add.l	d7,d7
+		eor.l	d7,d3
+		move.l	d3,(a1)+
+
+		cmpa.l	a0,a5
+		bne		c2p2x1c5_x
+
+		adda.w	#(row*4),a1			; next screen line = add 4 rows + screen border (40-24=16)
+c2p2x1c5_nextChunkyLine1:			; SMC
+;		adda.w	lc_variables+lc_screenPixX(pc),a5		; end of next chunky line - (5*32)
+		adda.w	#0,a5
+
+		cmpa.l	a0,a2
+		bne		c2p2x1c5_x
+
+c2p2x1c5_xend:
+		movem.l	(sp)+,ALL
+		rts
+
 PRINTT "C2P CPU loop size"
-PRINTV c2p1x1c5_x1end-c2p1x1c5_x1
-
-;-------------------------------------------------------------------
-
-;-------------------------------------------------------------------
-;CPU C2P copy to Amiga screen + stretch
-; This version does NOT fit in a 256byte cache
-
-c2p_Copy_CPU_Stretch_noCache:
-		movem.l	ALL,-(sp)
-		move.l	lc_ChunkyBuffer(pc),a0
-		move.l	sv_screen,a1
-		lea		sv_UpOffset*row*5(a1),a1
-		lea		row(a1),a2
-		lea		row(a2),a3
-		lea		row(a3),a4
-		lea		row(a4),a5
-
-		move	#4*row,a6		;scr modulo
-		move	sv_ViewWidth,d0
-		subq	#1,d0
-		move	d0,-(sp)		;width for dbf
-
-		move	sv_ViewHeigth,d7
-		subq	#1,d7
-		lea		-2(sp),sp
-
-sv3_Vertical:
-		move	d7,(sp)			;save heigth
-		move	2(sp),d7		;width
-sv3_Horizontal:	moveq	#0,d1
-		moveq	#0,d2
-		moveq	#0,d3
-		moveq	#0,d4
-		moveq	#0,d5
-		move.b	(a0)+,d0		;all 1 or all 0
-		move.b	d0,d6
-		smi		d1
-		add.b	d0,d0
-		smi		d2
-		add.b	d0,d0
-		smi		d3
-		add.b	d0,d0
-		smi		d4
-		add.b	d0,d0
-		smi		d5
-
-		move.b	(a0)+,d0		;next bit similar?
-		cmp.b	d0,d6
-		bne.s	sv3_bit2
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv3_bit3
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv3_bit4
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv3_bit5
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv3_bit6
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv3_bit7
-		bra		sv3_bit8_1
-
-sv3_bit2:	ConvBits
-		move.b	(a0)+,d0
-sv3_bit3:	ConvBits
-		move.b	(a0)+,d0
-sv3_bit4:	ConvBits
-		move.b	(a0)+,d0
-sv3_bit5:	ConvBits
-		move.b	(a0)+,d0
-sv3_bit6:	ConvBits
-		move.b	(a0)+,d0
-sv3_bit7:	ConvBits
-sv3_bit8_1:		move.b	(a0)+,d0
-sv3_bit8:	;ConvBits
-
-sv3_SetByte:	
-		add.b	d0,d0
-		addx.b	d1,d1
-		add		d1,d1
-		move	sv3_DoubleTab(pc,d1.w),(a1)+	;copy to screen
-		add.b	d0,d0
-		addx.b	d2,d2
-		add		d2,d2
-		move	sv3_DoubleTab(pc,d2.w),(a2)+
-		add.b	d0,d0
-		addx.b	d3,d3
-		add		d3,d3
-		move	sv3_DoubleTab(pc,d3.w),(a3)+
-		add.b	d0,d0
-		addx.b	d4,d4
-		add		d4,d4
-		move	sv3_DoubleTab(pc,d4.w),(a4)+
-		add.b	d0,d0
-		addx.b	d5,d5
-		add		d5,d5
-		move	sv3_DoubleTab(pc,d5.w),(a5)+
-		dbf		d7,sv3_Horizontal
-
-		add		a6,a1			;add modulo
-		add		a6,a2
-		add		a6,a3
-		add		a6,a4
-		add		a6,a5
-		move	(sp),d7
-		dbf		d7,sv3_Vertical
-
-		lea	4(sp),sp
-		movem.l	(sp)+,ALL
-		rts
-
-sv3_DoubleTab:	ds.w	256
-
-;-------------------------------------------------------------------
-;CPU copy to Amiga screen + stretch... for 20++ and cache only!
-; Fits in cache: $fa
-
-c2p_Copy_CPU_Stretch_Cache:
-		movem.l	ALL,-(sp)
-		move.l	lc_ChunkyBuffer(pc),a0
-		move.l	sv_screen,a1
-		lea		sv_UpOffset*row*5(a1),a1
-		lea		row(a1),a2
-		lea		row(a2),a3
-		lea		row(a3),a4
-		lea		row(a4),a5
-
-		move	#4*row,a6		;scr modulo
-		move	sv_ViewWidth,d0
-		subq	#1,d0
-		move	d0,-(sp)		;width for dbf
-
-		move	sv_ViewHeigth,d7
-		subq	#1,d7
-		lea		-2(sp),sp
-
-		moveq	#0,d2
-		moveq	#0,d3
-		moveq	#0,d4
-		moveq	#0,d5
-sv4_Vertical:	
-		move	d7,(sp)			;save heigth
-		move	2(sp),d7		;width
-sv4_Horizontal:	moveq	#0,d1
-		move.b	(a0)+,d0		;all 1 or all 0
-		move.b	d0,d6
-		smi		d1
-		add.b	d0,d0
-		smi		d2
-		add.b	d0,d0
-		smi		d3
-		add.b	d0,d0
-		smi		d4
-		add.b	d0,d0
-		smi		d5
-
-		move.b	(a0)+,d0		;next bit similar?
-		cmp.b	d0,d6
-		bne.s	sv4_bit2
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv4_bit3
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv4_bit4
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv4_bit5
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv4_bit6
-		move.b	(a0)+,d0
-		cmp.b	d0,d6
-		bne.s	sv4_bit7
-		bra		sv4_bit8_1
-
-sv4_bit2:	ConvBits
-		move.b	(a0)+,d0
-sv4_bit3:	ConvBits
-		move.b	(a0)+,d0
-sv4_bit4:	ConvBits
-sv4_bit5_1:	move.b	(a0)+,d0
-sv4_bit5:	ConvBits
-		move.b	(a0)+,d0
-sv4_bit6:	ConvBits
-		move.b	(a0)+,d0
-sv4_bit7:	ConvBits
-sv4_bit8_1:	move.b	(a0)+,d0
-sv4_bit8:	;ConvBits
-
-sv4_SetByte:
-		add.b	d0,d0			;convert bits
-		addx.b	d1,d1
-		add.b	d0,d0
-		move	sv4_DoubleTab(pc,d1.w*2),(a1)+
-		addx.b	d2,d2
-		add.b	d0,d0
-		move	sv4_DoubleTab(pc,d2.w*2),(a2)+
-		addx.b	d3,d3
-		add.b	d0,d0
-		move	sv4_DoubleTab(pc,d3.w*2),(a3)+
-		addx.b	d4,d4
-		add.b	d0,d0
-		move	sv4_DoubleTab(pc,d4.w*2),(a4)+
-		addx.b	d5,d5
-		move	sv4_DoubleTab(pc,d5.w*2),(a5)+
-		dbf		d7,sv4_Horizontal
-
-		add		a6,a1			;add modulo
-		add		a6,a2
-		add		a6,a3
-		add		a6,a4
-		add		a6,a5
-		move	(sp),d7
-		dbf		d7,sv4_Vertical
-sv4_endloop:
-		lea		4(sp),sp
-		movem.l	(sp)+,ALL
-		rts
-
-;PRINTT "C2P CPU stretched loop size"
-;PRINTV sv4_endloop-sv4_Vertical
-
-sv4_DoubleTab:	ds.w	256
+PRINTV c2p2x1c5_xend-c2p2x1c5_x
 
 ;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
@@ -10859,23 +10762,23 @@ mk_fixblood:	move.b	#0,64(a2)
 		lea		65(a2),a2
 		dbf		d7,mk_fixblood
 
-		lea		sv3_DoubleTab(pc),a2	;double table for stretch
-		lea		sv4_DoubleTab(pc),a3
-		moveq	#0,d0
-mk_DoublT:	move	d0,d1
-		moveq	#0,d2
-		moveq	#7,d3
-mk_DTloop:	add	d2,d2			;free 2 bits
-		add	d2,d2
-		add.b	d1,d1
-		bcc.w	mk_DouT2
-		ori	#3,d2			;if 1 set 2 bits
-mk_DouT2:	dbf	d3,mk_DTloop
-		move	d2,(a2)+
-		move	d2,(a3)+
-		addq	#1,d0
-		cmpi	#256,d0
-		bne.s	mk_DoublT
+; 		lea		sv3_DoubleTab(pc),a2	;double table for stretch
+; 		lea		sv4_DoubleTab(pc),a3
+; 		moveq	#0,d0
+; mk_DoublT:	move	d0,d1
+; 		moveq	#0,d2
+; 		moveq	#7,d3
+; mk_DTloop:	add	d2,d2			;free 2 bits
+; 		add	d2,d2
+; 		add.b	d1,d1
+; 		bcc.w	mk_DouT2
+; 		ori	#3,d2			;if 1 set 2 bits
+; mk_DouT2:	dbf	d3,mk_DTloop
+; 		move	d2,(a2)+
+; 		move	d2,(a3)+
+; 		addq	#1,d0
+; 		cmpi	#256,d0
+; 		bne.s	mk_DoublT
 
 
 		lea	sc_Text,a2		;make text offsets
