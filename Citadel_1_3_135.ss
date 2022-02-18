@@ -194,7 +194,7 @@ s:
 		dbf		d0,.scs
 		move	#6,(a1)			;size
 		move	#1,2(a1)		;floor (1=floor, 0=no floor)
-		move	#0,4(a1)		;details
+		move	#0,4(a1)		;details (0-all, 1-med, 2-low)
 		move	#-150,6(a1)		;energy
 		move	#0,8(a1)		;bomb
 		move	#0,10(a1)		;killed
@@ -2061,39 +2061,43 @@ eh_cont1:	movem	2(a1),d2/d3
 		andi	#$1fe,d0
 		move	d0,8(a4)
 
-		sub	d1,2(a4)			; reduce enemy energy
-		bpl	eh_stillOk
+		sub		d1,2(a4)			; reduce enemy energy
+		bpl		eh_stillOk
 		cmpi	#25,d1
 		beq.w	eh_burning		;if burn
 		move.b	#2,12(a4)		;zabity
 		move.b	#72,13(a4)
 
 		movem	4(a4),d0/d1
-		lsr	#7,d0
+		lsr		#7,d0
 		andi	#63*8,d0
-		lsr	d1
+		lsr		d1
 		andi	#63*512,d1
-		add	d0,d1			;map pos
-		tst	d2
+		add		d0,d1			;map pos
+		tst		d2
 		bpl.s	.eh1
-		neg	d2
-.eh1:		tst	d3
+		neg		d2
+.eh1:	tst		d3
 		bpl.s	.eh2
-		neg	d3
-.eh2:		cmp	d2,d3
+		neg		d3
+.eh2:	cmp		d2,d3
 		bmi.s	.eh_Ybig
 		moveq	#0,d5			;strona N
 		move	4(a1),d2
 		bpl.s	.eh3
 		moveq	#2,d5			;S
 		bra.s	.eh3
-.eh_Ybig:	moveq	#1,d5			;strona E
+.eh_Ybig: moveq	#1,d5			;strona E
 		move	2(a1),d2
 		bpl.s	.eh3
 		moveq	#3,d5			;W
 .eh3:
 		add		d5,d1
 		move.b	(a3,d1.w),d2
+		move	d2,d3
+		andi	#$c0,d3
+		cmpi	#$c0,d3			; do not overwrite blood3
+		beq.s	eh_E1
 		andi	#$3e,d2
 		beq.s	eh_E1			;if no wall
 		cmpi.b	#30,d2
@@ -2112,7 +2116,7 @@ eh_cont1:	movem	2(a1),d2/d3
 		move	#$80,d3
 .eh5:
 		andi.b	#$3f,(a3,d1.w)
-		or.b	d3,(a3,d1.w)		;blood on map
+		or.b	d3,(a3,d1.w)		; add random blood 1 or 2 to  map (no blood 3)
 eh_E1:
 		move	#1,d3
 		bsr.s	eh_SideBlood
@@ -2134,6 +2138,10 @@ eh_SideBlood:
 		andi	#3,d0
 		beq.s	eh2_End
 eh6:		move.b	(a3,d1.w),d2
+		move	d2,d3
+		andi	#$c0,d3
+		cmpi	#$c0,d3			; do not overwrite blood3
+		beq.s	eh2_End
 		andi	#$3e,d2
 		beq.s	eh2_End			;if no wall
 		cmpi.b	#30,d2
@@ -4391,6 +4399,8 @@ sv_EDirSub:	dc.w	128,64+32,64,64,64,64+32
 dr_AddBlood:
 		cmpi	#2,SV_DETAILS
 		bne.s	.dr_AB1
+		cmpi	#$c0,d5
+		beq.s	.dr_AB1					; also always ad blood3
 		rts
 .dr_AB1:	
 		movem.l	a1-a3,-(sp)
@@ -6092,7 +6102,8 @@ lc_collumnDrawInd:		dc.w	0				; col. draw indicator
 lc_changeWeaponInd:		dc.w	0				; weapon to change index
 lc_launcherReloadTimer:	dc.w	0				; launcher reload timer
 lc_lastCompassAngle:	dc.w	-1				; angle of last drawn compass
-lc_texelOrgCurrent:		dc.w	-1				; current texel arrangement. -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
+lc_texelWallOrgCurrent:	dc.w	-1				; walls/enemies current texel arrangement. -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
+lc_texelItemOrgCurrent:	dc.w	-1				; items current texel arrangement. -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
 lc_texelOrgRequired:	dc.w	0				; required texel arrangement. 0 MSB (inverted - default), 1 LSB (standard)
 lc_colCeiling:			dc.l	$10101010		; ceiling colour
 lc_colFloor:			dc.l	$e0e0e0e0		; floor colour
@@ -6141,7 +6152,8 @@ lc_F2_CompassFrames:	dc.l	F2_CompassFrames,0
 lc_F2_CardSav:			dc.l	F2_CardSav,0
 lc_F2_ObjectTab:		dc.l	F2_ObjectTab,0
 lc_F2_FloorCode:		dc.l	F2_FloorCode,0
-lc_F2_TexelConvTab:		dc.l	F2_TexelConvTab,0
+lc_F2_TexelM2LConvTab:	dc.l	F2_TexelM2LConvTab,0
+lc_F2_TexelL2MConvTab:	dc.l	F2_TexelL2MConvTab,0
 
 lc_F2_TopMem:			dc.l	F2_TopMem,0
 						dc.l	0
@@ -9238,7 +9250,7 @@ ci_DecodeI2:
 		move.b	(a1)+,d3
 		beq		ci_DecodeI3
 
-		tst		lc_texelOrgCurrent(a6)	; 0 MSB (inverted - default), 1 LSB (standard)
+		tst		lc_texelItemOrgCurrent(a6)	; 0 MSB (inverted - default), 1 LSB (standard)
 		beq.s	msbBits
 
 				; LSB bit arrangement
@@ -11234,36 +11246,9 @@ sv_SWS3:
 setTexelArrangement:
 		movem.l	ALL,-(sp)
 		lea		lc_variables(pc),a6
-		tst		lc_texelOrgCurrent(a6)	; -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
-		bpl.s	.known
 
-		; determine if these are MSB (old, default) or LSB (for new C2P, standard) textures
-		move.l	lc_F1_Walls(pc),a1		; first texture, first collumn
-		lea		65*32(a1),a2			; first texture, middle collumn
-		moveq	#0,d1
-		moveq	#15,d0
-.det1:	or.l	(a1)+,d1
-		or.l	(a2)+,d1
-		dbf		d0,.det1
-		move.l	d1,d2
-		andi.l	#$e0e0e0e0,d1			; if bits on MSB then old format
-		bne.s	.old
-		move	#1,lc_texelOrgCurrent(a6)	; new
-		bra.s	.known
-.old:	move	#0,lc_texelOrgCurrent(a6)	; old
-
-		; here it's already known what the arrangement is
-.known:	move	lc_texelOrgCurrent(a6),d0
-		move	lc_texelOrgRequired(a6),d1	; 0 MSB (inverted - default), 1 LSB (standard)
-		cmp		d0,d1
-		beq		.setColours						; if current == required then exit
-
-		move	d1,lc_texelOrgCurrent(a6)
-
-		move.l	lc_F2_TexelConvTab(pc),a1
-		tst		d1
-		beq.s	.lsbToMsb
-
+		; create both ways conversion tables
+		move.l	lc_F2_TexelM2LConvTab(pc),a1
 		move	#255,d0					; MSB -> LSB
 .l1:	moveq	#0,d2
 		move	d0,d1
@@ -11279,9 +11264,8 @@ setTexelArrangement:
 		addx	d2,d2
 		move.b	d2,(a1,d0.w)
 		dbf		d0,.l1
-		bra.s	.convert
 
-.lsbToMsb:
+		move.l	lc_F2_TexelL2MConvTab(pc),a1
 		move	#255,d0					; LSB -> MSB
 .l2:	moveq	#0,d2
 		move	d0,d1
@@ -11299,18 +11283,50 @@ setTexelArrangement:
 		move.b	d2,(a1,d0.w)
 		dbf		d0,.l2
 
-.convert:										; change pixel arrangement in all textures
+		tst		lc_texelWallOrgCurrent(a6)	; -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
+		bpl.s	.known1					; it's already known what the arrangement is?
+		move.l	lc_F1_Walls(pc),a1		; first texture, first collumn
+		bsr		findTexelArrangement
+		move	d0,lc_texelWallOrgCurrent(a6)
+.known1:
+
+		tst		lc_texelItemOrgCurrent(a6)	; same for items as they are loaded separately
+		bpl.s	.known2
+		move.l	lc_F1_Items(pc),a1
+		bsr		findTexelArrangement
+		move	d0,lc_texelItemOrgCurrent(a6)
+.known2:
+
+		move.l	lc_F2_TexelM2LConvTab(pc),a1
+		move	lc_texelOrgRequired(a6),d2	; 0 MSB (inverted - default), 1 LSB (standard)
+		bne.s	.msb2lsb
+		move.l	lc_F2_TexelL2MConvTab(pc),a1
+.msb2lsb:
+
+		; convert walls if required
+		move	lc_texelWallOrgCurrent(a6),d0
+		cmp		d0,d2
+		beq.s	.convItems						; if current == required then exit
+		move	d2,lc_texelWallOrgCurrent(a6)
+
 		move.l	lc_F1_Walls(pc),a2				; convert walls and enemies
 		moveq	#0,d1
 		move	#(320*4*2)+(320*2+160)*2-1,d0
-		bsr.s	.convertLoop
+		bsr		convertLoop
+
+.convItems:
+		; convert items if required
+		move	lc_texelItemOrgCurrent(a6),d0
+		cmp		d0,d2
+		beq.s	.setColours						; if current == required then exit
+		move	d2,lc_texelItemOrgCurrent(a6)
 
 		move.l	lc_F1_Items(pc),a2					; convert items
 		move	#27*16-1,d0
-		bsr.s	.convertLoop
+		bsr.s	convertLoop
 
 .setColours:
-		tst		lc_texelOrgCurrent(a6)	; 0 MSB (inverted - default), 1 LSB (standard)
+		tst		lc_texelWallOrgCurrent(a6)	; 0 MSB (inverted - default), 1 LSB (standard)
 		beq.s	.msbColours
 
 		; set colours of different on-screen overlays
@@ -11331,13 +11347,30 @@ setTexelArrangement:
 		movem.l	(sp)+,ALL
 		rts
 
-.convertLoop:
+; determine if these are MSB (old, default) or LSB (for new C2P, standard) textures
+; in: a1 - texture, out: d0 - arrangement (0 MSB, 1 LSB)
+findTexelArrangement:
+		lea		65*16(a1),a2			; first texture, 1/4th collumn
+		moveq	#0,d1
+		moveq	#15,d0
+.det1:	or.l	(a1)+,d1
+		or.l	(a2)+,d1
+		dbf		d0,.det1
+		move.l	d1,d2
+		andi.l	#$e0e0e0e0,d1			; if bits on MSB then old format
+		bne.s	.old
+		move	#1,d0	; new (LSB)
+		rts
+.old:	move	#0,d0	; old (MSB)
+		rts
+
+convertLoop:
 		REPT	64
 		move.b	(a2),d1
 		move.b	(a1,d1.w),(a2)+
 		ENDR
 		lea		1(a2),a2						; skip zero/transparency byte
-		dbf		d0,.convertLoop
+		dbf		d0,convertLoop
 		rts
 
 
@@ -11733,7 +11766,8 @@ F2_CompassFrames:	rs.b	540*COMP_ANIM_FRAMES		; 17280 ($4380) - 32 frames
 F2_CardSav:			rs.b	24*5						; $78 - buffer for card counters
 F2_ObjectTab:		rs.b	12*32						; $168 (30 cells) - buffer for dynamic moving objects
 F2_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($1688). Actually only +2 is needed for RTS
-F2_TexelConvTab:	rs.b	256							; texture conversion tab: MSB to LSB or the other way round
+F2_TexelM2LConvTab:	rs.b	256							; texture conversion tab: MSB to LSB
+F2_TexelL2MConvTab:	rs.b	256							; texture conversion tab: LSB to MSB
 
 F2_TopMem:			rs.w	0
 
