@@ -11,14 +11,11 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220217
-BUILD:		SET		$01
+VERSION: 	SET		$220219
+BUILD:		SET		$02
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
-
-; C2P: 0 - old, 1 - 1x1_C5
-C2P:		equ		1
 
 STRUCTURE:	equ		$7f800			; 128 bytes available
 ADDMEM:		equ		$7ffea			; 2nd 0.5 free memory
@@ -329,12 +326,7 @@ start:
 	IFNE	IS_EXE
 		bsr		DecrunchItems_pass	; decrunch new items gfx to the right location
 	ENDC
-	IF C2P=0	; old
-		clr		lc_texelOrgRequired(a6)		; 0 MSB (inverted - default), 1 LSB (standard - new C2Ps)
-	ELSE		; new
-		move	#1,lc_texelOrgRequired(a6)
-	ENDC
-;		move	#1,lc_texelOrgRequired(a6)
+		move	#1,lc_texelOrgRequired(a6)	; 0 MSB (inverted - default), 1 LSB (standard - new C2Ps)
 		bsr		setTexelArrangement_pass
 
 		lea		lc_soundList(pc),a3		;fix sounds- put a 0 on the first word
@@ -3075,11 +3067,11 @@ me_killed:	cmpi.b	#72,13(a3)
 		andi	#$ff,d0
 		tst		sv_DIFFICULT
 		beq.s	.m2_DIF				; 0 - hard (default)
-		cmpi	#120,d0				; easy: 120/256 % chance for drop
+		cmpi	#100,d0				; easy: 120/256 % chance for drop
 		bpl.s	.m3
 		bra.s	.m2_ct
 .m2_DIF:
-		cmpi	#80,d0				; 80/256 % chance for drop
+		cmpi	#60,d0				; 80/256 % chance for drop
 		bpl.s	.m3
 .m2_ct:
 		move.b	6(a1,d2.w),d0
@@ -6086,6 +6078,7 @@ lc_screenPixX:			dc.w	0				; window size X in pixels (e.g. 192)
 lc_screenPixX4:			dc.w	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
 lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
 lc_quatScreenBytes:		dc.w	0				; equal to quater the chunky screen bytes (pixels)
+lc_chunkyWidth8_1:		dc.w	0				; equal to 1/8 - 1 of the chunky screen bytes (pixels)
 lc_halfScreenBlit:		dc.w	0				; equal to value for half of c2p screen (for floor filling)
 lc_floorGapBlit:		dc.w	0				; size of the  floor gap fill (in chunky pixels)
 lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitter
@@ -6315,7 +6308,7 @@ EVEN
 ; The main loop fits in 020 cache ($a0)
 ShowFloor:	
 		tst		sv_Floor			; 0 - no floors, 1 - textured floors
-		beq.w	fl_quit
+		beq		fl_quit
 
 		movem.l	ALL,-(sp)
 		lea		sv_sinus,a1
@@ -6359,16 +6352,19 @@ fl_MkDeltas:
 		add.l	d4,d4
 		swap	d4				;rescale from $8000
 		add		a2,d4			;add x1 start pos
-		move	d4,(a1)+
-		andi	#$3f,-2(a1)		; 20 cycles
+
+		move	d4,d6
+		swap	d6
 
 		move	d1,d5			;y0
 		muls	(a0),d5
 		add.l	d5,d5
 		swap	d5			;rescale
 		add		a3,d5			;add y1 start pos
-		move	d5,(a1)+
-		andi	#$3f,-2(a1)
+
+		move	d5,d6
+		andi.l	#$003f003f,d6
+		move.l	d6,(a1)+
 
 		move	d2,d6			;x2
 		muls	(a0),d6
@@ -6376,8 +6372,7 @@ fl_MkDeltas:
 		swap	d6
 		add		a4,d6			;add x2 start pos
 		sub		d4,d6			;dx
-		add		d6,d6			;*2
-		add		d6,d6			;*2
+		lsl		#2,d6
 		move	d6,(a1)+
 
 		move	d3,d6			;y2
@@ -6386,8 +6381,7 @@ fl_MkDeltas:
 		swap	d6
 		add		a5,d6			;add y2 start pos
 		sub		d5,d6			;dy
-		add		d6,d6
-		add		d6,d6
+		lsl		#2,d6
 		move	d6,(a1)+
 		dbf		d7,fl_MkDeltas
 
@@ -6448,9 +6442,10 @@ fl_Dcont:
 		movem.l	(sp)+,ALL
 fl_quit: rts
 
+
 ; CACHE+CPU version. This floor draw proc is $a0 long so fits in cache
 ; This WORKS ONLY with 020+ due to the Dx*y addressing mode beind used
-;CNOP 0,16  ; do not use here as for some reason it slows things down
+CNOP 0,16  ; do not use here as for some reason it slows things down
 fl_Draw_Cache_CPU:
 		move	d7,(sp)
 		movem	(a0)+,d0-d3		;d0-x, d1-y (starting texel x0,y0, vector to move left-> right dx,dy)
@@ -6467,14 +6462,14 @@ fl_Draw_Cache_CPU:
 		move	2(a0,d3.w),d3		;Cy
 		bpl.s	.flc_D3
 		sub		a6,d7
+
 .flc_D3:	
 		lea		fl_64MulTab(pc),a0	;64 mul tab
 		add		a5,d6
 		addx.b	d2,d0			;inc X
-		move	sv_ConstTab+30,d5	;X counter/4 -1 (48-1 for size 5)
-
-.flc_DCode:	
-		REPT	4				; iterate over X (row) of the screen
+		move	lc_variables+lc_chunkyWidth8_1(pc),d5	;X counter/4 -1 (48-1 for size 5)
+flc_LoopX:	
+		REPT	8
 		add		a6,d7
 		addx	d3,d1			;inc texel Y offset
 		and		d4,d1			; do not replace by #63 immediate as it would be slower
@@ -6484,7 +6479,7 @@ fl_Draw_Cache_CPU:
 		addx.b	d2,d0			;inc X in texture
 		move.b	(a2,d1.w),(a4)+	; copy pixel to ceiling
 		ENDR
-		dbf		d5,.flc_DCode
+		dbf		d5,flc_LoopX
 flc_Dcont_cpu:	
 		lea		2(a3),a3		; row size, -192 for size 5. This code is self-modified by make_tables to add the proper width
 
@@ -6495,6 +6490,9 @@ flc_Dcont_cpu:
 		lea		2(sp),sp
 		movem.l	(sp)+,ALL
 		rts
+
+; PRINTT "Floor CPU X loop size"
+; PRINTV flc_Dcont_cpu-flc_LoopX
 
 ; CACHE+BLITTER version (y collumns indexed differently to CPU mode). This floor draw proc is $c0 long so fits in cache
 ; This WORKS ONLY with 020+ due to the Dx*y addressing mode being used
@@ -6626,6 +6624,7 @@ c2p_Init:
 
 ;------------------------------------------------------------------------
 		; --- Blitter non-stretched
+; a1 - screen start
 c2p_Blitter_noStretch:
 		movem.l	ALL,-(sp)
 
@@ -6650,17 +6649,15 @@ c2p_Blitter_noStretch:
 
 		lea		sv_ChunkyBufC,a6
 		lea		$dff000,a0
-		move	sv_ViewWidth,d1		;view window dim.
+		move	sv_ViewWidth,d1		;view window dim. in screen bytes
 		move	sv_ViewHeigth,d2
 		subq	#1,d2
-;		move.l	sv_Consttab+40,a2
-;		lea		-2(a2,d1.w),a2		;SVGA tab end addr
 		move.l	lc_variables+lc_screenBytes(pc),d0
 		move	d1,d3
-		lsl		#3,d3
-		sub		d3,d0
+		lsl		#3,d3				; width *8
+		sub		d3,d0			
 		add		d1,d0
-		lea		-2(a6,d0.w),a2
+		lea		-2(a6,d0.w),a2		
 
 		lea		sv_chunkyBufStart(pc),a4
 		move.l	a6,(a4)
@@ -6669,7 +6666,7 @@ c2p_Blitter_noStretch:
 		move	d2,d0
 		mulu	#5*row,d0
 		add		d1,d0
-		lea		-2(a1,d0.w),a3		;screen end addr
+		lea		-2(a1,d0.w),a3		;screen end addr (pointer to last word)
 
 		move	#5*row,d0
 		sub		d1,d0
@@ -6683,36 +6680,35 @@ c2p_Blitter_noStretch:
 		move	d0,$64(a0)		;A mod
 		move.l	#-1,$44(a0)		;WLWmasks
 
-		move	d1,d3			;d3 - width
-		addq	#1,d2
+		move	d1,d3			; d3 - width
+		addq	#1,d2			; d2 - heigth, get back to normal
 		lsl		#6,d2
-		lsr		#1,d1
-		add		d1,d2			;d2 - Blit Size
+		lsr		#1,d1			; width in words
+		add		d1,d2			;d2 - Blit Size (heigth (128) + width (24))
 
-		lea		-1,a4			;shift start
-;		move.l	#0,a5			;0 in a5
+
+		lea		-8,a4			;shift start - for every plane it's reduced by 1
 		move	#$0de4,d1		;Bltcon0 or value
 
 		moveq	#4,d7			;plane nr-1
 		move	#$8040,$96(a0)	;blitter DMA on..
 sv_PlanesCopy:
-		move	a4,d6			;shift pointer
-		move	#$8080,d5
+		move	a4,d6			;channel A shift start
+		move	#$8080,d5		; bit AND mask
 		moveq	#7,d4
-sv_Bits:
+sv_Bits:						; inner loop repeated for every 1..8 bits
 		addq.w	#1,d6
 		bmi.s	sv_BitMin
 		move	d6,d0
 		ror		#4,d0
-		or		d1,d0			;bltcon0
+		or		d1,d0			;bltcon0 value
 		waitblt
-		move	d0,$40(a0)		;bltcon0,1
-;		move	a5,$42(a0)
-		move	#0,$42(a0)
-		move	d5,$70(a0)		;C dat
-		move.l	a6,$50(a0)		;A addr
-		move.l	a1,$4c(a0)		;B addr
-		move.l	a1,$54(a0)		;D addr
+		move	d0,$40(a0)		;bltcon0
+		move	#0,$42(a0)		; bltcon 1: nothing (asc, BSH=0)
+		move	d5,$70(a0)		;C dat (AND mask to select the right on screen bit)
+		move.l	a6,$50(a0)		;A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
+		move.l	a1,$4c(a0)		;B addr (screen previous data)
+		move.l	a1,$54(a0)		;D addr (screen destination data)
 		move	d2,$58(a0)
 		bra.s	sv_NextBit
 
@@ -6722,9 +6718,9 @@ sv_BitMin:
 		ror		#4,d0
 		or		d1,d0			;bltcon0
 		waitblt
-		move	d0,$40(a0)		;bltcon0,1
-		move	#$0002,$42(a0)
-		move	d5,$70(a0)		;C dat
+		move	d0,$40(a0)		;bltcon0
+		move	#$0002,$42(a0)	; bltcon 1: DESC
+		move	d5,$70(a0)		;C dat (AND mask to select the right on screen bit)
 		move.l	a2,$50(a0)		;A addr
 		move.l	a3,$4c(a0)		;B addr
 		move.l	a3,$54(a0)		;D addr
@@ -6739,8 +6735,9 @@ sv_NextBit:
 		move.l	sv_chunkyBufEnd(pc),a2
 		lea		row(a1),a1		;next screen plane
 		lea		row(a3),a3
-		subq.w	#1,a4			;shift next bit more
+		addq.w	#1,a4			;shift next bit less
 		dbf		d7,sv_PlanesCopy
+
 
 ;		waitblt						; TODo it seems to hang here, maybe because hte previous write to blitter without a wait??
 ;		move	#$440,$96(a0)		;blitter NASTY & DMA off
@@ -6755,8 +6752,17 @@ sv_chunkyBufEnd:	dc.l	0
 ;-------------------------------------------------------------------
 ; 5-pass CPU transformation adapted from Kalms c2p1x1_5_c5_030.s
 
+BPLSIZE:	equ		40
+
 ;a1 - screen addr to start
 c2p_CPU_noStretch_Cache:
+
+
+; PRINTT "C2P CPU loop size"
+; PRINTV .x1end-.x1
+
+;-------------------------------------------------------------------
+
 		movem.l	ALL,-(sp)
 
  		move.l	lc_ChunkyBuffer(pc),a0
@@ -7115,8 +7121,8 @@ c2p2x1c5_xend:
 		movem.l	(sp)+,ALL
 		rts
 
-PRINTT "C2P CPU loop size"
-PRINTV c2p2x1c5_xend-c2p2x1c5_x
+; PRINTT "C2P CPU loop size"
+; PRINTV c2p2x1c5_xend-c2p2x1c5_x
 
 ;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
@@ -10093,9 +10099,9 @@ ti_aid:		subq	#3,d1			; medkit
 		SCROLL	17
 		tst		sv_DIFFICULT
 		beq.s	.sv_DIF3				; 0 - hard (default)
-		subi	#30,sv_Energy
+		subi	#20,sv_Energy			; 30
 .sv_DIF3:
-		subi	#50,sv_Energy			; changed from always 30 to 50, plus 50 on EASY
+		subi	#40,sv_Energy			; 50 (+ what's on easy)
 		SOUND	15,1,63
 		cmpi	#-999,sv_Energy
 		bpl.w	ti_NoItem
@@ -10581,6 +10587,9 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		lsr		d2
 		subq	#1,d2
 		move	d2,28(a1)		;pixel width/16 - 1
+		move	d1,d2
+		subq	#1,d2
+		move	d2,lc_chunkyWidth8_1(a6)
 		add		d1,d1
 		move	d1,30(a1)		;pixel width/4 - 1 (in longs)
 		subi	#1,30(a1)
@@ -10852,7 +10861,7 @@ sv_MakeWidthTab:
 		movem.l	d0-d3/a1-a3,-(sp)
 		lea		sv_WidthTable(pc),a3
 		lea		sv_WidthTable2(pc),a2		; this is required only because otherwise some x(pc,dy) branches exceed 8 bit offset
-		move	sv_ViewWidth,d3
+		move	sv_ViewWidth,d3				; 8, 12, 16, 20, 24
 		moveq	#0,d0
 		move	lc_variables+lc_c2pType(pc),d1		; C2P: 0 - blitter, 1 - CPU
 		bne.s	.mk_W2tab		;if CPU use only
@@ -11284,8 +11293,8 @@ setTexelArrangement:
 		dbf		d0,.l2
 
 		tst		lc_texelWallOrgCurrent(a6)	; -1 unknown, 0 MSB (inverted - default), 1 LSB (standard)
-		bpl.s	.known1					; it's already known what the arrangement is?
-		move.l	lc_F1_Walls(pc),a1		; first texture, first collumn
+		bpl.s	.known1						; it's already known what the arrangement is?
+		move.l	lc_F1_Walls(pc),a1			; first texture, first collumn
 		bsr		findTexelArrangement
 		move	d0,lc_texelWallOrgCurrent(a6)
 .known1:
@@ -11311,7 +11320,7 @@ setTexelArrangement:
 
 		move.l	lc_F1_Walls(pc),a2				; convert walls and enemies
 		moveq	#0,d1
-		move	#(320*4*2)+(320*2+160)*2-1,d0
+		move.l	#(320*4*2)+(320*2+160)*2-1,d0
 		bsr		convertLoop
 
 .convItems:
@@ -11322,7 +11331,8 @@ setTexelArrangement:
 		move	d2,lc_texelItemOrgCurrent(a6)
 
 		move.l	lc_F1_Items(pc),a2					; convert items
-		move	#27*16-1,d0
+		moveq	#0,d1
+		move.l	#27*16-1,d0
 		bsr.s	convertLoop
 
 .setColours:
@@ -11359,6 +11369,8 @@ findTexelArrangement:
 		move.l	d1,d2
 		andi.l	#$e0e0e0e0,d1			; if bits on MSB then old format
 		bne.s	.old
+		andi.l	#$07070707,d2			; if bits on MSB then old format
+		beq.s	.old
 		move	#1,d0	; new (LSB)
 		rts
 .old:	move	#0,d0	; old (MSB)
@@ -11378,12 +11390,12 @@ convertLoop:
 ; decrunch new items gfx to the right location
 DecrunchItems:
 	IFNE	IS_EXE
-		movem.l	d0/a0/a1,-(sp)
+		movem.l	ALL,-(sp)
 		lea		lc_items(pc),a0
 		move.l	lc_F1_Items(pc),a1
 		move.l	#lc_items_end-lc_items,d0
 		bsr		PPDoDecrunch
-		movem.l	(sp)+,d0/a0/a1
+		movem.l	(sp)+,ALL
 	ENDC
 		rts
 
