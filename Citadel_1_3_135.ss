@@ -246,11 +246,11 @@ s:
 
 
 start:		
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		VBLANK
-		move	#$7fff,$9a(a0)		;INTENA
-		move	#$7fff,$9c(a0)		;INTREQ
-		move	#$00ff,$9e(a0)		;ADKONR
+		move	#$7fff,INTENA(a0)		;INTENA
+		move	#$7fff,INTREQ(a0)		;INTREQ
+		move	#$00ff,ADKCON(a0)		;ADKONR
 
 		lea		lc_F1_addresses(pc),a1
 		move.l	lc_FastMem1(pc),d0
@@ -579,17 +579,17 @@ start:
 		bsr		ci_NewWeapon			; set hand
 		bsr		tc_DrawCardCnt			; draw card counters
 
-		lea		$dff000,a0
-		move	#$7fff,$96(a0)
-		move	#$8240,$96(a0)		;DMACON blitter on
+		lea		CUSTOM,a0
+		move	#$7fff,DMACON(a0)
+		move	#$8240,DMACON(a0)		;DMACON blitter on
 		lea		sv_OldMouse,a1
 		move	10(a0),(a1)			;remember starting mouse position
 
 		waitblt
 		VBLANK
-		move	#$7fff,$96(a0)		;DMACON
-		move	#$7fff,$9a(a0)		;INTENA
-		move	#$7fff,$9c(a0)
+		move	#$7fff,DMACON(a0)		;DMACON
+		move	#$7fff,INTENA(a0)		;INTENA
+		move	#$7fff,INTREQ(a0)
 		move.l	lc_VbrBase(pc),a1
 		lea		lc_OldLev3(pc),a2
 		move.l	$6c(a1),(a2)		;set lev3 interrupt
@@ -608,8 +608,8 @@ start:
 		move	#1,db_napisz
 
 		VBLANK
-		move	#$83c0,$96(a0)		; DMACON dma and stuff
-		move	#$c028,$9a(a0)		; SET+INTEN, VERTB and PORTS
+		move	#$83c0,DMACON(a0)		; DMACON dma and stuff
+		move	#$c028,INTENA(a0)		; SET+INTEN, VERTB and PORTS
 
 		lea		lc_variables(pc),a6
 		clr.l	lc_time(a6)			; zero seconds in level
@@ -636,7 +636,7 @@ start:
 MAIN_LOOP:
 ;-------------------------------------------------------------------------------------------------
 ;-------------------------------------------------------------------------------------------------
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		lea		lc_variables(pc),a6
 		move	#0,lc_updateFrame(a6)		; clear logic update flag
 		cmpi	#UPDATE_TIME,lc_updateTimer(a6)
@@ -951,14 +951,14 @@ sv_quit:
 .waits:	move	lc_variables+lc_swapScreen(pc),d7
 		bne.s	.waits
 
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		lea		lc_variables(pc),a6
 		move	d0,do_JakiKoniec		; +1 finished OK, -1 dead, 0: quit by pressing ESC
 		move	#0,lc_EndLevel(a6)
 		waitblt
 		VBLANK
-		move	#$7fff,$9a(a0)			; INTENA - disable all interrupts
-		move	#$7fff,$9c(a0)			; INTREQ - clearpending interrupts
+		move	#$7fff,INTENA(a0)			; INTENA - disable all interrupts
+		move	#$7fff,INTREQ(a0)			; INTREQ - clearpending interrupts
 		move.l	#copper0,$80(a0)
 		move	#0,$88(a0)
 		move	#32,$1dc(a0)		;fix PAL
@@ -1011,8 +1011,8 @@ sv_quit:
 		move.l	lc_VbrBase(pc),a1
 		move.l	lc_OldLev2(pc),$68(a1)
 		move.l	lc_OldLev3(pc),$6c(a1)
-		move	#$83f0,$96(a0)
-		move	#$e02c,$9a(a0)
+		move	#$83f0,DMACON(a0)
+		move	#$e02c,INTENA(a0)
 		ENDC
 		rte
 
@@ -1032,6 +1032,7 @@ NewLev3:
 		andi	#$40,d1
 		beq.s	interruptL3Coper
 
+		lea		CUSTOM,a0
 		lea		lc_variables(pc),a6
 		move	lc_blitC2PPos(a6),d0	; c2p queue processing in progress?
 		beq.s	.bexit
@@ -1695,7 +1696,7 @@ GetRandom:
 		rts
 
 SeedRandom:
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		lea		seed(pc),a1
 		move.l	(a1),d0
 		move	6(a0),d1		; VHPOSR
@@ -2173,8 +2174,8 @@ eh_Burning:	move.b	#3,12(a4)
 		move.b	#80,13(a4)
 		move	#55,2(a4)		;CNT to energy
 		movem.l	d3/d4/a0/a3,-(sp)	;SOUND
-		lea	$dff000,a0
-		move	#%0100,$96(a0)
+		lea	CUSTOM,a0
+		move	#%0100,DMACON(a0)
 		moveq	#5,d4
 .play_delay:	move.b	6(a0),d3		;delay change
 .play_d1:	cmpi.b	6(a0),d3
@@ -2187,7 +2188,7 @@ eh_Burning:	move.b	#3,12(a4)
 		move	4(a3,d3.w),$c0+4(a0)	;length in words
 		move	6(a3,d3.w),$c0+6(a0)	;period
 		move	#0,$c0+8(a0)		;volume
-		move	#$8004,$96(a0)
+		move	#$8004,DMACON(a0)
 		move.l	a4,eh_FirePos
 		movem.l	(sp)+,d3/d4/a0/a3
 		rts
@@ -4513,16 +4514,6 @@ mc_clearScreen:
 		lea		lc_variables(pc),a6
 		move.l	lc_ChunkyBuffer(pc),a1
 
-		; move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter (buffer in chip), 1 - cpu (buffer in fast)
-		; bne.s	cpuFill								; if CPU used == buffer in fast then only CPU can be used
-
-		; ; so blitter c2p is selected, but is the chunky buffer _actually_ in chip?
-		; move	lc_variables+lc_isChunkyInFast(pc),d0 ; 0 - chunky buf in chip, ff - chunky buf in fast
-		; bne.s	cpuFill								; if buffer in fast then only CPU can be used
-
-		; move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache present
-		; beq		blitterFill							; do this only if buffer in CHIP and no cache is used
-
 		; --- CPU fill ceiling/floor
 cpuFill:
 		move.l	lc_colCeiling(a6),d0
@@ -4590,7 +4581,7 @@ ServeMap:	movem.l	ALL,-(sp)
 		bne.s	.waits
 
 		eori	#1,sv_Pause
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		bsr		SetLocation
 		bsr		p_FadeColors
 
@@ -4971,7 +4962,7 @@ p_Fad1:		bsr.s	p_SetC
 		bpl.s	p_Fad1
 		rts
 
-p_SetC:		lea	$dff000,a0
+p_SetC:		lea	CUSTOM,a0
 		lea	RealCopper,a1		;copper
 		lea	sc_COLORS,a2		;color tab
 		moveq	#31,d5			;color nr. - 1
@@ -5998,7 +5989,6 @@ lc_debugOn:				dc.w	0				; show debug info (averages) flag (0-no, 1-yes)
 lc_isCache:				dc.w	0				; 0 - no cache, 1 - cache present
 lc_c2pType:				dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Actual C2P being used at the moment
 lc_c2pTypePreferred:	dc.w	0				; 0 - blitter C2P, 1 - CPU C2P. Preferred C2P for the system. This allows to return to the preferred one if the game has to switch e.g. to CPU for stretching
-lc_isChunkyInFast:		dc.w	0				; 0 - chunky buffer in CHIP, ff - in FAST
 lc_ledChange:			dc.w	0				; 1 - update debug LED status
 lc_drunk:				dc.w	0				; 0 - all OK, >0 time left drunk
 lc_momentum:			dc.w	0				; 0 - not moving, >0 moving momentum which builds up to 255 while moving
@@ -6037,6 +6027,7 @@ lc_colCrosshairs:		dc.w	$08				; crosshairs colour
 lc_colDisturbances:		dc.l	$88888888		; disturbances colour
 lc_blitC2PPos:			dc.w	0				; current position in the blitter c2p processing queue
 lc_delayedSwap:			dc.w	0				; delay screen swap. Used for teleporting. 0 - no delay, 1 - delay
+lc_ChunkyBufChip:		dc.l	sv_ChunkyBufC	; address of chunky buffer in CHIP
 
 ENDOFF
 
@@ -6526,6 +6517,7 @@ c2p_Copy:
 ;------------------------------------------------------------------------
 ; Initialise C2P routines
 c2p_Init:
+		movem.l	ALL,-(sp)
 		lea		lc_variables(pc),a6
 		move	#row,d0				; next screen line = add 4 rows + screen border which depends on screen size (40-24=16)
 		move	d0,d1
@@ -6548,39 +6540,64 @@ c2p_Init:
 		move	lc_screenPixX(a6),d0	; end of next chunky line
 		lea		c2p2x1c5_nextChunkyLine1(pc),a1
 		move	d0,2(a1)
+
+		bsr		c2p_Blitter_noStretch_Init		; initialise blitter C2P queue
+
+		movem.l	(sp)+,ALL
 		rts
 
 
 ;------------------------------------------------------------------------
 ; --- Blitter non-stretched
 c2p_Blitter_noStretch:
-		movem.l	ALL,-(sp)
+		movem.l	a0/a1/a6,-(sp)
 
+		lea		lc_variables(pc),a6
 		; wait for previous blitter c2p to finish before messing with c2p buffer
-.waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
+.waitb:	tst		lc_blitC2PPos(a6)
 		bne.s	.waitb
 
 		;copy buffer from fast to chip
 		move.l	lc_ChunkyBuffer(pc),a2
-		lea		sv_ChunkyBufC,a6			; Blitter C2P uses chunky buf in chip
+		move.l	lc_ChunkyBufChip(a6),a1			; Blitter C2P uses chunky buf in chip
 		move.l	lc_variables+lc_screenBytes(pc),d2
 		move.l	d2,d1
 		lsr.l	#6,d2
  		subq	#1,d2
 .flp1:	rept	16
-		move.l	(a2)+,(a6)+		; fill in 64-byte chunks
+		move.l	(a2)+,(a1)+		; fill in 64-byte chunks
 		endr
 		dbf		d2,.flp1
 		andi	#63,d1
 		lsr		#2,d1
 		beq.s	.flno
 		subq	#1,d1
-.flp2:	move.l	(a2)+,(a6)+		; copy the rest
+.flp2:	move.l	(a2)+,(a1)+		; copy the rest
 		dbf		d1,.flp2
 .flno:
 
-		lea		sv_ChunkyBufC,a6
-		lea		$dff000,a0
+		; wait for screen to be swapped so that blitter does not start overwriting anything on the current one
+.waits:	tst		lc_swapScreen(a6)
+		bne.s	.waits
+
+		lea		CUSTOM,a0
+		move.l	lc_F2_BlitC2PTab(pc),a2
+		move.l	sv_Screen,a1		; always draw on the first screen (second is displayed)
+		add.l	sv_offset,a1		; start of the draw window - offset Y*5 + X
+		move.l	a1,(a2)				; update screen start address
+
+		clr		lc_blitC2PPos(a6)
+		move	#$8040,INTENA(a0)		; enable blitter L3 interrupt
+		move	#$8040,DMACON(a0)		; blitter DMA on
+		waitblt
+		bsr		blitC2PSteps			; kick off interrupt-driven blitter C2P
+
+		movem.l	(sp)+,a0/a1/a6
+		rts
+
+; Initialise blitter C2P queue
+c2p_Blitter_noStretch_Init:
+		move.l	lc_variables+lc_ChunkyBufChip(pc),a6
 		move	sv_ViewWidth,d1		;view window dim. in screen bytes
 		move	sv_ViewHeigth,d2
 		subq	#1,d2
@@ -6602,11 +6619,11 @@ c2p_Blitter_noStretch:
 .waits:	move	lc_variables+lc_swapScreen(pc),d7
 		bne.s	.waits
 
-		move.l	sv_Screen,a1		; always draw on the first screen (second is displayed)
-		add.l	sv_offset,a1		; start of the draw window - offset Y*5 + X
-		lea		-2(a1,d0.w),a3		;screen end addr (pointer to last word)
-
 		move.l	lc_F2_BlitC2PTab(pc),a4
+		sub.l	a1,a1				; screen start offset from 0
+		move.l	a1,(a4)+			; screen start address
+		lea		-2(a1,d0.w),a3		; screen end offset (pointer to last word)
+
 		move	#5*row,d0
 		sub		d1,d0
 		move	d0,(a4)+		; B mod, D mod
@@ -6634,21 +6651,12 @@ sv_Bits:						; inner loop repeated for every 1..8 bits
 		ror		#4,d0
 		or		#$0de4,d0			;bltcon0 value
 
-		move	d0,(a4)+
-		move	#0,(a4)+
-		move	d5,(a4)+
-		move.l	a6,(a4)+
-		move.l	a1,(a4)+
-		move	d2,(a4)+
-
-		; waitblt
-		; move	d0,$40(a0)		;bltcon0
-		; move	#0,$42(a0)		; bltcon 1: nothing (asc, BSH=0)
-		; move	d5,$70(a0)		;C dat (AND mask to select the right on screen bit)
-		; move.l	a6,$50(a0)		;A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
-		; move.l	a1,$4c(a0)		;B addr (screen previous data)
-		; move.l	a1,$54(a0)		;D addr (screen destination data)
-		; move	d2,$58(a0)
+		move	d0,(a4)+		; bltcon0
+		move	#0,(a4)+		; bltcon 1
+		move	d5,(a4)+		; C dat (AND mask to select the right on screen bit)
+		move.l	a6,(a4)+		; A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
+		move.l	a1,(a4)+		; B addr (screen previous data) / D addr
+		move	d2,(a4)+		; blt size
 		bra.s	sv_NextBit
 
 sv_BitMin:	
@@ -6657,21 +6665,12 @@ sv_BitMin:
 		ror		#4,d0
 		or		#$0de4,d0			;bltcon0
 
-		move	d0,(a4)+
-		move	#2,(a4)+
-		move	d5,(a4)+
-		move.l	a2,(a4)+
-		move.l	a3,(a4)+
-		move	d2,(a4)+
-
-		; waitblt
-		; move	d0,$40(a0)		;bltcon0
-		; move	#$0002,$42(a0)	; bltcon 1: DESC
-		; move	d5,$70(a0)		;C dat (AND mask to select the right on screen bit)
-		; move.l	a2,$50(a0)		;A addr
-		; move.l	a3,$4c(a0)		;B addr
-		; move.l	a3,$54(a0)		;D addr
-		; move	d2,$58(a0)
+		move	d0,(a4)+		; bltcon0
+		move	#2,(a4)+		; bltcon 1
+		move	d5,(a4)+		; C dat (AND mask to select the right on screen bit)
+		move.l	a2,(a4)+		; A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
+		move.l	a3,(a4)+		; B addr (screen previous data) / D addr
+		move	d2,(a4)+		; blt size
 sv_NextBit:
 		lea		(a6,d3.w),a6		;next bit line
 		lea		(a2,d3.w),a2
@@ -6685,47 +6684,53 @@ sv_NextBit:
 		addq	#1,d1			;shift next bit less
 		dbf		d7,sv_PlanesCopy
 		lea		8(sp),sp
-
-		lea		lc_variables(pc),a6
-		clr		lc_blitC2PPos(a6)
-		move	#$8040,INTENA(a0)		; enable blitter L3 interrupt
-		move	#$8040,$96(a0)			; blitter DMA on..
-		waitblt
-		bsr		blitC2PSteps			; kick off interrupt-driven blitter C2P
-
-		movem.l	(sp)+,ALL
 		rts
 
 ; Execute C2P blitter steps
+; In: A0 - CUSTOM, a6 - lc_variables(pc)
 blitC2PSteps:
-		lea		CUSTOM,a0
-		lea		lc_variables(pc),a1
-		move	lc_blitC2PPos(a1),d0
+		move	lc_blitC2PPos(a6),d0
 		cmpi	#16*5*8,d0
 		bne.s	.go
-		clr		lc_blitC2PPos(a1)				; clear pos when all done
+		clr		lc_blitC2PPos(a6)				; clear pos when all done
 		bra.s	.exit
-.go:
-		addi	#16,lc_blitC2PPos(a1)
+.go:	addi	#16,lc_blitC2PPos(a6)
 
 		move.l	lc_F2_BlitC2PTab(pc),a1
-;		waitblt
+		move.l	(a1)+,d2		; screen addr
 		move	(a1)+,d1
-		move	d1,$62(a0)		;B mod
-		move	d1,$66(a0)		;D mod
-		move	(a1)+,$64(a0)	;A mod
-		move.l	#-1,$44(a0)		;WLWmasks
+		move	d1,BLTBMOD(a0)		;B mod
+		move	d1,BLTDMOD(a0)		;D mod
+		move	(a1)+,BLTAMOD(a0)	;A mod
+		move.l	#-1,BLTAFWM(a0)		;WLWmasks
 		lea		(a1,d0.w),a1
 
-		move.l	(a1)+,$40(a0)		;bltcon0, bltcon 1: BSH and direction
-		move	(a1)+,$70(a0)		;C dat (AND mask to select the right on screen bit)
-		move.l	(a1)+,$50(a0)		;A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
-		move.l	(a1)+,d0
-		move.l	d0,$4c(a0)			;B addr (screen previous data)
-		move.l	d0,$54(a0)			;D addr (screen destination data)
-		move	(a1)+,$58(a0)
+		move.l	(a1)+,BLTCON0(a0)		;bltcon0, bltcon 1: BSH and direction
+		move	(a1)+,BLTCDAT(a0)		;C dat (AND mask to select the right on screen bit)
+		move.l	(a1)+,BLTAPTH(a0)		;A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
+		move.l	(a1)+,d0			; screen offset
+		add.l	d2,d0				; add screen address
+		move.l	d0,BLTBPTH(a0)			;B addr (screen previous data)
+		move.l	d0,BLTDPTH(a0)			;D addr (screen destination data)
+		move	(a1)+,BLTSIZE(a0)
 .exit:
 		rts
+
+
+		; move	d1,$62(a0)		;B mod
+		; move	d1,$66(a0)		;D mod
+		; move	(a1)+,$64(a0)	;A mod
+		; move.l	#-1,$44(a0)		;WLWmasks
+		; lea		(a1,d0.w),a1
+
+		; move.l	(a1)+,$40(a0)		;bltcon0, bltcon 1: BSH and direction
+		; move	(a1)+,$70(a0)		;C dat (AND mask to select the right on screen bit)
+		; move.l	(a1)+,$50(a0)		;A addr (chunky buffer - WIDTH (e.g. 24) or bytes for bit X)
+		; move.l	(a1)+,d0			; screen offset
+		; add.l	d2,d0				; add screen address
+		; move.l	d0,$4c(a0)			;B addr (screen previous data)
+		; move.l	d0,$54(a0)			;D addr (screen destination data)
+		; move	(a1)+,$58(a0)
 
 ;-------------------------------------------------------------------
 ; C2P - Copy SVGA format to Amiga screen (CPU)
@@ -6739,8 +6744,7 @@ c2p_CPU_noStretch:
 ; PRINTV .x1end-.x1
 
 ;-------------------------------------------------------------------
-
-		movem.l	ALL,-(sp)
+		movem.l	a0/a1/a6,-(sp)
 
 		move.l	sv_Screen,a1					; always draw on the first screen (second is displayed)
 		add.l	sv_offset,a1					; start of the draw window - offset Y*5 + X
@@ -6958,7 +6962,7 @@ c2p1x1c5_nextChunkyLine2:			; SMC
 		bne.s	c2p1x1c5_x2
 c2p1x1c5_x2end:
 
-		movem.l	(sp)+,ALL
+		movem.l	(sp)+,a0/a1/a6
 		rts
 
 ; PRINTT "C2P CPU loop size"
@@ -6968,7 +6972,7 @@ c2p1x1c5_x2end:
 ;CPU copy to Amiga screen + stretch... fits in cache
 ; 5bpl CPU transformation adapted from Kalms c2p2x1_6_c5_030
 c2p_CPU_Stretch:
-		movem.l	ALL,-(sp)
+		movem.l	a0/a1/a6,-(sp)
 
 		move.l	sv_screen,a1				; override screen start (as it's for 1x1 size 4 window)
 		lea		sv_UpOffset*row*5(a1),a1
@@ -7096,7 +7100,7 @@ c2p2x1c5_nextChunkyLine1:			; SMC
 		bne		c2p2x1c5_x
 
 c2p2x1c5_xend:
-		movem.l	(sp)+,ALL
+		movem.l	(sp)+,a0/a1/a6
 		rts
 
 ; PRINTT "C2P CPU loop size"
@@ -7109,7 +7113,7 @@ sv_joystick:
 		lea		$80(a1),a2			;cosinus
 		lea		cc_MoveTab,a3		;keys pressed
 
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		move	$c(a0),d2		; joydat
 		move	sv_RotSpeed,d7
 		move	sv_WalkSpeed,d1
@@ -7778,7 +7782,7 @@ sv_Death:
 
 sv_Death2:	
 		move	#4,lc_EndLevel+2(a6)
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		moveq	#60,d7
 .loopY:	 move	#319,d6			;Blood on screen
 		lea		DeathTab(pc),a1
@@ -8601,9 +8605,9 @@ drawCompassFrame:
 		lsr		#3,d5
 		add		d6,d5
 		add.l	a1,d5				; address to use: draw the line in the clear area (sv_CompasClr)
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		waitblt
-		move	#$8040,$96(a0)		;blitter DMA on..
+		move	#$8040,DMACON(a0)		;blitter DMA on..
 		move.l	#$ffff8000,$72(a0)
 		move	#4,$60(a0)		;width
 		move	d1,$62(a0)
@@ -8626,7 +8630,7 @@ drawCompassFrame:
 		move.l	a4,a2				; anim frame address
 		moveq	#26,d6
 		waitblt
-		move	#$0040,$96(a0)		;blitter off...
+		move	#$0040,DMACON(a0)		;blitter off...
 		; copy compass back from the saved copy
 .l_RetComp:	
 		move.l	(a1)+,d0
@@ -9809,7 +9813,7 @@ te_doit:
 .waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
 		bne.s	.waitb
 
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		moveq	#31,d7			;16*64=1024
 te_LOOP:	VBLANK
 		moveq	#31,d2			;nr. points in frame
@@ -10184,7 +10188,7 @@ play_sound:
 		lea		play_sample,a2
 ;		tst.l	(a2)
 ;		beq.s	.play_quit			; if all sounds == 0 then quit straight away
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		lea		$a0(a0),a1
 		lea		lc_soundList(pc),a3
 		moveq	#3,d2
@@ -10199,7 +10203,7 @@ play_sound:
 		lsl		#3,d0
 
 		andi	#$f,d1
-		move	d1,$96(a0)
+		move	d1,DMACON(a0)
 
 		moveq	#5,d4
 .play_delay:	
@@ -10905,24 +10909,14 @@ mk_DCoffsets:
 sv_SetWindowSize:
 		movem.l	ALL,-(sp)
 
+		lea		lc_variables(pc),a6
 		; wait for any blitter c2p to finish
-.waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
+.waitb:	tst		lc_blitC2PPos(a6)
 		bne.s	.waitb
 
 		; start by setting the correct chunky buffer address
-		lea		lc_variables(pc),a6
 		lea		lc_ChunkyBuffer(pc),a1
-; 		move	lc_c2pType(a6),d0			; 0 - blitter C2P, 1 - CPU C2P
-; 		beq.s	.sv_cbChip
-; 		move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
-; 		st		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in fast (ff)
-; 		bra.s	sv_cont
-; .sv_cbChip:
-;		move.l	#sv_ChunkyBufC,(a1)			; Blitter C2P uses chunky buf in chip
-;		clr		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in chip (0)
 		move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
-		st		lc_isChunkyInFast(a6)		; indicate that chunky buffer is in fast (ff)
-; sv_cont:
 
 		moveq.l	#0,d0
 		move	sv_Size,d0
@@ -10980,7 +10974,7 @@ sv_SWS2:
 		add		d3,d2
 		move.l	d2,sv_offset
 
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		VBLANK
 ;		move.l	#$90f2c4,cop_borders
 		move.b	#$c9,cop_cont		;panel pos
@@ -11174,7 +11168,7 @@ sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
 		beq		sv_SWS9				; no - omit this section
 		move	#0,sv_StrFlag+2
 
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		VBLANK
 		move.l	#copper0,$80(a0)	; when going from normal to stretched then set copper0
 		move	#0,$88(a0)
@@ -11218,7 +11212,7 @@ sv_SWS8: move.l	(a2)+,(a1)+		;copy it to scr 2
 
 
 sv_SWS9:	
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		; wait for any blitter c2p to finish
 .waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
 		bne.s	.waitb
@@ -11233,7 +11227,7 @@ sv_SWS5:
 		beq.s	sv_SWS3
 		move.l	#copper2_str,d1				; if screen stretched then use this one
 sv_SWS3:
-		lea		$dff000,a0
+		lea		CUSTOM,a0
 		VBLANK
 		bsr		clearCPUCache				; flush the caches to avoid any discrepancies after changing copperlists etc.
 		VBLANKR	2
@@ -11777,7 +11771,7 @@ F2_ObjectTab:		rs.b	12*32						; $168 (30 cells) - buffer for dynamic moving obj
 F2_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($1688). Actually only +2 is needed for RTS
 F2_TexelM2LConvTab:	rs.b	256							; texture conversion tab: MSB to LSB
 F2_TexelL2MConvTab:	rs.b	256							; texture conversion tab: LSB to MSB
-F2_BlitC2PTab:		rs.b	4+16*5*8					; blitter c2p execution queue (general config + 40 blits)
+F2_BlitC2PTab:		rs.b	8+16*5*8					; blitter c2p execution queue (general config + 40 blits)
 
 F2_TopMem:			rs.w	0
 
