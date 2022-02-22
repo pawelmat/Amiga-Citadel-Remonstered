@@ -11,8 +11,8 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220219
-BUILD:		SET		$02
+VERSION: 	SET		$220222
+BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -810,14 +810,13 @@ sv_startFrame:
 .sv_noActionUpdate1:
 
 		; Remove markers for all collumns drawn - so that new ones can be drawn
-;		move.l	sv_Consttab+8,a4	;scr tab middle
-;		lea		64*192(a4),a4
-		move.l	sv_Consttab+44,a4	; marker table - behind chunky buffer?
-		move	sv_Consttab+28,d0	; (pixel width / 16) - 1
-		moveq.l	#-1,d1
+		move	lc_screenPixX(a6),lc_remainingCollumns(a6)		; filled collumn counter
+		move.l	lc_transMarkerTabAddr(a6),a1	; marker table - behind chunky buffer?
+		move	lc_chunkyWidth32_1(a6),d0		; (pixel width / 32) - 1
+		moveq	#-1,d1
 sv_Cloop0:
-		rept	4			;clear transparent marker row.
-		move.l	d1,(a4)+
+		rept	8			;clear transparent marker row.
+		move.l	d1,(a1)+
 		endr
 		dbf		d0,sv_Cloop0
 
@@ -2762,34 +2761,37 @@ ro_DirTab:
 ;-------------------------------------------------------------------
 me_Enemies:	ds.b	256
 Move_Enemy:
-		lea	sv_MAP,a1
-		lea	sv_EnemyData,a2		;EnemyTab
-		lea	me_Enemies(pc),a3
+		lea		sv_MAP,a1
+		lea		sv_EnemyData,a2		;EnemyTab
+		lea		me_Enemies(pc),a3
 		move	sv_MapPos,d0	;your offset
 		subi	#[12*512]+[12*8]+1,d0
 		moveq	#23,d7			; only move enemies within a 24x24 square around player. FOW is 22.
-me_Loop1:	moveq	#23,d6
+me_Loop1: moveq	#23,d6
 		moveq	#0,d1
-me_Loop2:	addi	#8,d0
+me_Loop2: 
+		addi	#8,d0
 		bmi.s	me_ContLoop
 		move.b	(a1,d0.w),d1
 		beq.s	me_ContLoop
 		move.b	d1,(a3)+
-me_ContLoop:	dbf	d6,me_loop2
+me_ContLoop:	
+		dbf		d6,me_loop2
 		addi	#40*8,d0
-		dbf	d7,me_loop1
+		dbf		d7,me_loop1
 		move.b	#0,(a3)+
 
-		lea	me_Enemies(pc),a4
-me_Found:	moveq	#0,d1
+		lea		me_Enemies(pc),a4
+me_Found: moveq	#0,d1
 		move.b	(a4)+,d1
 		bne.s	.me_f2
 		rts
-.me_f2:		lsl	#4,d1
-		lea	(a2,d1.w),a3
-;a1,a2,a3,a4 - don't touch
+
+.me_f2:	lsl		#4,d1
+		lea		(a2,d1.w),a3
+		;a1,a2,a3,a4 - don't touch
 		cmpi.b	#1,12(a3)		;hit
-		beq	me_hited
+		beq		me_hited
 		cmpi.b	#2,12(a3)		;killed
 		beq.w	me_killed
 		cmpi.b	#3,12(a3)		;burning
@@ -2800,37 +2802,42 @@ me_Found:	moveq	#0,d1
 		bne.s	me_Found
 
 ;---------------
-me_walk:	move	4(a3),d0		;enemy attack player
-		sub	sv_PosX,d0
+me_walk:	
+		move	4(a3),d0		;enemy attack player
+		sub		sv_PosX,d0
 		move	d0,d2
 		move	6(a3),d1
-		sub	sv_PosY,d1
+		sub		sv_PosY,d1
 		move	d1,d3
 		muls	d0,d0
 		muls	d1,d1
 		add.l	d1,d0
-		bsr		sq_SQRT			;dist. from enemy
+		bsr		sq_SQRT			;d0 = dist. from enemy
+		tst		d0
+		bne.s	.notZero
+		addq	#1,d0			; d0 distance cannot be 0
+.notZero:
 		RANDOM	a5,d1
 		andi.l	#$1fff,d1		;to 8191
 
 		move	d0,d4
 		btst.b	#0,1(a3)
 		beq.s	.me01
-		add	sv_LevelData+6,d4
+		add		sv_LevelData+6,d4
 		bra.s	.me02
-.me01:		add	sv_LevelData+12,d4
-.me02:		cmp	d1,d4
+.me01:	add		sv_LevelData+12,d4
+.me02:	cmp		d1,d4
 ;		bpl.w	me_w4			;not to player or shoot
 		bpl.s	me_ShootIt		;not to player or shoot
 
 		ext.l	d2
 		lsl.l	#4,d2
 		divs	d0,d2			;(x*16)/r
-		add	d2,d2
+		add		d2,d2
 		move	me_angletab+32(pc,d2),d2
-		tst	d3
+		tst		d3
 		bpl.w	me_a1
-		neg	d2
+		neg		d2
 		bra.s	me_a1
 me_angletab:
 	dc.w	0,22,40,50,58,66,72,80,86,92,96,102,106,112,118,124,128
@@ -4241,22 +4248,17 @@ dr_cW0:		move	d4,d5
 		beq.s	dr_cW
 		bsr.w	dr_AddBlood		;add blood to wall
 dr_cW:		andi	#63,d4
-		bsr	ShowWalls
+		bsr		ShowWalls
 		move	(sp),d5
 
 
 dr_checkEnd:	
 		move	(sp)+,d5
-		move.l	sv_Consttab+44,a5
-		move	sv_Consttab+30,d0
-dr_ChkLoop0:					; TODO: optimise loop?
-		tst.l	(a5)+			;all rows (collumns) drawn?
-		bne.s	dr_DrawOn
-		dbf		d0,dr_ChkLoop0
-		bra.w	dr_EndRot
-dr_DrawOn:
-		dbf		d7,dr_ROTLOOP
-dr_EndRot:
+
+		lea		lc_variables(pc),a6
+		tst		lc_remainingCollumns(a6)
+		dbeq	d7,dr_ROTLOOP	; repease until all collumns filled
+
 		movem.l	(sp)+,ALL
 		rts
 
@@ -5060,18 +5062,16 @@ sh_WZwX: move	d6,d5
 ;----------------------------
 sh_DrawOn:	
 		subq	#2,d4			; wall index (2,4,6... cannot be 0 at this point)
-;		lea		sh_Walldir1+2(pc),a3
+	; lea		sh_Walldir1+2(pc),a3
 		lsr		d4				; check wall invert bit
 		bcc.s	sh_WD0
 
 	; inverted wall
-		;move	#63,(a3)		;invert direction
-		;move	#0,sh_WallDir2-sh_WallDir1(a3)
+	; move	#63,(a3)		;invert direction
+	; move	#0,sh_WallDir2-sh_WallDir1(a3)
 		lea		sh_EorWallDir1(pc),a3
 		move.w	#63,(a3)
 		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
-;		lea	sh_EorWallDir2(pc),a3
-;		move.w	#0,(a3)
 
 		IFNE	SELECT_CACHE
 		; TODO: SMC - change!!
@@ -5081,14 +5081,11 @@ sh_DrawOn:
 		bra.s	sh_WD1
 sh_WD0:
 	; non inverted wall
-		;move	#0,(a3)			;do not invert
-		;move	#63,sh_WallDir2-sh_WallDir1(a3)
-
+	; move	#0,(a3)			;do not invert
+	; move	#63,sh_WallDir2-sh_WallDir1(a3)
 		lea	sh_EorWallDir1(pc),a3
 		move.w	#0,(a3)
 		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
-;		lea	sh_EorWallDir2(pc),a3
-;		move.w	#63,(a3)
 
 		IFNE	SELECT_CACHE
 		; TODO: SMC - change!!
@@ -5187,7 +5184,7 @@ sh_W01:
 		divu	d4,d1
 		sub		d1,d3			;dY is range 91..350 to re-base to 0..260 (65*4) - heigth of wall scaled to 350?
 		andi	#$fffc,d3		;cut 2 LSbits from (0..260) to have a pointer to the address tab in sv_planes (65 entries)
-		move.l	sv_Consttab+20,a5	; sv_planes (700) tab
+		move.l	sv_Consttab+20,a5	; sv_planes (700) tab (lc_F1_Planes)
 		move.l	(a5,d3.w),a5	; get address of the right entry in the planes tab
 
 		exg		d0,d2
@@ -5258,7 +5255,7 @@ sh_BorOK1:
 		beq		sh_Mloop1		;goto no-cache mode (pregenerated code)
 ;		tst	sv_Mode
 ;		beq.w	sh_Mloop1		;goto pre-generated code mode
-		lea	4*700(a4),a4		;Htab address
+		lea		4*700(a4),a4		;Htab address
 
 shS_Mloop1:	
 		add		d3,d2			;X texture interpolation
@@ -5269,15 +5266,17 @@ shS_Mloop1:
 		bmi.w	shS_Noline1
 
 		moveq	#0,d7
-		lea		sv_widthTable(pc),a2			; TODO: if blitter is not used then this is not necessary as chunky is linear
+		lea		sv_widthTable(pc),a2	; TODO: if blitter is not used then this is not necessary as chunky is linear
 		move.b	(a2,d0.w),d7
-		lea		(a0,d7.w),a2		;screen
-		tst.b	64*192(a2)		;is column drawn?
+		lea		(a0,d7.w),a2			; screen
+		tst.b	64*192(a2)				; is column drawn?
 		beq.s	shS_NoLine1
 
 		move.b	(a5,d4.w),d7
 ; TODO: this is SMC, CHANGE?
-shS_Walldir1:	eori	#0,d7			;fix wall direction	
+shS_Walldir1:;	eori	#0,d7			;fix wall direction	
+		move.w	sh_EorWallDir2(pc),d5
+		eor.w	d5,d7
 		move	d7,d5
 		lsl		#6,d7
 		add		d5,d7
@@ -5292,7 +5291,8 @@ shS_Walldir1:	eori	#0,d7			;fix wall direction
 		move	sv_Consttab+6,d6
 		move	d6,d5
 		neg	d5			;screen count up
-shS_PixLoop1:	moveq	#0,d3
+shS_PixLoop1:	
+		moveq	#0,d3
 		move.b	(a6)+,d3
 		beq.s	shS_NOPix1
 		bmi.s	shS_PixEnd1		;end of cell
@@ -5301,16 +5301,22 @@ shS_PixLoop1:	moveq	#0,d3
 		move.b	(a1,d0.w),d2		;pixel up
 		not	d0
 		subq	#1,d3
-shS_InnerPix1:	move.b	d1,(a2,d4.w)	; draw symetrically up and down
+shS_InnerPix1:	
+		move.b	d1,(a2,d4.w)	; draw symetrically up and down
 		add		d6,d4
 		move.b	d2,(a2,d5.w)
 		sub		d6,d5
 		dbf		d3,shS_InnerPix1
-shS_NOPix1:	addq	#1,d0
+shS_NOPix1:	
+		addq	#1,d0
 		bra.s	shS_Pixloop1
-shS_PixEnd1:	movem.w	(sp)+,d0-d6
+shS_PixEnd1:	
+		lea		lc_variables+lc_remainingCollumns(pc),a6
+		subi	#1,(a6)			; decrease remaining collumn counter
+		movem.w	(sp)+,d0-d6
 
-shS_NoLine1:	dbf	d6,shS_Mloop1
+shS_NoLine1:	
+		dbf		d6,shS_Mloop1
 		bra		sh_exit2
 
 shS_SaveZero1:	move.l	sv_ZeroPtr,a6
@@ -5333,14 +5339,14 @@ shS_SaveZero1:	move.l	sv_ZeroPtr,a6
 ; (a2) - screen middle for collumn used
 ; a3 - required texture start - middle pixel
 ; a4 - LineTab. This is 700 code jump addresses and then Htab values at 4*700
-; a5 - '700' tab (sv_PLANES)
+; a5 - '700' tab entry based on texture zoom (Y) (sv_PLANES)
 ; (a6) - Y code drawing jump address
 sh_Mloop1:	
 		add		d3,d2			;X texture interpolation
 		addx	d1,d4			; texture X point
 
 		move.l	(a4)+,a6		; line drawing code address for this line
-		addq	#1,d0			; running X counter of screen collumns to use
+		addq	#1,d0			; running X index of screen collumns to use
 		bmi.s	sh_Noline1
 
 		moveq	#0,d7
@@ -5350,7 +5356,7 @@ sh_Mloop1:
 		beq.s	sh_NoLine1
 
 		move.b	(a5,d4.w),d7		; interpolated X on texture
-sh_Walldir1:	;eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inverted wall, so effectively take pixels from the right side of the texture
+sh_Walldir1:;	eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inverted wall, so effectively take pixels from the right side of the texture
 		move.w	sh_EorWallDir1(pc),d5
 		eor.w	d5,d7
 
@@ -5362,25 +5368,28 @@ sh_Walldir1:	;eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inve
 		bne.s	sh_SaveZero1
 		move.b	#0,64*192(a2)		;mark column as drawn
 
-		jsr	(a6)				; copy 1 collumn with required Y stretching
+		jsr		(a6)				; copy 1 collumn with required Y stretching
+
+		lea		lc_variables+lc_remainingCollumns(pc),a6
+		subi	#1,(a6)			; decrease remaining collumn counter
 
 sh_NoLine1:	
-		dbf	d6,sh_Mloop1
-		bra	sh_exit2
+		dbf		d6,sh_Mloop1
+		bra		sh_exit2
 
 ; save collumn for adding later because it has clear pixels
 sh_SaveZero1:	
 		move.l	sv_ZeroPtr,a6
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
-		move.l	[4*700]-4(a4),(a6)+	;cell addr - drawing code start
+		move.l	[4*700]-4(a4),(a6)+	;manual drawing cell addr (htab)
 		move	#0,(a6)+
 		move.l	a6,sv_ZeroPtr
 		bra.w	sh_NoLine1
 
+sv_widthTable:	ds.b	192
 sh_EorWallDir1:	dc.w	0
 sh_EorWallDir2:	dc.w	0
-sv_widthTable:	ds.b	192
 ;-----------------------------------------------
 
 sh_Left: neg	d6
@@ -5427,11 +5436,13 @@ shS_Mloop2:	add	d3,d2			;interpolation
 
 		move.b	(a5,d4.w),d7
 ; TODO: this is SMC, CHANGE!!!!
-shS_Walldir2:	eori	#63,d7			;fix wall direction
+shS_Walldir2:;	eori	#63,d7			;fix wall direction
+		move.w	sh_EorWallDir2(pc),d5
+		eor.w	d5,d7
 		move	d7,d5
-		lsl	#6,d7			;*64
-		add	d5,d7			;add CL byte
-		lea	(a3,d7.w),a1		;wall
+		lsl		#6,d7			;*64
+		add		d5,d7			;add CL byte
+		lea		(a3,d7.w),a1		;wall
 		tst.b	32(a1)
 		bne.w	shS_SaveZero2
 		move.b	#0,64*192(a2)		;mark column as drawn
@@ -5442,7 +5453,8 @@ shS_Walldir2:	eori	#63,d7			;fix wall direction
 		move	sv_Consttab+6,d6
 		move	d6,d5
 		neg	d5			;screen count up
-shS_PixLoop2:	moveq	#0,d3
+shS_PixLoop2:	
+		moveq	#0,d3
 		move.b	(a6)+,d3
 		beq.s	shS_NOPix2
 		bmi.s	shS_PixEnd2		;end of cell
@@ -5451,14 +5463,19 @@ shS_PixLoop2:	moveq	#0,d3
 		move.b	(a1,d0.w),d2
 		not	d0
 		subq	#1,d3
-shS_InnerPix2:	move.b	d1,(a2,d4.w)
+shS_InnerPix2:	
+		move.b	d1,(a2,d4.w)
 		add	d6,d4
 		move.b	d2,(a2,d5.w)
 		sub	d6,d5
 		dbf	d3,shS_InnerPix2
-shS_NOPix2:	addq	#1,d0
+shS_NOPix2:	
+		addq	#1,d0
 		bra.s	shS_Pixloop2
-shS_PixEnd2:	movem.w	(sp)+,d0-d6
+shS_PixEnd2:	
+		lea		lc_variables+lc_remainingCollumns(pc),a6
+		subi	#1,(a6)			; decrease remaining collumn counter
+		movem.w	(sp)+,d0-d6
 
 shS_NoLine2:	dbf	d6,shS_Mloop2
 		lea	2(sp),sp
@@ -5473,22 +5490,23 @@ shS_SaveZero2:	move.l	sv_ZeroPtr,a6
 		bra.w	shS_NoLine2
 	ENDC
 
-sh_Mloop2:	add	d3,d2
+sh_Mloop2:	
+		add	d3,d2
 		addx	d1,d4
 
 		move.l	(a4)+,a6
-		subq	#1,d0
-		cmp	(sp),d0
-		bpl.s	sh_Noline2
+			subq	#1,d0
+			cmp		(sp),d0
+			bpl.s	sh_Noline2
 
 		moveq	#0,d7
 		move.b	sv_widthTable2(pc,d0.w),d7
-		lea	(a0,d7.w),a2		;screen
+		lea		(a0,d7.w),a2		;screen
 		tst.b	64*192(a2)		;is column drawn?
 		beq.s	sh_NoLine2
 
 		move.b	(a5,d4.w),d7
-sh_Walldir2:	;eori	#63,d7			;fix wall direction
+sh_Walldir2:;	eori	#63,d7			;fix wall direction
 		move.w	sh_EorWallDir2(pc),d5
 		eor.w	d5,d7
 
@@ -5501,6 +5519,9 @@ sh_Walldir2:	;eori	#63,d7			;fix wall direction
 		move.b	#0,64*192(a2)		;mark column as drawn
 
 		jsr	(a6)
+
+		lea		lc_variables+lc_remainingCollumns(pc),a6
+		subi	#1,(a6)			; decrease remaining collumn counter
 
 sh_NoLine2:	dbf	d6,sh_Mloop2
 		lea	2(sp),sp
@@ -5517,15 +5538,17 @@ sh_exit3:
 		move.l	#0,ab_BloodAdr
 		rts
 
-sh_SaveZero2:	move.l	sv_ZeroPtr,a6
+sv_widthTable2:	ds.b	192
+
+sh_SaveZero2:	
+		move.l	sv_ZeroPtr,a6
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
 		move.l	[4*700]-4(a4),(a6)+	;cell addr
 		move	#0,(a6)+		;Y pos flag
 		move.l	a6,sv_ZeroPtr
-		bra.s	sh_NoLine2
+		bra		sh_NoLine2
 
-sv_widthTable2:	ds.b	192
 ;-------------------------------------------------------------------
 ;a3 - enemy 1 or 2 offsets
 ShowEnemy:	addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
@@ -5997,14 +6020,19 @@ lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after s
 lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
 lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
 lc_screenBytes:			dc.l	0				; equal to all chunky screen size in bytes (pixels)
-lc_screenPixX:			dc.w	0				; window size X in pixels (e.g. 192)
-lc_screenPixX4:			dc.w	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
 lc_halfScreenBytes:		dc.w	0				; equal to half the chunky screen bytes (pixels)
 lc_quatScreenBytes:		dc.w	0				; equal to quater the chunky screen bytes (pixels)
-lc_chunkyWidth8_1:		dc.w	0				; equal to 1/8 - 1 of the chunky screen bytes (pixels)
+lc_screenPixX:			dc.w	0				; window size X in pixels (e.g. 192)
+lc_screenPixX2:			dc.w	0				; window size X in pixels / 2 (e.g. 192/2 = 96)
+lc_screenPixX4:			dc.w	0				; window size X in pixels / 4 (e.g. 192/4 = 48)
+lc_chunkyWidth4_1:		dc.w	0				; equal to 1/4 - 1 of the chunky screen width (pixels)
+lc_chunkyWidth8_1:		dc.w	0				; equal to 1/8 - 1 of the chunky screen width (pixels)
+lc_chunkyWidth16_1:		dc.w	0				; equal to 1/16 - 1 of the chunky screen width (pixels)
+lc_chunkyWidth32_1:		dc.w	0				; equal to 1/32 - 1 of the chunky screen width (pixels)
 lc_halfScreenBlit:		dc.w	0				; equal to value for half of c2p screen (for floor filling)
 lc_floorGapBlit:		dc.w	0				; size of the  floor gap fill (in chunky pixels)
-lc_floorBottomDelayed:	dc.w	0				; 1 - delayed draw of floor bottom using blitter
+lc_chunkyBufMidAddr:	dc.l	0				; address of the middle row in the chunky buffer
+lc_transMarkerTabAddr:	dc.l	0				; address of the transparent marker tab (behind the chunky buffer)
 lc_scrollBitsLeft:		dc.w	0				; how many bits of the scroll left on screen (0..272)
 lc_doFlash:				dc.w	0				; >0 - flash screen
 lc_doPikaj:				dc.w	0,55			; beep when energy low. 0.w beeb on flag, 2.w time between beeps
@@ -6028,6 +6056,8 @@ lc_colDisturbances:		dc.l	$88888888		; disturbances colour
 lc_blitC2PPos:			dc.w	0				; current position in the blitter c2p processing queue
 lc_delayedSwap:			dc.w	0				; delay screen swap. Used for teleporting. 0 - no delay, 1 - delay
 lc_ChunkyBufChip:		dc.l	sv_ChunkyBufC	; address of chunky buffer in CHIP
+lc_remainingCollumns:	dc.w	0				; how many of the total screen collumns are remaining to be drawn
+lc_zeroPtr:				dc.l	0				; zero tab running pointer
 
 ENDOFF
 
@@ -6074,6 +6104,8 @@ lc_F2_FloorCode:		dc.l	F2_FloorCode,0
 lc_F2_TexelM2LConvTab:	dc.l	F2_TexelM2LConvTab,0
 lc_F2_TexelL2MConvTab:	dc.l	F2_TexelL2MConvTab,0
 lc_F2_BlitC2PTab:		dc.l	F2_BlitC2PTab,0
+lc_F2_ZeroTab:			dc.l	F2_ZeroTab,0
+lc_F2_ZeroTabEnd:		dc.l	F2_ZeroTabEnd,0
 
 lc_F2_TopMem:			dc.l	F2_TopMem,0
 						dc.l	0
@@ -10578,20 +10610,26 @@ mk_DCD2:move.w	(a3)+,(a2)+
 		lsr		d2
 		subq	#1,d2
 		move	d2,28(a1)		;pixel width/16 - 1
+		move	d2,lc_chunkyWidth16_1(a6)	; pixel width/8 -1
 		move	d1,d2
 		subq	#1,d2
-		move	d2,lc_chunkyWidth8_1(a6)
+		move	d2,lc_chunkyWidth8_1(a6)	; pixel width/8 -1
+		move	d1,d2
+		lsr		#2,d2
+		subq	#1,d2
+		move	d2,lc_chunkyWidth32_1(a6)	; pixel width/32 -1 (window size changes every 32 pixels = 4 screen bytes)
 		add		d1,d1
-		move	d1,30(a1)		;pixel width/4 - 1 (in longs)
-		subi	#1,30(a1)
+		move	d1,30(a1)		
+		subi	#1,30(a1)					;pixel width/4 - 1 (in longs)
+		move	30(a1),lc_chunkyWidth4_1(a6)	; pixel width/4 -1
 		add		d1,d1			;*4
 		move	d1,(a1)			;pixel width/2 (in words)
+		move	d1,lc_screenPixX2(a6)	;width in pixels/2 (e.g. 192/2 = 96)
 		add		d1,d1			;*8
 		move	d1,6(a1)		;width in pixels (e.g. 192)
-		ext.l	d1
 		move	d1,lc_screenPixX(a6)	;width in pixels (e.g. 192)
-		move.l	d1,d0
-		lsr.l	#2,d0
+		move	d1,d0
+		lsr		#2,d0
 		move	d0,lc_screenPixX4(a6)	;width in pixels/4 (e.g. 192/4 = 48)
 
 		lea		shZ_WmulTab(pc),a3		; width mul table
@@ -10607,10 +10645,12 @@ mk_Wmt2: move	d2,(a3)+
 		lsr.l	#1,d1
 		move	d1,lc_halfScreenBytes(a6)		; save nr of bytes corresponding to half of the chunky screen
 
-		lea		(a2,d1.w),a2		;SCR tab middle
+		lea		(a2,d1.w),a2		; SCR tab middle
 		move.l	a2,8(a1)
-		lea		64*192(a2),a3		;zero wall tab start
+		move.l	a2,lc_chunkyBufMidAddr(a6)
+		lea		64*192(a2),a3		;  transparent marker tab start
 		move.l	a3,44(a1)			; row just after screen, indicating which collumns drawn.
+		move.l	a3,lc_transMarkerTabAddr(a6)
 		lsr.l	#1,d1
 		move	d1,lc_quatScreenBytes(a6)		; 1/4 of chunky byte tab length
 
@@ -11772,6 +11812,9 @@ F2_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($16
 F2_TexelM2LConvTab:	rs.b	256							; texture conversion tab: MSB to LSB
 F2_TexelL2MConvTab:	rs.b	256							; texture conversion tab: LSB to MSB
 F2_BlitC2PTab:		rs.b	8+16*5*8					; blitter c2p execution queue (general config + 40 blits)
+F2_ZeroTab:			rs.b	14*8*192					; table for zero (transparent) collumns. 192*8 entries.
+F2_ZeroTabEnd:		rs.b	14*2*192					; end of table for zero collumns + buffer
+
 
 F2_TopMem:			rs.w	0
 
