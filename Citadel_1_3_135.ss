@@ -12,7 +12,7 @@ IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
 VERSION: 	SET		$220222
-BUILD:		SET		$01
+BUILD:		SET		$02
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -266,6 +266,7 @@ start:
 .sc_CopyData:	move	(a1)+,(a2)+
 		dbf		d0,.sc_CopyData
 
+		lea		lc_variables(pc),a6
 		move	lc_CpuType(pc),d0
 		beq.s	.NoCache
 		lea		lc_variables(pc),a6
@@ -293,17 +294,16 @@ start:
 		bra.s	.InitStruct
 
 .NoCache:	; this is a plain 68000 so no cache etc.
-		lea		lc_variables(pc),a6
 		move	#0,lc_isCache(a6)				; mark that there is no CPU cache present
 		move	#0,lc_c2pType(a6)				; 0 = blitter C2P
 		move	#0,lc_c2pTypePreferred(a6)		; 0 = blitter C2P
 
 .InitStruct:
 		move.l	lc_Structure(pc),a1
-		move	(a1),sv_size			; actual window size (determining the nr of bytes): 2-6
-		move	(a1),sv_size+2			; user selected window size, cannot be set to stretched at start
+		move	(a1),lc_size(a6)		; actual window size (determining the nr of bytes): 2-6
+		move	(a1),lc_size+2(a6)		; user selected window size, cannot be set to stretched at start
 		move	(a1),cc_requesttab+2	; TODO: is this needed since no key is pressed? maybe can be zero at start
-		move	2(a1),sv_Floor
+		move	2(a1),lc_floor(a6)
 		move	4(a1),sv_Details
 		move	6(a1),sv_Energy
 		move	8(a1),sv_Glowica
@@ -337,6 +337,13 @@ start:
 		lea		4(a3),a3		; skip freq/len
 		bra.s	.fix_s
 .fe:
+
+		lea		sv_sinus,a1					; copy sinus to fast mem
+		move.l	lc_F2_Sinus(pc),a2
+		moveq	#($280/8)-1,d0
+.cpSin:	move.l	(a1)+,(a2)+
+		move.l	(a1)+,(a2)+
+		dbf		d0,.cpSin
 
 		move.l	lc_F2_UserMap(pc),a1		;clr user map
 		moveq	#127,d0
@@ -498,8 +505,8 @@ start:
 	;--- end save ---------------------------------- 
 .sc_NoSave:
 
-		move.l	sv_Screen,a1		;copy window to screen 2
-		move.l	sv_Screen+4,a2
+		move.l	lc_screen(a6),a1		;copy window to screen 2
+		move.l	lc_screen+4(a6),a2
 		move	#[[160*40*5]/16]-1,d7			; 160*40*5 in longs and each long is copied 4x in the loop
 .sv_CopWindow:	rept	4
 		move.l	(a1)+,(a2)+
@@ -660,13 +667,13 @@ ml2:
 		beq.s	.nl_5
 		btst.b	#7,$bfe001
 		beq.s	.nl_5
-		tst		cc_MoveTab+12	; enter / fire from keyboard
+		tst		lc_moveTab+12(a6)	; enter / fire from keyboard
 		bne.s	.nl_5
 		move	#0,8(a1)		; rf2 flag (right joystick fire? / keyboard fire)
 		bra.s	.nl_5
 .nl_4:	btst.b	#2,$16(a0)		; RMB pressed?
 		beq.s	.nl_6
-		tst		cc_MoveTab+12	; ENTER etc. pressed?
+		tst		lc_moveTab+12(a6)	; ENTER etc. pressed?
 		bne.s	.nl_6
 		btst.b	#7,$bfe001
 		bne.s	.nl_5
@@ -695,24 +702,24 @@ NOT_Paused:
 		move	2(a1),d0			;window size button (F1-F8) pressed? Returns 2..6 for (F1-F5) and 7..9 for (F6-F8)
 		beq		sv_NoScrChange
 		clr		2(a1)
-		cmp		sv_Size+2,d0		; is it the same as current size?
+		cmp		lc_size+2(a6),d0	; is it the same as current size?
 		beq.w	sv_NoScrChange
- 		move	d0,sv_Size+2		; size can be 1-8. 6,7 and 8 are stretched. Note that size 1-> sv_size=2 , size 5 -> sv_size=6
+ 		move	d0,lc_size+2(a6)	; size can be 2-9. 7-9 are stretched. Note that size 1-> sv_size=2 , size 5 -> sv_size=6
 		cmpi	#7,d0
 		bmi.s	sv_SizeNoStr		;if <2,6> screen is not stretched
 
-		move	#5,sv_Size			; bit-size for non-stretched is always 5 (which is same as F4, 20 bytes)
+		move	#5,lc_size(a6)		; bit-size for non-stretched is always 5 (which is same as F4, 20 bytes)
 		st		sv_StrFlag			; mark screen as not stretched
 		move	#1,lc_c2pType(a6)	; on stretched screens use CPU C2P
 		bra.s	sv_cont1
 sv_SizeNoStr:
-		move	d0,sv_Size			; user screen size same as bit-size for non-stretched
+		move	d0,lc_size(a6)		; user screen size same as bit-size for non-stretched
 		clr		sv_StrFlag			; mark screen as not stretched
 		move	lc_c2pTypePreferred(a6),lc_c2pType(a6)	; on non-stretched screens use preferred C2P
 sv_cont1:
 		st		lc_ledChange(a6)	; re-draw debug LEDs
 		bsr		sv_SetWindowSize_pass		; change window size
-		move	sv_size,d0
+		move	lc_size(a6),d0
 		addi	#21,d0
 		SCROLL1						; "window size X"
 		TIMESTAMP	d0
@@ -809,9 +816,16 @@ sv_startFrame:
 
 .sv_noActionUpdate1:
 
+
+	CNTSTART 5
+		bsr		ShowFloor							; draw floors
+	CNTSTOP 5
+
+	CNTSTART 6
+		move.l	lc_F2_ZeroTab(pc),lc_zeroPtr(a6)				; reset tab for ZeroWalls
 		; Remove markers for all collumns drawn - so that new ones can be drawn
 		move	lc_screenPixX(a6),lc_remainingCollumns(a6)		; filled collumn counter
-		move.l	lc_transMarkerTabAddr(a6),a1	; marker table - behind chunky buffer?
+		move.l	lc_transMarkerTabAddr(a6),a1	; marker table (behind chunky buffer)
 		move	lc_chunkyWidth32_1(a6),d0		; (pixel width / 32) - 1
 		moveq	#-1,d1
 sv_Cloop0:
@@ -820,23 +834,17 @@ sv_Cloop0:
 		endr
 		dbf		d0,sv_Cloop0
 
-		move.l	#sv_ZeroTab,sv_ZeroPtr				; tab for ZeroWalls
-
-	CNTSTART 5
-		bsr		ShowFloor							; draw floors
-	CNTSTOP 5
-
-	CNTSTART 6
 		bsr		DrawAll								; draw walls and all - but not transparent (zero) walls.
 	CNTSTOP 6
 
-; TODO: this is strange, check if zerowalls cannot write something over if it goes too long?
-		move.l	sv_ZeroPtr,d0
-		cmpi.l	#sv_ZeroTab+[14*8*192],d0
-		bmi.s	.NicTo
-		move.l	#sv_ZeroTab+[14*8*192],sv_ZeroPtr
-.NicTo:		
+	
 	CNTSTART 7
+		move.l	lc_zeroPtr(a6),d0						; check if zero walls not exceeding allocated space
+		cmpi.l	lc_F2_ZeroTabEnd(pc),d0
+		bmi.s	.NicTo
+		move.l	lc_F2_ZeroTabEnd(pc),lc_zeroPtr(a6)
+.NicTo:	
+
 		bsr		ShowZeroWalls							;add zero (transparent) walls
 	CNTSTOP 7
 
@@ -964,8 +972,8 @@ sv_quit:
 		VBLANK
 
 		move.l	lc_F2_WindowSav(pc),a1
-		move.l	sv_Screen,a2
-		move.l	sv_Screen+4,a3
+		move.l	lc_screen(a6),a2
+		move.l	lc_screen+4(a6),a3
 		addi.l	#[sv_Upoffset*5*row],a2
 		addi.l	#[sv_Upoffset*5*row],a3
 		moveq	#0,d0
@@ -985,8 +993,8 @@ sv_quit:
 		dbf	d7,.sv_GetWindow
 
 		move.l	lc_Structure(pc),a1		;update structure in prep for exit
-		move	sv_size,(a1)
-		move	sv_Floor,2(a1)
+		move	lc_size(a6),(a1)
+		move	lc_floor(a6),2(a1)
 		move	sv_Details,4(a1)
 		move	sv_Energy+2,6(a1)
 		move	sv_Glowica,8(a1)
@@ -1114,10 +1122,11 @@ interruptL3Vertb:
 
 ;-------------------------------------------------------------------
 ; swap screens and set up address in copperlist accordingly
+; in: a6 - lc_variables(pc)
 swapScreen:
-		move.l	sv_screen,d0			; swap screens. Screen will be the new buffer and screen+4 the one currently displayed
-		move.l	sv_screen+4,sv_screen
-		move.l	d0,sv_screen+4
+		move.l	lc_screen(a6),d0			; swap screens. Screen will be the new buffer and screen+4 the one currently displayed
+		move.l	lc_screen+4(a6),lc_screen(a6)
+		move.l	d0,lc_screen+4(a6)
 
 		tst		sv_StrFlag				; is screen sretched?
 		bne.s	.stretched
@@ -1535,7 +1544,7 @@ drawCrosshairs:
 		lsl		#2,d1
 		move	lc_time+2(a6),d2			; sinus up/down depending on time spent moving
 		lsl		#4,d2
-		lea		sv_sinus,a2
+		move.l	lc_F2_Sinus(pc),a2
 		andi	#$1fe,d2
 		clr		d0
 		move.b	(a2,d2.w),d0
@@ -1648,7 +1657,7 @@ rm_HandGunUsed:					; input: d0 = weapon index: 0 (hand), 6 (handgun) etc.
 		move	sv_PosY,8(a1)		;pos X,Y
 		move	sv_MapPos,10(a1)
 		movem.l	a1/a2,-(sp)
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2
 		move	#256,d6
 		sub		sv_angle,d6
@@ -2264,20 +2273,20 @@ rm_AmmoLoop:	move	d7,-(sp)
 		move	sv_PosY,8(a1)
 		move	sv_MapPos,10(a1)
 		movem.l	a1/a2,-(sp)
-		lea	sv_sinus,a1
-		lea	$80(a1),a2
+		move.l	lc_F2_Sinus(pc),a1
+		lea		$80(a1),a2
 		move	#256,d6
-		sub	sv_angle,d6
+		sub		sv_angle,d6
 
-		bsr	GetRandom
+		bsr		GetRandom
 		andi	#7<<5,d0
 		asr.b	#4,d0
-		ext	d0
-		add	d0,d6
+		ext		d0
+		add		d0,d6
 		andi	#$1fe,d6
 		moveq	#0,d0
 		move	#400/8,d1		;vector length
-		bsr	sv_Rotate
+		bsr		sv_Rotate
 		movem.l	(sp)+,a1/a2
 		move	d0,2(a1)
 		move	d1,4(a1)
@@ -2389,7 +2398,7 @@ PrepareStruct:	move	sv_PosX,6(a1)		;set object structure
 		move	sv_PosY,8(a1)
 		move	sv_MapPos,10(a1)
 		movem.l	a1/a2,-(sp)
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2
 		move	#256,d6
 		sub		sv_angle,d6
@@ -2906,18 +2915,18 @@ me_w4:		movem.l	a1-a4,-(sp)
 		movem	4(a3),d0/d1
 		SOUND4	4
 .me_h3:
-		lea	sv_sinus,a1
-		lea	$80(a1),a2
+		move.l	lc_F2_Sinus(pc),a1
+		lea		$80(a1),a2
 		move	#256,d6
-		sub	8(a3),d6		;angle
+		sub		8(a3),d6		;angle
 		andi	#$1fe,d6
 		moveq	#0,d0
 		move	10(a3),d1		;vector length
-		bsr	sv_Rotate
+		bsr		sv_Rotate
 		movem.l	(sp)+,a1-a4
 		move	d0,sv_MovSav
 		move	d1,sv_MovSav+2
-		bsr	me_MOVE
+		bsr		me_MOVE
 		tst	d0
 		beq.s	me_w2
 		moveq	#2,d5
@@ -3026,9 +3035,9 @@ me_b2:		cmpa.l	eh_FirePos,a3
 		move	d0,$dff0c0+8		;volume of fire
 .me_b3:		eori.b	#4,13(a3)		;80,84
 		movem.l	a1-a4,-(sp)
-		lea	sv_sinus,a1
-		lea	$80(a1),a2
-		bsr	GetRandom
+		move.l	lc_F2_Sinus(pc),a1
+		lea		$80(a1),a2
+		bsr		GetRandom
 		move	d0,d6
 		andi	#$1fe,d6
 		moveq	#0,d0
@@ -3572,8 +3581,8 @@ es_beczka1:	lea	2(sp),sp
 		bra	es_END
 
 es_PrepStruct0:	move.l	a1,-(sp)
-		lea	sv_sinus,a1
-		lea	$80(a1),a2
+		move.l	lc_F2_Sinus(pc),a1
+		lea		$80(a1),a2
 		andi	#$1fe,d6
 		moveq	#0,d0
 		bsr	sv_Rotate
@@ -3642,7 +3651,7 @@ es_Flamer:
 
 
 es_PrepStruct:	move.l	a1,-(sp)
-		lea	sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea	$80(a1),a2
 		move	#256,d6
 		sub	8(a4),d6
@@ -3900,9 +3909,9 @@ DrawAll:
 		movem.l	ALL,-(sp)
 		lea		lc_variables(pc),a6
 		lea		sv_MAP,a0
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2		;cosinus
-		lea		sv_RotTable,a3
+		move.l	lc_F2_RotTable(pc),a3
 		lea		dr_sideWNES(pc),a4
 
 		move	sv_angle,d0
@@ -4026,11 +4035,11 @@ dr_checkDEAD:	cmpi	#2,sv_DETAILS
 		addi	#512,d0
 		move	12(a4),d1
 		addi	#512,d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	(sp)+,d4
 		moveq	#-32,d5
-		or	#$c000,d4		;always down
-		bsr	ShowCollumns
+		or		#$c000,d4		;always down
+		bsr		ShowCollumns
 		move	(sp),d5
 
 
@@ -4119,7 +4128,7 @@ dr_moreSeek2:	lea	-12(a5),a5
 		dbf		d7,dr_SeekUsed2
 		move	(sp)+,d7
 
-		lea		lc_variables(pc),a6
+;		lea		lc_variables(pc),a6
 		tst		lc_updateFrame(a6)
 		beq.s	.sv_noActionUpdate1			; this is needed as otherwise shots do not show correctly as they get wiped too early
 		andi.b	#$7f,6(a0,d5.w)
@@ -4255,15 +4264,15 @@ dr_cW:		andi	#63,d4
 dr_checkEnd:	
 		move	(sp)+,d5
 
-		lea		lc_variables(pc),a6
 		tst		lc_remainingCollumns(a6)
-		dbeq	d7,dr_ROTLOOP	; repease until all collumns filled
+		dbeq	d7,dr_ROTLOOP	; repeat until all collumns filled
 
 		movem.l	(sp)+,ALL
 		rts
 
 
-dr_sideWNES:	dc.w	0,9,8,1,0,0,0,0,0	;direction nr & bits
+dr_sideWNES:	
+		dc.w	0,9,8,1,0,0,0,0,0	;direction nr & bits
 		dc.w	1,0,9,8,1,0,0,0,0	;+ x,y offsets, +1024
 		dc.w	2,1,0,9,8,0,0,0,0
 		dc.w	3,8,1,0,9,0,0,0,0
@@ -4285,19 +4294,19 @@ dr_AddObject:
 		move	d4,d5
 		andi	#3,d4
 		addi	#58,d4			;58
-		lsr	#2,d5
+		lsr		#2,d5
 		andi	#3,d5
 		bne.s	.dr_O11
 		moveq	#-16,d5			;odprysk up
-		ori	#$a000,d4
+		ori		#$a000,d4
 		bra.w	dr_SetObject
-.dr_O11:	cmpi.b	#1,d5
+.dr_O11: cmpi.b	#1,d5
 		bne.s	.dr_O12
 		moveq	#0,d5			;odprysk down
-		ori	#$e000,d4
+		ori		#$e000,d4
 		bra.w	dr_SetObject
-.dr_O12:	moveq	#-8,d5			;odprysk middle
-		ori	#$2000,d4
+.dr_O12: moveq	#-8,d5			;odprysk middle
+		ori		#$2000,d4
 		bra.w	dr_SetObject
 
 .dr_object2:	cmpi.b	#4,d4			;4 - prad
@@ -4307,7 +4316,7 @@ dr_AddObject:
 		andi	#1,d4
 		addi	#51,d4
 		moveq	#-8,d5			;middle
-		ori	#$2000,d4
+		ori		#$2000,d4
 		bra.w	dr_SetObject
 .dr_object3:	cmpi.b	#2,d4			;2 - wyladowanie
 		bne.s	.dr_Object4
@@ -4316,7 +4325,7 @@ dr_AddObject:
 		andi	#3,d4
 		addi	#55,d4
 		moveq	#-8,d5			;middle
-		ori	#$2000,d4
+		ori		#$2000,d4
 		bra.s	dr_SetObject
 
 .dr_object4:	cmpi.b	#3,d4			;3 - fireball
@@ -4326,7 +4335,7 @@ dr_AddObject:
 		andi	#1,d4
 		addi	#49,d4
 		moveq	#-8,d5
-		ori	#$2000,d4
+		ori		#$2000,d4
 		bra.s	dr_SetObject
 .dr_object5:	cmpi.b	#6,d4			;6 - explosion
 		bne.s	.dr_Object6
@@ -4337,37 +4346,35 @@ dr_AddObject:
 		bmi.s	dr_SOEnd
 		addi	#61,d4
 		moveq	#-16,d5
-		ori	#$4000,d4
+		ori		#$4000,d4
 		bra.s	dr_SetObject
 
 .dr_object6:	cmpi.b	#5,d4			;5 - rocket
-		bne.s	.dr_Object7
+		bne.s	dr_SetObject
 		move	#16,sv_CollumnWid
 		move	(a5),d4
 		andi	#1,d4
 		addi	#53,d4
 		moveq	#-8,d5
-		ori	#$2000,d4
-;		bra.s	dr_SetObject
-
-.dr_object7:
-;		nop
-
-dr_SetObject:	bsr	ShowCollumns
-dr_SOEnd:	rts
+		ori		#$2000,d4
+dr_SetObject:	
+		bsr	ShowCollumns
+dr_SOEnd:	
+		rts
 
 ;-------------------------------------------------------------------
 ;d0,a1,a2 - don't change (for sv_rotate)
 
-dr_DrawEnemy:	movem.l	ALL,-(sp)
+dr_DrawEnemy:	
+		movem.l	ALL,-(sp)
 		lea	sv_EnemyData,a4		;EnemyTab
 ;		andi	#$ff,d4
 ;		lsl	#4,d4
-		lea	(a4,d4.w),a4		;enemy structure
+		lea		(a4,d4.w),a4		;enemy structure
 		movem	4(a4),d0/d1		;x,y
-		sub	sv_posX,d0
-		sub	sv_posY,d1
-		bsr	sv_rotate
+		sub		sv_posX,d0
+		sub		sv_posY,d1
+		bsr		sv_rotate
 
 		tst.b	12(a4)
 		beq.s	de_WALK
@@ -4375,21 +4382,21 @@ dr_DrawEnemy:	movem.l	ALL,-(sp)
 		move.b	13(a4),d4
 		bra.s	de_CONT
 
-de_WALK:	lea	lc_EnemyDirTab(pc),a3
+de_WALK: lea	lc_EnemyDirTab(pc),a3
 		move	8(a4),d2
-		sub	sv_angle,d2
+		sub		sv_angle,d2
 		addi	#64,d2
 		andi	#$1fe,d2
-		lea	sv_EDirSub(pc),a5
+		lea		sv_EDirSub(pc),a5
 .de_DirChoose:	sub	(a5)+,d2
 		bmi.s	de_DirOK
-		lea	8(a3),a3
+		lea		8(a3),a3
 		bra.s	.de_DirChoose
 de_dirOK:
 		move	sv_WalkState,d4
 		move	(a3,d4.w),d4
 
-de_CONT:	lea	lc_Enemy1Offsets(pc),a3
+de_CONT: lea	lc_Enemy1Offsets(pc),a3
 		btst.b	#0,1(a4)
 		bne.s	de_enemy2
 		lea		lc_Enemy2Offsets(pc),a3
@@ -4519,7 +4526,7 @@ mc_clearScreen:
 		; --- CPU fill ceiling/floor
 cpuFill:
 		move.l	lc_colCeiling(a6),d0
-		tst		sv_Floor					; 1 = draw floor. 0 = no floor (fill whole screen)
+		tst		lc_floor(a6)					; 1 = draw floor. 0 = no floor (fill whole screen)
 		bne		.FillFloorGap
 
 		move	lc_halfScreenBytes(a6),d2
@@ -4994,17 +5001,18 @@ p_SC1:		move	(a2)+,d1
 ;-------------------------------------------------------------------
 ;Draw a single wall.
 ;Those collumns which are transparent are put in a "zero table" to add to the screen later, on top of the background
-; in: d0/d1 - x1/z1, d2/d3 - x2/z2, d4 - wall index (without blood)
-
+; in: d0/d1 - x1/z1, d2/d3 - x2/z2, 
+; d4 - wall index (without blood - it's filtered out)
+; a6 - lc_variables(pc)
 ShowWalls:	
-		move	#0,sv_consttab+48
+		clr		lc_wallInverted(a6)
 		addi	#2^SHLeft,d1		;center ROT point (z+256)
 		addi	#2^SHLeft,d3
 		cmp		d3,d1				;d1 - Zw
 		bpl.s	sh_W04				;if ok
 		exg		d0,d2
 		exg		d1,d3
-		move	#1,sv_consttab+48	; wall inverted in Z i.e. right corner is deeper
+		st		lc_wallInverted(a6)	; wall inverted in Z i.e. right corner is deeper
 sh_W04:	cmpi	#Min_Distance,d1	;chk borders
 		ble.w	sh_exit3
 		cmpi	#Max_Distance,d3
@@ -5018,7 +5026,7 @@ sh_W04:	cmpi	#Min_Distance,d1	;chk borders
 		cmpi	#Min_Distance,d3
 		bpl.s	sh_DrawOn		;if in range
 
-		move	d4,a3			;save d4
+		move	d4,a3			;save d4 (wall index)
 		move	#Min_Distance,d7	;Cut wall to border
 		sub		d3,d7			;z'
 		move	d1,d6
@@ -5060,6 +5068,7 @@ sh_WZwX: move	d6,d5
 		move	a3,d4
 
 ;----------------------------
+; a3 - wall index
 sh_DrawOn:	
 		subq	#2,d4			; wall index (2,4,6... cannot be 0 at this point)
 	; lea		sh_Walldir1+2(pc),a3
@@ -5072,39 +5081,30 @@ sh_DrawOn:
 		lea		sh_EorWallDir1(pc),a3
 		move.w	#63,(a3)
 		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
-
-		IFNE	SELECT_CACHE
-		; TODO: SMC - change!!
-		move	#63,shS_WallDir1-sh_WallDir1(a3)
-		move	#0,shS_WallDir2-sh_WallDir1(a3)
-		ENDC
 		bra.s	sh_WD1
 sh_WD0:
 	; non inverted wall
 	; move	#0,(a3)			;do not invert
 	; move	#63,sh_WallDir2-sh_WallDir1(a3)
-		lea	sh_EorWallDir1(pc),a3
+		lea		sh_EorWallDir1(pc),a3
 		move.w	#0,(a3)
 		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
-
-		IFNE	SELECT_CACHE
-		; TODO: SMC - change!!
-		move	#0,shS_WallDir1-sh_WallDir1(a3)
-		move	#63,shS_WallDir2-sh_WallDir1(a3)
-		ENDC
 sh_WD1:
+	; TODO: if index > x then switch to wall cache
 		lea		lc_WallOffsets(pc),a3
 		lsl		#2,d4				; wall index *4
-;		add		d4,d4
-;		add		d4,d4			; wall index *4
-		move.l	(a3,d4.w),d4		; offset to wall start
-		move.l	sv_Consttab+12,a3	; wall textures start addr
+		move.l	(a3,d4.w),d4		; offset to wall texture
+		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
 		lea		32(a3,d4.l),a3		;required wall start - middle pixel
 
-		muls	sv_Size,d0		; scale X to screen size
+		move	lc_size(a6),d4			; scale X to screen size (2..6)
+		cmpi	#6,d4
+		beq.s	.noScX
+		muls	d4,d0		; scale X to screen size (2..6)
 		divs	#6,d0
-		muls	sv_Size,d2
+		muls	d4,d2
 		divs	#6,d2
+.noScX:
 
 		ext.l	d0
 		ext.l	d2
@@ -5114,16 +5114,16 @@ sh_WD1:
 		divs	d3,d2			;x2*256/(z+256)
 
  ; TODO: can this be checked earlier?
-		tst		sv_consttab+48		;not draw 'back' walls
+		tst		lc_wallInverted(a6)		;not draw 'back' walls
 		bne.s	sh_cXd2
 		cmp		d2,d0
 		bmi		sh_exit2
 		bra.s	sh_cXdOK
 sh_cXd2: cmp	d0,d2
-		bmi	sh_exit2
+		bmi		sh_exit2
 sh_cXdOK:
 
-		move.l	sv_Consttab+2,d4	; scaled screen heigth * 256 (e.g. 128 * 256)
+		move.l	lc_scaledScreenHeigth(a6),d4	; scaled screen heigth * 256 (e.g. 128 * 256)
 		move.l	d4,d5
 		divu	d1,d4			;y1	 = d4 = screen heigth * 256 / y1_orig
 		divu	d3,d5			;y2	 = d5 = screen heigth * 256 / y2
@@ -5134,7 +5134,7 @@ sh_cXdOK:
 		exg		d4,d5
 sh_W0:	
 		; d0: right corner X, d2 - left corner X
-		move	sv_Consttab,d7		; window width in pixels
+		move	lc_screenPixX2(a6),d7		; window width in pixels/2 -> centre of row
 		add		d7,d0
 		bmi		sh_exit2		;if < left border
 		cmp		d7,d2
@@ -5184,7 +5184,7 @@ sh_W01:
 		divu	d4,d1
 		sub		d1,d3			;dY is range 91..350 to re-base to 0..260 (65*4) - heigth of wall scaled to 350?
 		andi	#$fffc,d3		;cut 2 LSbits from (0..260) to have a pointer to the address tab in sv_planes (65 entries)
-		move.l	sv_Consttab+20,a5	; sv_planes (700) tab (lc_F1_Planes)
+		move.l	lc_F1_Planes(pc),a5	; sv_planes (700) tab (lc_F1_Planes)
 		move.l	(a5,d3.w),a5	; get address of the right entry in the planes tab
 
 		exg		d0,d2
@@ -5208,9 +5208,9 @@ sh_Dok:	sub		d5,d4
 		move	#maxWallHeigth*2,d2
 .nc:	subq	#1,d2
 
-	; TODO: depending on mode (cache or not), this can be optimised to calc and save less things
+		; caculate Y interpolation table
 		move	d5,d7
-		move.l	sv_Consttab+16,a0	; fast code tab
+		move.l	lc_F1_WallCode(pc),a0	; fast code tab
 		move.l	lc_F2_Htab(pc),a1	; slow Htab
 		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
 		add		d4,d6
@@ -5224,7 +5224,7 @@ sh_Lloop0: addx	d3,d1			;interpolate Y
 		move.l	(a0,d5.w),(a4)+		;Y draw code jump address
 		dbf		d2,sh_Lloop0	; repeat Dx times
 
-		move.l	sv_Consttab+8,a0	;scr tab middle
+		move.l	lc_chunkyBufMidAddr(a6),a0			;scr tab middle
 		move.l	lc_F2_LineTab(pc),a4		; addresses of pre-generated code to draw interpolated lines
 
 		move	(sp)+,d6		; Dx - nr of pixel collumns to draw
@@ -5243,90 +5243,12 @@ sh_Right:
 
 		move	d6,d7			;cut to R_border
 		add		d0,d7
-		sub		sv_Consttab+6,d7
+		sub		lc_screenPixX(a6),d7	; width in pixels
 		ble.s	sh_BorOK1
 		sub		d7,d6
 sh_BorOK1:	
 		subq	#1,d6			; nr of collumns to draw - 1
 		subq	#1,d0
-
-	IFNE	SELECT_CACHE
-		move	lc_variables+lc_isCache(pc),d7
-		beq		sh_Mloop1		;goto no-cache mode (pregenerated code)
-;		tst	sv_Mode
-;		beq.w	sh_Mloop1		;goto pre-generated code mode
-		lea		4*700(a4),a4		;Htab address
-
-shS_Mloop1:	
-		add		d3,d2			;X texture interpolation
-		addx	d1,d4
-
-		move.l	(a4)+,a6		;Htab cell start
-		addq	#1,d0
-		bmi.w	shS_Noline1
-
-		moveq	#0,d7
-		lea		sv_widthTable(pc),a2	; TODO: if blitter is not used then this is not necessary as chunky is linear
-		move.b	(a2,d0.w),d7
-		lea		(a0,d7.w),a2			; screen
-		tst.b	64*192(a2)				; is column drawn?
-		beq.s	shS_NoLine1
-
-		move.b	(a5,d4.w),d7
-; TODO: this is SMC, CHANGE?
-shS_Walldir1:;	eori	#0,d7			;fix wall direction	
-		move.w	sh_EorWallDir2(pc),d5
-		eor.w	d5,d7
-		move	d7,d5
-		lsl		#6,d7
-		add		d5,d7
-		lea		(a3,d7.w),a1		;wall
-		tst.b	32(a1)			;zero wall byte
-		bne.w	shS_SaveZero1
-		move.b	#0,64*192(a2)		;mark column as drawn
-
-		movem.w	d0-d6,-(sp)		; TODO: d5 is not used
-		moveq	#0,d0			;wall count
-		moveq	#0,d4			;screen count down
-		move	sv_Consttab+6,d6
-		move	d6,d5
-		neg	d5			;screen count up
-shS_PixLoop1:	
-		moveq	#0,d3
-		move.b	(a6)+,d3
-		beq.s	shS_NOPix1
-		bmi.s	shS_PixEnd1		;end of cell
-		move.b	(a1,d0.w),d1		;take pixel down
-		not	d0
-		move.b	(a1,d0.w),d2		;pixel up
-		not	d0
-		subq	#1,d3
-shS_InnerPix1:	
-		move.b	d1,(a2,d4.w)	; draw symetrically up and down
-		add		d6,d4
-		move.b	d2,(a2,d5.w)
-		sub		d6,d5
-		dbf		d3,shS_InnerPix1
-shS_NOPix1:	
-		addq	#1,d0
-		bra.s	shS_Pixloop1
-shS_PixEnd1:	
-		lea		lc_variables+lc_remainingCollumns(pc),a6
-		subi	#1,(a6)			; decrease remaining collumn counter
-		movem.w	(sp)+,d0-d6
-
-shS_NoLine1:	
-		dbf		d6,shS_Mloop1
-		bra		sh_exit2
-
-shS_SaveZero1:	move.l	sv_ZeroPtr,a6
-		move.l	a1,(a6)+		;wall addr
-		move.l	a2,(a6)+		;screen addr
-		move.l	-4(a4),(a6)+
-		move	#0,(a6)+
-		move.l	a6,sv_ZeroPtr
-		bra.w	shS_NoLine1
-	ENDC
 
 ; d0 - start X pixel offset on screen
 ; d1-d4 interpolation
@@ -5366,7 +5288,7 @@ sh_Walldir1:;	eori	#0,d7			;fix wall direction - 0 for non-inverted, 63 for inve
 		lea		(a3,d7.w),a1		;wall - middle pixel
 		tst.b	32(a1)
 		bne.s	sh_SaveZero1
-		move.b	#0,64*192(a2)		;mark column as drawn
+		clr.b	64*192(a2)		;mark column as drawn
 
 		jsr		(a6)				; copy 1 collumn with required Y stretching
 
@@ -5379,12 +5301,13 @@ sh_NoLine1:
 
 ; save collumn for adding later because it has clear pixels
 sh_SaveZero1:	
-		move.l	sv_ZeroPtr,a6
+		move.l	lc_variables+lc_zeroPtr(pc),a6
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
 		move.l	[4*700]-4(a4),(a6)+	;manual drawing cell addr (htab)
 		move	#0,(a6)+
-		move.l	a6,sv_ZeroPtr
+	lea	lc_variables+lc_zeroPtr(pc),a1
+		move.l	a6,(a1)
 		bra.w	sh_NoLine1
 
 sv_widthTable:	ds.b	192
@@ -5392,7 +5315,8 @@ sh_EorWallDir1:	dc.w	0
 sh_EorWallDir2:	dc.w	0
 ;-----------------------------------------------
 
-sh_Left: neg	d6
+sh_Left: 
+			neg	d6
 		move.l	(sp),d3			;norm. 700
 		addq	#2,d6
 
@@ -5402,96 +5326,18 @@ sh_Left: neg	d6
 		divu	d6,d3			;x=R*256/wybierz
 		moveq	#0,d2
 		moveq	#0,d4
-		subq	#2,d6
+			subq	#2,d6
 
-		move	d0,d7			;cut to L_border
-		sub	d6,d7
-		bpl.s	sh_BorOK2
-		add	d7,d6			;shorten wall
+			move	d0,d7			;cut to L_border
+			sub		d6,d7
+			bpl.s	sh_BorOK2
+			add		d7,d6			;shorten wall
 sh_BorOK2:
 		addq	#1,d0
-		move	sv_Consttab+6,-(sp)
-
-	IFNE	SELECT_CACHE
-		move	lc_variables+lc_isCache(pc),d7
-		beq		sh_Mloop1		;goto no-cache mode (pregenerated code)
-;		tst	sv_Mode
-;		beq.w	sh_Mloop2		;goto fast mode
-		lea		4*700(a4),a4		;Htab addrss
-
-shS_Mloop2:	add	d3,d2			;interpolation
-		addx	d1,d4
-
-		move.l	(a4)+,a6
-		subq	#1,d0
-		cmp	(sp),d0
-		bpl.s	shS_Noline2
-
-		moveq	#0,d7
-		lea	sv_widthTable2(pc),a2				; TODO:  not necessary for CPU mode as this is then a linear tabls 
-		move.b	(a2,d0.w),d7
-		lea	(a0,d7.w),a2		;screen
-		tst.b	64*192(a2)		;is column drawn?
-		beq.s	shS_NoLine2
-
-		move.b	(a5,d4.w),d7
-; TODO: this is SMC, CHANGE!!!!
-shS_Walldir2:;	eori	#63,d7			;fix wall direction
-		move.w	sh_EorWallDir2(pc),d5
-		eor.w	d5,d7
-		move	d7,d5
-		lsl		#6,d7			;*64
-		add		d5,d7			;add CL byte
-		lea		(a3,d7.w),a1		;wall
-		tst.b	32(a1)
-		bne.w	shS_SaveZero2
-		move.b	#0,64*192(a2)		;mark column as drawn
-
-		movem.w	d0-d6,-(sp)
-		moveq	#0,d0			;wall count
-		moveq	#0,d4			;screen count down
-		move	sv_Consttab+6,d6
-		move	d6,d5
-		neg	d5			;screen count up
-shS_PixLoop2:	
-		moveq	#0,d3
-		move.b	(a6)+,d3
-		beq.s	shS_NOPix2
-		bmi.s	shS_PixEnd2		;end of cell
-		move.b	(a1,d0.w),d1
-		not	d0
-		move.b	(a1,d0.w),d2
-		not	d0
-		subq	#1,d3
-shS_InnerPix2:	
-		move.b	d1,(a2,d4.w)
-		add	d6,d4
-		move.b	d2,(a2,d5.w)
-		sub	d6,d5
-		dbf	d3,shS_InnerPix2
-shS_NOPix2:	
-		addq	#1,d0
-		bra.s	shS_Pixloop2
-shS_PixEnd2:	
-		lea		lc_variables+lc_remainingCollumns(pc),a6
-		subi	#1,(a6)			; decrease remaining collumn counter
-		movem.w	(sp)+,d0-d6
-
-shS_NoLine2:	dbf	d6,shS_Mloop2
-		lea	2(sp),sp
-		bra	sh_exit2
-
-shS_SaveZero2:	move.l	sv_ZeroPtr,a6
-		move.l	a1,(a6)+		;wall addr
-		move.l	a2,(a6)+		;screen addr
-		move.l	-4(a4),(a6)+
-		move	#0,(a6)+
-		move.l	a6,sv_ZeroPtr
-		bra.w	shS_NoLine2
-	ENDC
+			move	lc_screenPixX(a6),-(sp)		; screen width
 
 sh_Mloop2:	
-		add	d3,d2
+		add		d3,d2
 		addx	d1,d4
 
 		move.l	(a4)+,a6
@@ -5511,28 +5357,24 @@ sh_Walldir2:;	eori	#63,d7			;fix wall direction
 		eor.w	d5,d7
 
 		move	d7,d5
-		lsl	#6,d7			;*64
-		add	d5,d7			;add CL byte
-		lea	(a3,d7.w),a1		;wall
+		lsl		#6,d7			;*64
+		add		d5,d7			;add CL byte
+		lea		(a3,d7.w),a1		;wall
 		tst.b	32(a1)
 		bne.w	sh_SaveZero2
-		move.b	#0,64*192(a2)		;mark column as drawn
+		clr.b	64*192(a2)		;mark column as drawn
 
 		jsr	(a6)
 
 		lea		lc_variables+lc_remainingCollumns(pc),a6
 		subi	#1,(a6)			; decrease remaining collumn counter
 
-sh_NoLine2:	dbf	d6,sh_Mloop2
+sh_NoLine2:	
+		dbf	d6,sh_Mloop2
 		lea	2(sp),sp
 
 sh_exit2:	
 		lea		4(sp),sp
-		move.l	sv_ZeroPtr,d0
-		cmpi.l	#sv_ZeroTab+[14*8*192],d0
-		bmi.s	.NicTo
-		move.l	#sv_ZeroTab+[14*8*192],sv_ZeroPtr
-.NicTo:
 		movem.l	(sp)+,ALL
 sh_exit3:
 		move.l	#0,ab_BloodAdr
@@ -5541,17 +5383,19 @@ sh_exit3:
 sv_widthTable2:	ds.b	192
 
 sh_SaveZero2:	
-		move.l	sv_ZeroPtr,a6
+		move.l	lc_variables+lc_zeroPtr(pc),a6
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
-		move.l	[4*700]-4(a4),(a6)+	;cell addr
-		move	#0,(a6)+		;Y pos flag
-		move.l	a6,sv_ZeroPtr
+		move.l	[4*700]-4(a4),(a6)+	;manual drawing cell addr (htab)
+		move	#0,(a6)+
+	lea	lc_variables+lc_zeroPtr(pc),a1
+		move.l	a6,(a1)
 		bra		sh_NoLine2
 
 ;-------------------------------------------------------------------
 ;a3 - enemy 1 or 2 offsets
-ShowEnemy:	addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
+ShowEnemy:	
+		addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
 		cmpi	#Min_Distance,d1	;chk borders
 		bmi.w	sc_exit1
 		cmpi	#Max_Distance,d1
@@ -5564,6 +5408,7 @@ ShowEnemy:	addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
 
 ;-------------------------------------------------------------------
 ; This adds the collumn's vertical rows to the zerotab
+; in: a6 - lc_variables(pc)
 ShowCollumns:	
 		addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
 		cmpi	#Min_Distance,d1	;chk borders
@@ -5576,15 +5421,16 @@ ShowCollumns:
 		andi	#$e000,d2
 		andi	#$1fff,d4
 		subq	#1,d4
-		add	d4,d4
-		add	d4,d4
+		lsl		#2,d4
+;		add	d4,d4
+;		add	d4,d4
 		lea		lc_CollumnOffsets(pc),a3
 sc_EnemyCont:	
 		move	d2,-(sp)		;up/down/norm coll. flag
 		move.l	(a3,d4.w),d4
 		move.l	sv_Consttab+12,a3
-		lea	32(a3,d4.l),a3		;required collumn start
-		lea	(a3,d5.w),a3		;fix up/down offset
+		lea		32(a3,d4.l),a3		;required collumn start
+		lea		(a3,d5.w),a3		;fix up/down offset
 
 		move	d0,d2
 		subi	#256,d0			;x left - 512 wide
@@ -5593,11 +5439,15 @@ sc_EnemyCont:
 		beq.s	.sc_wide32
 		addi	#128,d0			;256 wide
 		subi	#128,d2
-.sc_wide32:	muls	sv_Size,d2
+.sc_wide32:	
+		move	lc_size(a6),d4
+		cmpi	#6,d4
+		beq.s	.noRsX			; no need to mul/div resize if size = 6, just do it for smaller screens
+		muls	d4,d2
 		divs	#6,d2
-		muls	sv_Size,d0
+		muls	d4,d0
 		divs	#6,d0
-
+.noRsX:
 		ext.l	d2
 		ext.l	d0
 		lsl.l	#SHLeft,d2		;x1*256
@@ -5608,19 +5458,17 @@ sc_EnemyCont:
 		divu	d1,d3			;y
 
 		move.l	lc_F2_Htab(pc),a1	;slow Htab
-		add	d3,d3
-		add	d3,d3
+		lsl		#2,d3
 		move.l	(a1,d3.w),a2		;cell addr
 		move	sv_Consttab,d7
-		add	d7,d2
+		add		d7,d2
 		bmi.w	sc_exit2		;if < left border
-		cmp	d7,d0
+		cmp		d7,d0
 		bpl.w	sc_exit2		;if > right border
-		add	d7,d0			;center x
-
+		add		d7,d0			;center x
 
 		move	d2,d6
-		sub	d0,d6			;x delta
+		sub		d0,d6			;x delta
 
 		moveq	#0,d3
 		move	sv_CollumnWid,d3	;32 or 16 wide
@@ -5634,24 +5482,25 @@ sc_EnemyCont:
 		subq	#1,d6
 
 		move	d6,d7			;cut to R_border
-		add	d0,d7
-		sub	sv_Consttab+6,d7
+		add		d0,d7
+		sub		sv_Consttab+6,d7
 		ble.s	sc_BorOK
-		sub	d7,d6
-sc_BorOK:	subq	#1,d6
+		sub		d7,d6
+sc_BorOK: subq	#1,d6
 		subq	#1,d0
 
 		moveq	#0,d7
 		move.l	sv_Consttab+8,a0	;scr tab middle
 		lea		sv_widthTable(pc),a1
-		move.l	sv_ZeroPtr,a6		;zero wall table
+		move.l	lc_zeroPtr(a6),a6		;zero wall table
 
 ;a0 - screen center
 ;a1 - width table
 ;a2 - cell addr
 ;a3 - collumn addr
 
-sc_ColLoop:	add	d3,d2			;interpolation
+sc_ColLoop:	
+		add		d3,d2			;interpolation
 		addx	d1,d4
 
 		addq	#1,d0
@@ -5678,12 +5527,14 @@ sc_NoChk:
 
 sc_NoLine:	
 		dbf		d6,sc_ColLoop
-		move.l	a6,d5
-		cmpi.l	#sv_ZeroTab+[14*8*192],d5
+
+		move.l	a6,d0
+		lea		lc_variables(pc),a6
+		cmpi.l	lc_F2_ZeroTabEnd(pc),d0					; check if zero walls not exceeding allocated space
 		bmi.s	.NicTo
-		move.l	#sv_ZeroTab+[14*8*192],d5
-.NicTo:		
-		move.l	d5,sv_ZeroPtr
+		move.l	lc_F2_ZeroTabEnd(pc),d0
+.NicTo:	
+		move.l	d0,lc_zeroPtr(a6)
 
 sc_exit2:	
 		lea	2(sp),sp
@@ -5693,14 +5544,16 @@ sc_exit1:
 
 ;-------------------------------------------------------------------
 ;Add translucient parts of walls...
+; in: a6 - lc_variables(pc)
 ShowZeroWalls:
 		movem.l	a0-a6/d0-d7,-(sp)
 
-		move.l	sv_ZeroPtr,a0		;Zero lines table
+		lea		lc_variables(pc),a6
+		move.l	lc_zeroPtr(a6),a0		;Zero lines table
 		moveq	#0,d6
 		move	sv_Consttab+6,d6
-		lea	sv_Zerotab,a4
-		lea	shZ_WMulTab(pc),a5
+		move.l	lc_F2_ZeroTab(pc),a4
+		lea		shZ_WMulTab(pc),a5
 
 shZ_ZeroLoop:
 		cmpa.l	a4,a0
@@ -6016,6 +5869,10 @@ lc_ledChange:			dc.w	0				; 1 - update debug LED status
 lc_drunk:				dc.w	0				; 0 - all OK, >0 time left drunk
 lc_momentum:			dc.w	0				; 0 - not moving, >0 moving momentum which builds up to 255 while moving
 lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after shooting
+lc_size:				dc.w	6,6				; screen size: 0:(2..6) actual size, 2:(2..9) user size including stretched
+lc_floor:				dc.w	1				; show floors: 0-off,  1-floors on
+lc_screen:				dc.l	screen1,screen2	; 0: screen to draw on (buffer), 4: screen being shown
+lc_scrOffset:			dc.l	[sv_Upoffset*row*5]+sv_Leftoffset		;view start
 
 lc_floorBytes:			dc.w	0				; bytes for ceiling/floor in the chunky buf
 lc_floorGapBytes:		dc.w	0				; bytes of gap between ceiling and floor
@@ -6058,6 +5915,9 @@ lc_delayedSwap:			dc.w	0				; delay screen swap. Used for teleporting. 0 - no de
 lc_ChunkyBufChip:		dc.l	sv_ChunkyBufC	; address of chunky buffer in CHIP
 lc_remainingCollumns:	dc.w	0				; how many of the total screen collumns are remaining to be drawn
 lc_zeroPtr:				dc.l	0				; zero tab running pointer
+lc_scaledScreenHeigth:	dc.l	0				; scaled screen heigth * 256 (e.g. 128 * 256)
+lc_wallInverted:		dc.w	0				; temporary indicator of an inverted wall (used in ShowWalls)
+lc_moveTab:				dc.w	0,0,0,0,0,0,0	;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
 
 ENDOFF
 
@@ -6106,6 +5966,8 @@ lc_F2_TexelL2MConvTab:	dc.l	F2_TexelL2MConvTab,0
 lc_F2_BlitC2PTab:		dc.l	F2_BlitC2PTab,0
 lc_F2_ZeroTab:			dc.l	F2_ZeroTab,0
 lc_F2_ZeroTabEnd:		dc.l	F2_ZeroTabEnd,0
+lc_F2_Sinus:			dc.l	F2_Sinus,0
+lc_F2_RotTable:			dc.l	F2_RotTable,0
 
 lc_F2_TopMem:			dc.l	F2_TopMem,0
 						dc.l	0
@@ -6265,12 +6127,13 @@ EVEN
 ;-------------------------------------------------------------------
 ;Draw textured floors and ceilings...
 ; The main loop fits in 020 cache ($a0)
+; in: a6 - lc_variables(pc)
 ShowFloor:	
-		tst		sv_Floor			; 0 - no floors, 1 - textured floors
+		tst		lc_floor(a6)			; 0 - no floors, 1 - textured floors
 		beq		fl_quit
 
 		movem.l	ALL,-(sp)
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2		;cosinus
 		move	#256,d6
 		sub		sv_angle,d6
@@ -6346,10 +6209,10 @@ fl_MkDeltas:
 
 ;-----------------------------------------------
 		move.l	lc_F2_LineTab(pc),a0		;x0,y0, dx,dy
-		move.l	sv_Consttab+32,a1	;floor texture addr
-		move.l	sv_Consttab+36,a2	;ceiling texture addr
-		move.l	sv_Consttab+40,a3	;SVGA tab floor addr - starts on last row of the screen
-		move.l	lc_ChunkyBuffer(pc),a4	;SVGA tab ceiling addr
+		move.l	sv_Consttab+32,a1			;floor texture addr
+		move.l	sv_Consttab+36,a2			;ceiling texture addr
+		move.l	sv_Consttab+40,a3			;SVGA tab floor addr - starts on last row of the screen
+		move.l	lc_ChunkyBuffer(pc),a4		;SVGA tab ceiling addr
 
 
 		move	(a0)+,d7		;H counter - number of rows to draw -1
@@ -6614,8 +6477,8 @@ c2p_Blitter_noStretch:
 
 		lea		CUSTOM,a0
 		move.l	lc_F2_BlitC2PTab(pc),a2
-		move.l	sv_Screen,a1		; always draw on the first screen (second is displayed)
-		add.l	sv_offset,a1		; start of the draw window - offset Y*5 + X
+		move.l	lc_screen(a6),a1		; always draw on the first screen (second is displayed)
+		add.l	lc_scrOffset(a6),a1		; start of the draw window - offset Y*5 + X
 		move.l	a1,(a2)				; update screen start address
 
 		clr		lc_blitC2PPos(a6)
@@ -6778,8 +6641,8 @@ c2p_CPU_noStretch:
 ;-------------------------------------------------------------------
 		movem.l	a0/a1/a6,-(sp)
 
-		move.l	sv_Screen,a1					; always draw on the first screen (second is displayed)
-		add.l	sv_offset,a1					; start of the draw window - offset Y*5 + X
+		move.l	lc_variables+lc_screen(pc),a1				; always draw on the first screen (second is displayed)
+		add.l	lc_variables+lc_scrOffset(pc),a1			; start of the draw window - offset Y*5 + X
 
  		move.l	lc_ChunkyBuffer(pc),a0
 		add.l	#row,a1
@@ -7006,7 +6869,7 @@ c2p1x1c5_x2end:
 c2p_CPU_Stretch:
 		movem.l	a0/a1/a6,-(sp)
 
-		move.l	sv_screen,a1				; override screen start (as it's for 1x1 size 4 window)
+		move.l	lc_variables+lc_screen(pc),a1				; override screen start (as it's for 1x1 size 4 window)
 		lea		sv_UpOffset*row*5(a1),a1
  		move.l	lc_ChunkyBuffer(pc),a0
 
@@ -7141,9 +7004,9 @@ c2p2x1c5_xend:
 ;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
 sv_joystick:	
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2			;cosinus
-		lea		cc_MoveTab,a3		;keys pressed
+		lea		lc_variables+lc_moveTab(pc),a3		;keys pressed
 
 		lea		CUSTOM,a0
 		move	$c(a0),d2		; joydat
@@ -7501,14 +7364,6 @@ cc_esc:	cmpi.b	#$75,d0			;esc - quit
 		move	#1,(a1)
 		bra		cc_NoKey
 cc_ntsc:
-		; cmpi.b	#$93,d0			;n - ntsc/pal
-		; bne.s	cc_cont
-		; cmpi	#8,sv_size+2
-		; bpl.s	cc_cont
-		; eori	#32,sv_NtscPal
-		; move	sv_NtscPal,$dff1dc
-		; bra		cc_NoKey
-;cc_cont:
 
 cc_pmode: tst	sv_PAUSE		;don't check if paused
 		bne.w	cc_NoKey
@@ -7583,7 +7438,7 @@ cc_1_0:	cmpi.b	#$fe,d0			;1-0 - weapons + cards
 		bra		cc_NoKey
 cc_f:	cmpi.b	#$b9,d0			;f - floor on/off
 		bne.s	cc_TAB
-		eori	#1,sv_Floor
+		eori	#1,lc_floor(a6)
 		beq.s	.cc_f2
 		SCROLL	33				;"on"
 		bra		cc_NoKey
@@ -7735,7 +7590,7 @@ cc_KeyTab:	dc.w	$67,$65,$61,$63,$df,$dd,$db
 ;-------------------------------------------------------------------
 cc_FixKeys:	
 		lea		cc_RequestTab,a1
-		lea		cc_MoveTab,a2		;fix move keys pressed
+		lea		lc_variables+lc_moveTab(pc),a2		;fix move keys pressed
 		move	10(a1),d1		;up
 		or		20(a1),d1
 		move	d1,(a2)+
@@ -7773,10 +7628,10 @@ EndLevel:
 		tst		lc_EndLevel(a6)
 		bmi.s	sv_Death
 ; survived exit
-		move	sv_Size+2,d0	; current user screen size 
+		move	lc_size+2(a6),d0	; current user screen size 
 		cmpi	#7,d0
 		bmi.s	.NoStr			;if <2,6>
-		move.l	sv_screen,a2
+		move.l	lc_screen(a6),a2
 		lea		[sv_Upoffset*5*row](a2),a2
 		moveq	#0,d0
 		move	#[130*5]-1,d7
@@ -7787,7 +7642,7 @@ EndLevel:
 		bra.s	.E2
 
 .NoStr:	move.l	lc_F2_WindowSav(pc),a1
-		move.l	sv_screen,a2
+		move.l	lc_screen(a6),a2
 		addi.l	#[sv_Upoffset*5*row],a2
 		moveq	#0,d0
 		move	#[130*5]-1,d7
@@ -7818,7 +7673,7 @@ sv_Death2:
 		moveq	#60,d7
 .loopY:	 move	#319,d6			;Blood on screen
 		lea		DeathTab(pc),a1
-		move.l	sv_screen+4,a3
+		move.l	lc_screen+4(a6),a3
 		move	#$8000,d3
 		move	#$7fff,d4
 .loopX:
@@ -8586,7 +8441,7 @@ compFrameAddr:	blk.l	COMP_ANIM_FRAMES,0
 ; In: a4 - compass frame, d6 - angle
 drawCompassFrame:	
 		movem.l	d0-d7/a1-a3,-(sp)
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2		;cosinus
 		andi	#$1fe,d6
 		moveq	#0,d0			;wskazowka
@@ -8973,11 +8828,11 @@ DebugCntClearArea:
 		movem.l	(sp)+,ALL
 		rts
 
-DebugCntRedrawArea:
+DebugCntRedrawArea:				; in: a6 - lc_variables
 		movem.l	d0/a1-a3,-(sp)
 		move.l	lc_F2_WindowSav(pc),a1
-		move.l	sv_Screen,a2
-		move.l	sv_Screen+4,a3
+		move.l	lc_screen(a6),a2
+		move.l	lc_screen+4(a6),a3
 		addi.l	#[sv_Upoffset*5*row],a2
 		addi.l	#[sv_Upoffset*5*row],a3
 		move	#[130*5]-1,d0
@@ -9823,11 +9678,12 @@ oc_L7:		move.b	(a1)+,(a4)+
 ;transform picture while teleporting...
 
 TELEPORT:	movem.l	ALL,-(sp)
+		lea		lc_variables(pc),a6
 		move	#0,sv_teleport
-		move.l	sv_Screen,a1		;hiden - with destination picture
-		move.l	sv_Screen+4,a2		;shown - to which copy will be made
+		move.l	lc_screen(a6),a1		;hiden - with destination picture
+		move.l	lc_screen+4(a6),a2		;shown - to which copy will be made
 		lea		sv_ChaosTac,a3
-		move	sv_Size+2,d0
+		move	lc_size+2(a6),d0
 		cmpi	#7,d0
 		bpl.s	te_stretched
 		lea		[5*sv_UpOffset*row]+sv_LeftOffset(a1),a1
@@ -9950,7 +9806,7 @@ chk_WallJump:
 		bsr.w	cco_Check
 		bne.s	chk_Godmode
 
-		lea		sv_sinus,a1
+		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2
 		move	#256,d6
 		sub		sv_angle,d6
@@ -10189,7 +10045,7 @@ sv_MAKE_SZUM:
 		move	sv_ViewWidth,d4
 		lsr		#2,d4
 		subq	#1,d4
-		move	sv_size,d0
+		move	lc_size(a6),d0
 		subq	#1,d0
 		lsl		#2,d0					; nr of lines depends on window size. E.g. size 5 (sv_size=6) has 5 * 8 = 40 lines
 .sv_MS02:
@@ -10655,11 +10511,12 @@ mk_Wmt2: move	d2,(a3)+
 		move	d1,lc_quatScreenBytes(a6)		; 1/4 of chunky byte tab length
 
 		move	sv_WallHeigth,d1
-		muls	sv_Size,d1		;scale screen
+		muls	lc_size(a6),d1		;scale screen
 		divs	#6,d1
 		ext.l	d1
 		lsl.l	#SHLeft,d1		;*256
 		move.l	d1,2(a1)		; scaled screen heigth * 256 (e.g. 128 * 256)
+		move.l	d1,lc_scaledScreenHeigth(a6)
 
 		; --- make static floor perspective tab
 		move.l	lc_F2_FloorTab(pc),a3
@@ -10776,7 +10633,7 @@ mk_DT2:	move	d3,(a3)+
 		asl		d0				; * 2 to go 2 lines back
 		move	d0,2(a3)
 
-		lea		sv_RotTable,a2		; rotation table
+		lea		sv_RotTable,a2		; correct rotation table (???)
 		cmpi.l	#$50100,(a2)
 		bne.s	mk_NotFR
 		move.l	a2,d2
@@ -10787,6 +10644,14 @@ mk_FixRot:	move.l	(a2),d1
 		move.l	d1,(a2)+
 		dbf		d0,mk_FixRot
 mk_NotFR:
+
+		lea		sv_RotTable,a2
+		move.l	lc_F2_RotTable(pc),a3	; move rotation table to fast
+		move	#($4200/32)-1,d0
+.cpRot:	REPT	8
+		move.l	(a2)+,(a3)+
+		ENDR
+		dbf		d0,.cpRot
 
 		; --- eliminate zero-line collumn & enemy drawing
 		lea		lc_CollumnOffsets(pc),a2
@@ -10813,25 +10678,6 @@ mk_NotFR:
 mk_fixblood:	move.b	#0,64(a2)
 		lea		65(a2),a2
 		dbf		d7,mk_fixblood
-
-; 		lea		sv3_DoubleTab(pc),a2	;double table for stretch
-; 		lea		sv4_DoubleTab(pc),a3
-; 		moveq	#0,d0
-; mk_DoublT:	move	d0,d1
-; 		moveq	#0,d2
-; 		moveq	#7,d3
-; mk_DTloop:	add	d2,d2			;free 2 bits
-; 		add	d2,d2
-; 		add.b	d1,d1
-; 		bcc.w	mk_DouT2
-; 		ori	#3,d2			;if 1 set 2 bits
-; mk_DouT2:	dbf	d3,mk_DTloop
-; 		move	d2,(a2)+
-; 		move	d2,(a3)+
-; 		addq	#1,d0
-; 		cmpi	#256,d0
-; 		bne.s	mk_DoublT
-
 
 		lea	sc_Text,a2		;make text offsets
 		move.l	a2,d1
@@ -10959,7 +10805,7 @@ sv_SetWindowSize:
 		move.l	lc_F2_ChunkyBuf(pc),(a1)	; CPU C2P uses chunky buf in fast
 
 		moveq.l	#0,d0
-		move	sv_Size,d0
+		move	lc_size(a6),d0
 		add		d0,d0
 		add		d0,d0			;max 24
 		move	d0,sv_ViewWidth			; in bytes (pixels/8)
@@ -11012,7 +10858,7 @@ sv_SWS2:
 		move	#12,d3
 		sub		d1,d3
 		add		d3,d2
-		move.l	d2,sv_offset
+		move.l	d2,lc_scrOffset(a6)
 
 		lea		CUSTOM,a0
 		VBLANK
@@ -11037,7 +10883,7 @@ sv_SWS2:
 		move.l	#$010aFFD8,d2
 		move.l	#$010800a0,d3
 		move.l	#$010a00a0,d4
-		cmpi	#8,sv_Size+2
+		cmpi	#8,lc_size+2(a6)
 		bpl.s	sv_SWS6
 		move.l	#$2901ff00,d0			; window 7
 		moveq	#31,d7
@@ -11063,7 +10909,7 @@ mk_cop2: addi.l	#$04000000,d0
 sv_SWS6:					;biggest windows (7, 8)
 		move.l	#$9029c4,cop_borders
 		move.l	#$29dffffe,d0
-		cmpi	#8,sv_Size+2
+		cmpi	#8,lc_size+2(a6)
 		beq.s	sv_Big_and_Panel
 
 		moveq	#127,d7
@@ -11168,10 +11014,10 @@ clearScreenCPUFull:
 		move.l	d0,a1
 		move.l	d1,a2
 		move.l	d2,a3
-		move.l	sv_Screen,a4
+		move.l	lc_screen(a6),a4
 		addi.l	#[16+128]*row*5,a4
 		bsr.s	.sv_clr					; clear screen 1
-		move.l	sv_Screen+4,a4
+		move.l	lc_screen+4(a6),a4
 		addi.l	#[16+128]*row*5,a4		; clear screen 2
 .sv_clr:
 		move	#[[128*5]/10]-1,d7
@@ -11188,10 +11034,10 @@ clearScreenCPUWindow:
 		move.l	d1,d3
 		move.l	d2,d4
 		move.l	d3,d5
-		move.l	sv_Screen,a4
+		move.l	lc_screen(a6),a4
 		addi.l	#[16+128]*row*5-8,a4	; offet (40-24)/2 from the right
 		bsr.s	.sv_clr					; clear screen 1
-		move.l	sv_Screen+4,a4
+		move.l	lc_screen+4(a6),a4
 		addi.l	#[16+128]*row*5-8,a4	; clear screen 2
 .sv_clr:
 		move	#[[128*5]/10]-1,d7
@@ -11216,10 +11062,10 @@ sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
 
 		; if the previous screen was stretched then copy borders back
 		move.l	lc_F2_WindowSav(pc),a1
-		move.l	sv_Screen,a2
+		move.l	lc_screen(a6),a2
 		addi.l	#[sv_Upoffset*5*row],a2		; screen 1
 		move.l	a2,a4
-		move.l	sv_screen+4,a3
+		move.l	lc_screen+4(a6),a3
 		addi.l	#sv_UPoffset*row*5,a3		; screen 2
 		moveq	#0,d0
 		move	#[130*5]-1,d7	; should this be 128?
@@ -11541,7 +11387,7 @@ SHLeft:			equ	8		;2^SHLeft=D factor for
 min_distance:	equ	[500*[2^SHLeft]/maxWallHeigth]+2
 					;min dist from screen
 					;(min 96 for 6, 370 for 8)
-max_distance:	equ	12000		;max distance (ok.22000)
+max_distance:	equ	12000		;FOV, 12000 equals to 12 squares (max can be ok.22000)
 sv_Upoffset:	equ	16		;view window pos offsets - in lines from top
 sv_Leftoffset:	equ	8		; in bytes from left
 wall_floor1:	equ	[13-1]*4	;nr. of floor wall *4
@@ -11561,12 +11407,12 @@ sv_SAMPLES:		equ	BASEC+$34e58		;102108 ($18edc)
 
 ; tables (tables.dat)
 sv_Bomba:		equ	BASEC+$4dd34		;$15cc (addr is $34e58 + $18edc)
-sv_RotTable:	equ	BASEC+$4f300		;rot table ($41f2)
+sv_RotTable:	equ	BASEC+$4f300		;rot table ($41f2)	-> copied to fast
 sv_ChaosTab:	equ	BASEC+$534f2		;$6c0;nie rozbijac bloku!
 sv_ChaosTac:	equ	BASEC+$53bb2		;$800
 sv_Numbers:		equ	BASEC+$543b2		;$1ae	- bitmap numbers to print nr of cards
 sv_Fonts:		equ	BASEC+$54560		;$300
-sv_sinus:		equ	BASEC+$54860		;$280
+sv_sinus:		equ	BASEC+$54860		;$280	-> copied to fast
 ; end tables
 
 ;mc_Htab:	equ	BASEC+$54b00		;$1b34 round up to 1b80. Empirically found as this is a compressed table.
@@ -11584,7 +11430,7 @@ sv_sinus:		equ	BASEC+$54860		;$280
 ;sv_C2Save:	equ	BASEC+$595f0		;$21c
 
 ;sv_ZeroTab:	equ	BASEC+$59820		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
-sv_ZeroTab:	equ	BASEC+$5a000		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
+;sv_ZeroTab:	equ	BASEC+$5a000		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
 
 ;sv_ChunkyBufC:	equ	BASEC+$60a20	;chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
 sv_ChunkyBufC:	equ	BASEC+$60000	;chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
@@ -11632,9 +11478,9 @@ screenMaxX:	equ		192		; in pixels
 screenMaxY:	equ		128		; in pixels
 
 
-sv_Size:	dc.w	6,6		;actual size value for calculating pixel width: 2-6, user selected value including stretch options 2-9
+;sv_Size:	dc.w	6,6		;actual size value for calculating pixel width: 2-6, user selected value including stretch options 2-9
 ;sv_Size:	dc.w	3,3		;math value, real
-sv_Floor:	dc.w	1		;0-off,  1-floors on
+;sv_Floor:	dc.w	1		;0-off,  1-floors on
 sv_DETAILS:	dc.w	0		;2-low,	 1-medium,  0-high
 sv_DIFFICULT:	dc.w	0		;0-difficult(normal), 1-easy
 
@@ -11653,9 +11499,9 @@ sv_SzumTime:	dc.w	0
 sc_TextAddr:	dc.l	0,0,0			;adr 1,2,flag
 sv_pause:	dc.w	0,0			;1- pause, 0- no,text CNT
 ;do_FLASH:	dc.w	0			;nr of frames to flash
-sv_ZeroPtr:	dc.l	sv_ZeroTab
-sv_screen:	dc.l	screen1,screen2	;160*40*5=$7d00 each
-sv_offset:	dc.l	[sv_Upoffset*row*5]+sv_Leftoffset		;view start
+;sv_ZeroPtr:	dc.l	sv_ZeroTab
+;sv_screen:	dc.l	screen1,screen2	;160*40*5=$7d00 each
+;sv_offset:	dc.l	[sv_Upoffset*row*5]+sv_Leftoffset		;view start
 sv_BumpedWall:	dc.w	0			;nr. of bumped wall
 sv_ChaosAddr:	dc.w	[32*27*2]-2,0		; offset in randomised table used e.g. for weapon change drawing. 
 sv_AmmoChg:	dc.w	0,0,0,0			;old/cnt, new/cnt
@@ -11697,7 +11543,7 @@ sv_oldmouse:	dc.w	0
 sv_MouseDxy:	dc.w	0,0
 sv_LastMove:	dc.w	0,0,0,0			;vec len, angle, bump l,a
 sv_LastPos:	dc.w	0,0			;last X,Y pos
-cc_MoveTab:	dc.w	0,0,0,0,0,0,0		;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
+;cc_MoveTab:	dc.w	0,0,0,0,0,0,0		;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
 
 cc_RequestTab:	dc.w	0,6,0,0,0		; 5*2 = 10 bytes
 ;0 quit, 2 window size key pressed, 4 c2p preference changed (blit_use), 6 RMB pressed (RMB_flag), 8 Rf2
@@ -11812,9 +11658,10 @@ F2_FloorCode:		rs.b	30*screenMaxX+8				; Code to draw floors. 30*192 = 5760 ($16
 F2_TexelM2LConvTab:	rs.b	256							; texture conversion tab: MSB to LSB
 F2_TexelL2MConvTab:	rs.b	256							; texture conversion tab: LSB to MSB
 F2_BlitC2PTab:		rs.b	8+16*5*8					; blitter c2p execution queue (general config + 40 blits)
-F2_ZeroTab:			rs.b	14*8*192					; table for zero (transparent) collumns. 192*8 entries.
+F2_ZeroTab:			rs.b	14*12*192					; table for zero (transparent) collumns. 192*12 entries.
 F2_ZeroTabEnd:		rs.b	14*2*192					; end of table for zero collumns + buffer
-
+F2_Sinus:			rs.b	$280						; sinus (256 words) + cosinus (offset 64 words) = 640
+F2_RotTable:		rs.b	$4200						; rotation table ($41f2)
 
 F2_TopMem:			rs.w	0
 
