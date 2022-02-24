@@ -3945,7 +3945,7 @@ dr_ROTLOOP:
 		exg	d2,d3
 		neg.b	d3
 		bra.s	dr_d4
-dr_d2:		subq	#1,d4
+dr_d2:	subq	#1,d4
 		bpl.s	dr_d3
 		neg.b	d2
 		neg.b	d3
@@ -3986,14 +3986,14 @@ dr_checkEnemy:	move	#32,sv_CollumnWid
 		move	#0,sv_SecondEnemy
 		move.b	7(a0,d5.w),d4		;get enemy in front
 		beq.s	dr_checkITEM
-		lea	sv_EnemyData,a5		;EnemyTab
+		lea		sv_EnemyData,a5		;EnemyTab
 		andi	#$ff,d4
-		lsl	#4,d4
+		lsl		#4,d4
 		move.b	1(a5,d4.w),d0
 		andi	#$80,d0
-		sne	sv_SecondEnemy
+		sne		sv_SecondEnemy
 		bne.s	dr_checkITEM
-		bsr	dr_DrawEnemy
+		bsr		dr_DrawEnemy
 
 dr_checkITEM:	
 		move	#0,lc_collumnDrawInd(a6)
@@ -4020,7 +4020,7 @@ dr_scok3: moveq	#-32,d5
 dr_scok4: andi	#$c01f,d4
 		addi	#28,d4
 		bsr		ShowCollumns
-		move	(sp),d5
+		move	(sp),d5			; map position
 
 
 dr_checkDEAD:	cmpi	#2,sv_DETAILS
@@ -4040,32 +4040,35 @@ dr_checkDEAD:	cmpi	#2,sv_DETAILS
 		moveq	#-32,d5
 		or		#$c000,d4		;always down
 		bsr		ShowCollumns
-		move	(sp),d5
+		move	(sp),d5			; map position
 
 
-dr_checkOBJECT:	move.b	6(a0,d5.w),d4		;get object before COL
+dr_checkOBJECT:	
+		move.b	6(a0,d5.w),d4		;get object before COL
 		andi	#$80,d4
 		beq.s	dr_checkCOL
 
 		move	d7,-(sp)
-;		lea	sv_ObjectTab+[29*12],a5
 		move.l	lc_F2_ObjectTab(pc),a5
 		lea		[29*12](a5),a5
 		moveq	#29,d7
-dr_SeekUsed:	move	(a5),d0
+dr_SeekUsed:	
+		move	(a5),d0
 		beq.s	dr_moreSeek
 		andi	#$80,d0
 		beq.s	dr_moreSeek		;if behind column
-		cmp	10(a5),d5		;compare offset
+		cmp		10(a5),d5		;compare offset
 		bne.s	dr_moreSeek
-		bsr	dr_AddObject
+		bsr		dr_AddObject
 		move	2(sp),d5		;get offset back
-dr_moreSeek:	lea	-12(a5),a5
-		dbf	d7,dr_SeekUsed
+dr_moreSeek:	
+		lea		-12(a5),a5
+		dbf		d7,dr_SeekUsed
 		move	(sp)+,d7
 
 
-dr_checkCOL:	move	#32,sv_CollumnWid
+dr_checkCOL:	
+		move	#32,sv_CollumnWid
 		move.b	5(a0,d5.w),d4		;get collumn
 		andi	#31,d4
 		beq.s	dr_checkENEMY2
@@ -4080,7 +4083,8 @@ dr_checkCOL:	move	#32,sv_CollumnWid
 		cmpi	#5,d4
 		bpl.s	dr_checkENEMY2
 
-.dr_ccol2:	move	d4,-(sp)
+.dr_ccol2:	
+		move	d4,-(sp)
 		move	10(a4),d0		;x of collumn
 		addi	#512,d0
 		move	12(a4),d1		;y
@@ -4095,23 +4099,24 @@ dr_checkCOL:	move	#32,sv_CollumnWid
 		or		#$c000,d4		;if down col
 		moveq	#-32,d5
 		bra.s	dr_scok1
-dr_scok2:	or	#$8000,d4		;if up col
-dr_scok1:	bsr	ShowCollumns
+dr_scok2: or	#$8000,d4		;if up col
+dr_scok1: bsr	ShowCollumns
 		move	(sp),d5					;get offset back
 
-dr_checkEnemy2:	tst	sv_SecondEnemy
+dr_checkEnemy2:	
+		tst		sv_SecondEnemy
 		beq.s	dr_checkOBJECT2
 		move.b	7(a0,d5.w),d4		;get enemy
 		andi	#$ff,d4
-		lsl	#4,d4
-		bsr	dr_DrawEnemy
+		lsl		#4,d4
+		bsr		dr_DrawEnemy
 
-dr_checkOBJECT2:move.b	6(a0,d5.w),d4		;objects behind COLUMN
+dr_checkOBJECT2:
+		move.b	6(a0,d5.w),d4		;objects behind COLUMN
 		andi	#$80,d4
 		beq.s	dr_checkN
 
 		move	d7,-(sp)
-;		lea		sv_ObjectTab+[29*12],a5
 		move.l	lc_F2_ObjectTab(pc),a5
 		lea		[29*12](a5),a5
 		moveq	#29,d7
@@ -4124,7 +4129,8 @@ dr_SeekUsed2:
 		bne.s	dr_moreSeek2
 		bsr		dr_AddObject
 		move	2(sp),d5		;get offset back
-dr_moreSeek2:	lea	-12(a5),a5
+dr_moreSeek2:	
+		lea		-12(a5),a5
 		dbf		d7,dr_SeekUsed2
 		move	(sp)+,d7
 
@@ -4134,130 +4140,131 @@ dr_moreSeek2:	lea	-12(a5),a5
 		andi.b	#$7f,6(a0,d5.w)
 .sv_noActionUpdate1:
 
-dr_checkN:	move	-2(a3),d1
+dr_checkN:
+		move	-2(a3),d1
 		move	2(a4),d0		;check N
 		btst	d0,d1
 		beq.s	dr_checkE
+		moveq	#0,d4
 		move.b	(a0,d5.w),d4		;get wall nr - includes blood index on 2 MSB
 		beq.s	dr_checkE
 
 		move	d4,-(sp)
 		move	10(a4),d0		;x1
 		move	16(a4),d1		;y1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	d0,d2
 		move	d1,d3			;the same Y
 		move	14(a4),d0
 		move	16(a4),d1
-		bsr	sv_rotate
-		move	(sp)+,d4
+		bsr		sv_rotate
+		move	(sp)+,d4			; wall index
 		move	(sp),d5				; map position
 		move.b	4(a0,d5.w),d5		;get tables
-		andi	#$c0,d5
-		beq.s	dr_cN0
-		rol.b	#2,d5
-		bsr	dr_AddTables		; add plaque to wall
-dr_cN0:		move	d4,d5
-		andi	#$c0,d5			; filter out blood index to d5
-		beq.s	dr_cN
-		bsr.w	dr_AddBlood		;add blood to wall
-dr_cN:		andi	#63,d4			;eliminate blood index
-		bsr	ShowWalls		;draw walls
-		move	(sp),d5
+ 		andi	#$c0,d5
+		lsl		#2,d5
+		or		d4,d5
+		move	d5,d4
+		andi	#$03c0,d5		; is there blood or plaquest to add?
+		beq.s	.cnt1
+		bsr		dr_AddTablesAndBlood
+.cnt1:	bsr		ShowWalls		;draw walls
+		move	(sp),d5			; map position
 
 
-dr_checkE:	move	-2(a3),d1
+dr_checkE:	
+		move	-2(a3),d1
 		move	4(a4),d0		;check E
 		btst	d0,d1
 		beq.s	dr_checkS
+		moveq	#0,d4
 		move.b	1(a0,d5.w),d4
 		beq.s	dr_checkS
 
 		move	d4,-(sp)
 		move	14(a4),d0
 		move	16(a4),d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	d0,d2
 		move	d1,d3
 		move	14(a4),d0
 		move	12(a4),d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	(sp)+,d4
 		move	(sp),d5
 		move.b	4(a0,d5.w),d5		;get tables
-		andi	#$30,d5
-		beq.s	dr_cE0
-		lsr.b	#4,d5
-		bsr	dr_AddTables
-dr_cE0:		move	d4,d5
-		andi	#$c0,d5
-		beq.s	dr_cE
-		bsr.w	dr_AddBlood		;add blood to wall
-dr_cE:		andi	#63,d4
-		bsr	ShowWalls
+ 		andi	#$30,d5
+		lsl		#4,d5
+		or		d4,d5
+		move	d5,d4
+		andi	#$03c0,d5		; is there blood or plaquest to add?
+		beq.s	.cnt1
+		bsr		dr_AddTablesAndBlood
+.cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5
 
 
-dr_checkS:	move	-2(a3),d1
+dr_checkS:	
+		move	-2(a3),d1
 		move	6(a4),d0		;check S
 		btst	d0,d1
 		beq.s	dr_checkW
+		moveq	#0,d4
 		move.b	2(a0,d5.w),d4
 		beq.s	dr_checkW
 
 		move	d4,-(sp)
 		move	14(a4),d0
 		move	12(a4),d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	d0,d2
 		move	d1,d3
 		move	10(a4),d0
 		move	12(a4),d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	(sp)+,d4
 		move	(sp),d5
 		move.b	4(a0,d5.w),d5		;get tables
-		andi	#$0c,d5
-		beq.s	dr_cS0
-		lsr.b	#2,d5
-		bsr	dr_AddTables
-dr_cS0:		move	d4,d5
-		andi	#$c0,d5
-		beq.s	dr_cS
-		bsr.w	dr_AddBlood		;add blood to wall
-dr_cS:		andi	#63,d4
-		bsr	ShowWalls
+ 		andi	#$0c,d5
+		lsl		#6,d5
+		or		d4,d5
+		move	d5,d4
+		andi	#$03c0,d5		; is there blood or plaquest to add?
+		beq.s	.cnt1
+		bsr		dr_AddTablesAndBlood
+.cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5
 
 
-dr_checkW:	move	-2(a3),d1
+dr_checkW:	
+		move	-2(a3),d1
 		move	8(a4),d0		;check W
 		btst	d0,d1
 		beq.s	dr_checkEnd
+		moveq	#0,d4
 		move.b	3(a0,d5.w),d4
 		beq.s	dr_checkEnd
 
 		move	d4,-(sp)
 		move	10(a4),d0
 		move	12(a4),d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	d0,d2
 		move	d1,d3
 		move	10(a4),d0
 		move	16(a4),d1
-		bsr	sv_rotate
+		bsr		sv_rotate
 		move	(sp)+,d4
 		move	(sp),d5
 		move.b	4(a0,d5.w),d5		;get tables
-		andi	#$03,d5
-		beq.s	dr_cW0
-		bsr	dr_AddTables
-dr_cW0:		move	d4,d5
-		andi	#$c0,d5
-		beq.s	dr_cW
-		bsr.w	dr_AddBlood		;add blood to wall
-dr_cW:		andi	#63,d4
-		bsr		ShowWalls
+ 		andi	#$03,d5
+		lsl		#8,d5
+		or		d4,d5
+		move	d5,d4
+		andi	#$03c0,d5		; is there blood or plaquest to add?
+		beq.s	.cnt1
+		bsr		dr_AddTablesAndBlood
+.cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5
 
 
@@ -4357,8 +4364,9 @@ dr_AddObject:
 		addi	#53,d4
 		moveq	#-8,d5
 		ori		#$2000,d4
+
 dr_SetObject:	
-		bsr	ShowCollumns
+		bsr		ShowCollumns
 dr_SOEnd:	
 		rts
 
@@ -4407,112 +4415,175 @@ de_enemy2:
 		rts
 
 sv_EDirSub:	dc.w	128,64+32,64,64,64,64+32
+
 ;-------------------------------------------------------------------
-; determine if blood needs to be added
-; in: d4 - wall index, d5 - blood index (from map)
-; out: d4 - wall index (this is the blood buffer if blood is to be added)
-dr_AddBlood:
-		cmpi	#2,SV_DETAILS
-		bne.s	.dr_AB1
-		cmpi	#$c0,d5
-		beq.s	.dr_AB1					; also always ad blood3
-		rts
-.dr_AB1:	
-		movem.l	a1-a3,-(sp)
-		rol.b	#2,d5
-		subq	#1,d5
-		add		d5,d5
-		add		d5,d5
-		lea		lc_BloodOffsets(pc),a1
-		move.l	(a1,d5.w),d5			; offset of blood on texture map
-		move.l	sv_Consttab+12,a1		; this is the start of the Walls2 textures
-		lea		(a1,d5.l),a1			; blood start
-		move.l	lc_WallOffsets+[27*4](pc),d5	; why 27th wall? Unless narrow collumns count as 1
-		move.l	sv_Consttab+12,a2
-		lea		(a2,d5.l),a2			;buffor start - this is the last "square" in the textures
-		andi	#$3f,d4
+; Add plaques on walls
+; in: d4 - plaque nr (1..3) << 8 + wall index (with blood and dir)
+; a6 - lc_variables(pc)
+dr_AddTablesAndBlood:
+		movem.l	d0/a1-a5,-(sp)
+
 		move	d4,d5
 		andi	#1,d5
-		move	d5,-(sp)				;save LSB - wall direction from map
-		lsr		d4
-		subq	#1,d4
-		add		d4,d4
-		add		d4,d4
-		lea		lc_WallOffsets(pc),a3
-		move.l	(a3,d4.w),d4
-		move.l	sv_Consttab+12,a3
-		lea		(a3,d4.l),a3		;wall start
+		move	d5,-(sp)					; save wall dir
 
-		movem.l	a1-a3,ab_BloodAdr	;save regs		a1-blood, a2-dst buffer, a3-orig texture.
-
-		moveq	#56,d4
-		or		(sp)+,d4
-		movem.l	(sp)+,a1-a3
-		rts
-
-;-------------------------------------------------------------------
-; Add gadgets on walls
-dr_AddTables:	movem.l	a1-a4,-(sp)
-		addq	#2,d5
-		add	d5,d5
-		add	d5,d5
-		lea		lc_BloodOffsets(pc),a1
-		move.l	(a1,d5.w),d5
-		move.l	sv_Consttab+12,a1
-		lea	(a1,d5.l),a1		;blood start
-		move.l	lc_WallOffsets+[27*4](pc),d5
-		move.l	sv_Consttab+12,a2
-		lea	(a2,d5.l),a2		;buffor start
 		move	d4,d5
-		andi	#$c1,d5
-		move	d5,-(sp)		;save LSB - wall dir
-		andi	#$3f,d4
-		lsr	d4
-		subq	#1,d4
-		add	d4,d4
-		add	d4,d4
-		lea		lc_WallOffsets(pc),a3
-		move.l	(a3,d4.w),d4
-		move.l	sv_Consttab+12,a3
-		lea	(a3,d4.l),a3		;wall start
-		lea	1056(a2),a4		;table start on wall (moreless 1/4)
+		andi	#$03fe,d5					; filter our direction bit
+	; search cache using d5 as key
+		lea		lc_textureCacheTags(a6),a1
+		move	#TEXTURE_CACHE_SIZE-1,d0
+		moveq	#0,d0
+.sca:	cmp		(a1,d0.w),d5
+		beq		dr_ExitFound				; if matching cache entry found then use it and stop processing 
+		addq	#2,d0
+		cmpi	#TEXTURE_CACHE_SIZE*2,d0
+		bne.s	.sca
 
+		move	lc_textureCacheNext(a6),d0
+		move	d5,(a1,d0.w)				; save tag
+		move	d0,d5
+		add		#2,d5
+		andi	#(TEXTURE_CACHE_SIZE*2)-1,d5
+		move	d5,lc_textureCacheNext(a6)	; move cache pointer to next slot
+
+		move	d0,-(sp)					; d0 is the used cache slot index (*2)
+
+		lsl		#1,d0
+		lea		lc_WallCacheOffsets(pc),a1		; cached textures offsets
+		move.l	lc_F2_TextureCache(pc),a5
+		move.l	(a1,d0.w),d5
+		lea		(a5,d5.l),a2				;buffor start 
+
+		move.l	lc_F1_Walls(pc),a5
+		move	d4,d5
+		lsr		#8,d5						; leave plaque only
+		beq		dr_NoPlaque
+
+; ------- add plaque ---
+		addq	#2,d5						; plaques start from index 3
+		lsl		#2,d5
+		lea		lc_BloodOffsets(pc),a1		; plaque offsets are also in blood offsets
+		move.l	(a1,d5.w),d5
+		lea		(a5,d5.l),a1				;plaque start
+;		move.l	lc_WallOffsets+[27*4](pc),d5
+;		lea		(a5,d5.l),a2				;buffor start
+		move	d4,d5						; wall index (with blood)
+		andi	#$3f,d5
+		lsr		d5
+		subq	#1,d5
+		lsl		#2,d5
+		lea		lc_WallOffsets(pc),a3
+		move.l	(a3,d5.w),d5
+		lea		(a5,d5.l),a3				;wall start
+		lea		1056(a2),a4					;table start on wall (moreless 1/4)
+
+		move.l	a2,-(sp)				; save buffer address for later (for blood)
 
 		move	#64,d5
-AT_loop1:	rept	4				; move down 16 rows in the texture
+.AT_loop1: rept	4				; copy whole background
 		move.l	(a3)+,(a2)+
 		move.l	(a3)+,(a2)+
 		move.l	(a3)+,(a2)+
 		move.l	(a3)+,(a2)+
 		endr
-		dbf	d5,AT_loop1
+		dbf		d5,.AT_loop1
 
 		move	#31,d5
-		moveq	#0,d4
-AT_loop2:	rept	4
-		move.b	(a1)+,d4
+		moveq	#0,d0
+.AT_loop2: rept	4
+		move.b	(a1)+,d0
 		beq.s	*+4
-		move.b	d4,(a4)
-		move.b	(a1)+,d4
+		move.b	d0,(a4)
+		move.b	(a1)+,d0
 		beq.s	*+6
-		move.b	d4,1(a4)
-		move.b	(a1)+,d4
+		move.b	d0,1(a4)
+		move.b	(a1)+,d0
 		beq.s	*+6
-		move.b	d4,2(a4)
-		move.b	(a1)+,d4
+		move.b	d0,2(a4)
+		move.b	(a1)+,d0
 		beq.s	*+6
-		move.b	d4,3(a4)
-		lea	4(a4),a4
+		move.b	d0,3(a4)
+		lea		4(a4),a4
 		endr
-		eori	#$8000,d4
-		bmi	AT_loop2
-		lea	33(a1),a1
-		lea	33(a4),a4
-		dbf	d5,AT_loop2
+		eori	#$8000,d0
+		bmi		.AT_loop2
+		lea		33(a1),a1
+		lea		33(a4),a4
+		dbf		d5,.AT_loop2
 
-		moveq	#56,d4
-		or	(sp)+,d4
-		movem.l	(sp)+,a1-a4
+		; add blood as well?
+		move.l	(sp)+,a2				; buffer address
+		move	d4,d5
+		andi	#$c0,d5					; filter out only blood
+		beq		dr_Exit
+
+		; if plaque has been added then start with its buffer when adding blood
+;		move.l	lc_WallOffsets+[27*4](pc),d5
+;		lea		(a5,d5.l),a2				; buffor start 
+		lea		(a2),a3						; wall start = buffer as plaque has already been drawn here
+		bra.s	dr_Blood
+
+; ------- add blood ---
+dr_NoPlaque:
+		; move.l	lc_WallOffsets+[27*4](pc),d5	; buffer start
+		; lea		(a5,d5.l),a2			;buffor start - this is the last "square" in the textures
+
+		move	d4,d5						; wall index (with blood)
+		andi	#$3f,d5
+		lsr		d5
+		subq	#1,d5
+		lsl		#2,d5
+		lea		lc_WallOffsets(pc),a3
+		move.l	(a3,d5.w),d5
+		lea		(a5,d5.l),a3			;wall start
+
+dr_Blood:
+		move	d4,d5
+		andi	#$c0,d5					; filter out only blood
+		lsr		#6,d5
+		subq	#1,d5
+		lsl		#2,d5
+		lea		lc_BloodOffsets(pc),a1
+		move.l	(a1,d5.w),d5			; offset of blood on texture map
+		lea		(a5,d5.l),a1			; blood start
+
+		move	#259,d0					; 65 * 64 in total (including zero/transparency markers)
+.AB_loop1:	
+		; total = 20 + 4*30 per 4 pixels = 140
+		; alternative:
+		; move.l (a4)+,d3		; src wall	12
+		; and.l	 (a5)+,d3		; mask		6+8 = 14
+		; or.l   (a1)+,d3		; blood		6+8 = 14
+		; move.l d3,(a2)+		; dst		12
+		; total = 52
+		; NOTE: set new a3 (texture addr) here as well
+		rept	4
+		move.l	(a3)+,(a2)+				; copy 4 orig pixels (20)
+		move.b	(a1)+,d5				; load blood pixel (8)
+		beq.s	*+6						; clear - skip pixel (10)
+		move.b	d5,-4(a2)				; 12
+		move.b	(a1)+,d5
+		beq.s	*+6	
+		move.b	d5,-3(a2)
+		move.b	(a1)+,d5
+		beq.s	*+6
+		move.b	d5,-2(a2)
+		move.b	(a1)+,d5
+		beq.s	*+6
+		move.b	d5,-1(a2)
+		endr
+		dbf		d0,.AB_loop1
+
+dr_Exit:
+		; moveq	#56,d4				; new wall index = buffer index
+		move	(sp)+,d4			; new wall index = cache buffer index
+		bra.s	dr_Exit2
+dr_ExitFound:
+		move	d0,d4				; use cache slot index (*2) as new texture index
+dr_Exit2:
+		or		(sp)+,d4			; add back direction to wall index
+		ori		#$8000,d4			; mark wall as using cache
+		movem.l	(sp)+,d0/a1-a5
 		rts
 
 
@@ -5002,7 +5073,7 @@ p_SC1:		move	(a2)+,d1
 ;Draw a single wall.
 ;Those collumns which are transparent are put in a "zero table" to add to the screen later, on top of the background
 ; in: d0/d1 - x1/z1, d2/d3 - x2/z2, 
-; d4 - wall index (without blood - it's filtered out)
+; d4 - wall index (with blood and cache indicator)
 ; a6 - lc_variables(pc)
 ShowWalls:	
 		clr		lc_wallInverted(a6)
@@ -5068,11 +5139,10 @@ sh_WZwX: move	d6,d5
 		move	a3,d4
 
 ;----------------------------
-; a3 - wall index
-sh_DrawOn:	
-		subq	#2,d4			; wall index (2,4,6... cannot be 0 at this point)
+; d4 - wall index (incl. blood and cache indicator)
+sh_DrawOn:
 	; lea		sh_Walldir1+2(pc),a3
-		lsr		d4				; check wall invert bit
+		lsr.b	d4				; check wall invert bit
 		bcc.s	sh_WD0
 
 	; inverted wall
@@ -5090,17 +5160,26 @@ sh_WD0:
 		move.w	#0,(a3)
 		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
 sh_WD1:
-	; TODO: if index > x then switch to wall cache
-		lea		lc_WallOffsets(pc),a3
-		lsl		#2,d4				; wall index *4
-		move.l	(a3,d4.w),d4		; offset to wall texture
-		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
-		lea		32(a3,d4.l),a3		;required wall start - middle pixel
 
-		move	lc_size(a6),d4			; scale X to screen size (2..6)
+		tst		d4				; if MSbit is set then texture is in cache
+		bpl.s	.notCache
+		lea		lc_WallCacheOffsets(pc),a1		; cached textures offsets
+		move.l	lc_F2_TextureCache(pc),a3
+		bra.s	.cont
+.notCache:
+		subq	#1,d4				; wall index (1,2,3... cannot be 0 at this point)
+		lea		lc_WallOffsets(pc),a1
+		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
+.cont:
+		andi	#$1f,d4				; remove blood index and cache indicator 
+		lsl		#2,d4				; wall index *4
+		move.l	(a1,d4.w),d4		; offset to wall texture
+		lea		32(a3,d4.l),a3		; required wall start - middle pixel
+
+		move	lc_size(a6),d4		; scale X to screen size (2..6)
 		cmpi	#6,d4
 		beq.s	.noScX
-		muls	d4,d0		; scale X to screen size (2..6)
+		muls	d4,d0				; scale X to screen size (2..6)
 		divs	#6,d0
 		muls	d4,d2
 		divs	#6,d2
@@ -5141,38 +5220,6 @@ sh_W0:
 		bpl		sh_exit2		;if > right border
 		add		d7,d2			;center x
 
-		tst.l	ab_BloodAdr				; if blood needs to be added then this contains addressses to be used
-		beq		sh_NoBlood
-		movem.l	ab_BloodAdr,a1/a2/a4	;add blood		- a1-blood, a2-dst buffer, a4-orig texture. TODO rewrite this as it's slow??
-		move	#259,d1					; 65 * 64 in total (including zero/transparency markers)
-AB_loop1:	
-		; total = 20 + 4*30 per 4 pixels = 140
-		; alternative:
-		; move.l (a4)+,d3		; src wall	12
-		; and.l	 (a5)+,d3		; mask		6+8 = 14
-		; or.l   (a1)+,d3		; blood		6+8 = 14
-		; move.l d3,(a2)+		; dst		12
-		; total = 52
-		; NOTE: set new a3 (texture addr) here as well
-		rept	4
-		move.l	(a4)+,(a2)+				; copy 4 orig pixels (20)
-		move.b	(a1)+,d3				; load blood pixel (8)
-		beq.s	*+6						; clear - skip pixel (10)
-		move.b	d3,-4(a2)				; 12
-		move.b	(a1)+,d3
-		beq.s	*+6	
-		move.b	d3,-3(a2)
-		move.b	(a1)+,d3
-		beq.s	*+6
-		move.b	d3,-2(a2)
-		move.b	(a1)+,d3
-		beq.s	*+6
-		move.b	d3,-1(a2)
-		endr
-		dbf	d1,AB_loop1
-
-
-sh_NoBlood:	
 		cmp		d5,d4			;d4 - Yw
 		bpl.s	sh_W01			;if ok
 		exg		d0,d2			;exchange X 
@@ -5377,7 +5424,6 @@ sh_exit2:
 		lea		4(sp),sp
 		movem.l	(sp)+,ALL
 sh_exit3:
-		move.l	#0,ab_BloodAdr
 		rts
 
 sv_widthTable2:	ds.b	192
@@ -5422,8 +5468,6 @@ ShowCollumns:
 		andi	#$1fff,d4
 		subq	#1,d4
 		lsl		#2,d4
-;		add	d4,d4
-;		add	d4,d4
 		lea		lc_CollumnOffsets(pc),a3
 sc_EnemyCont:	
 		move	d2,-(sp)		;up/down/norm coll. flag
@@ -5506,7 +5550,7 @@ sc_ColLoop:
 		addq	#1,d0
 		bmi.s	sc_Noline
 		move.b	(a1,d0.w),d7
-		lea	(a0,d7.w),a4		;screen
+		lea		(a0,d7.w),a4		;screen
 		tst.b	64*192(a4)		;is column drawn?
 		beq.s	sc_NoLine
 
@@ -5834,6 +5878,12 @@ play_sound_pass:			bra		play_sound
 CheckCodes_pass:			bra		CheckCodes
 setTexelArrangement_pass:	bra		setTexelArrangement
 
+
+;-------------------------------------------------------------------
+; LOCAL CONSTANTS
+;-------------------------------------------------------------------
+TEXTURE_CACHE_SIZE:			equ		16
+
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
 ;-------------------------------------------------------------------
@@ -5918,6 +5968,8 @@ lc_zeroPtr:				dc.l	0				; zero tab running pointer
 lc_scaledScreenHeigth:	dc.l	0				; scaled screen heigth * 256 (e.g. 128 * 256)
 lc_wallInverted:		dc.w	0				; temporary indicator of an inverted wall (used in ShowWalls)
 lc_moveTab:				dc.w	0,0,0,0,0,0,0	;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
+lc_textureCacheNext:	dc.w	0				; index of the next slot to use in the texture cache
+lc_textureCacheTags:	blk.w	TEXTURE_CACHE_SIZE,0	; tags for texture cach entries (combination of wall , blood and plaque #)
 
 ENDOFF
 
@@ -5968,6 +6020,7 @@ lc_F2_ZeroTab:			dc.l	F2_ZeroTab,0
 lc_F2_ZeroTabEnd:		dc.l	F2_ZeroTabEnd,0
 lc_F2_Sinus:			dc.l	F2_Sinus,0
 lc_F2_RotTable:			dc.l	F2_RotTable,0
+lc_F2_TextureCache:		dc.l	F2_TextureCache,0
 
 lc_F2_TopMem:			dc.l	F2_TopMem,0
 						dc.l	0
@@ -6075,7 +6128,7 @@ lc_ItemOffsets:
 	dc.l	70*65*64+32,70*65*64+[65*32]+32,71*65*64,71*65*64+32
 
 lc_BloodOffsets:
-	dc.l	35*65*64,36*65*64,37*65*64		;blood & tables
+	dc.l	35*65*64,36*65*64,37*65*64		;blood & plaques
 	dc.l	38*65*64,38*65*64+32,38*65*64+[65*32],38*65*64+[65*32]+32
 
 lc_AnimOffsets:
@@ -6084,6 +6137,12 @@ lc_AnimOffsets:
 	dc.l	0,29*65*64,29*65*64+[65*32],30*65*64,30*65*64+[65*32]
 	dc.l	0,32*65*64,32*65*64+32,32*65*64+[65*32],32*65*64+[65*32]+32
 	dc.l	0,34*65*64,34*65*64+32,34*65*64+[65*32],34*65*64+[65*32]+32
+
+lc_WallCacheOffsets:		;start offsets of textures in wall cache
+	dc.l	0,65*64,1*65*64,2*65*64,3*65*64
+	dc.l	4*65*64,5*65*64,6*65*64,7*65*64
+	dc.l	8*65*64,9*65*64,10*65*64,11*65*64
+	dc.l	12*65*64,13*65*64,14*65*64,15*65*64
 
 lc_Enemy1Offsets:
 	dc.l	40*65*64,40*65*64+[65*32],41*65*64,41*65*64+[65*32]
@@ -11518,7 +11577,7 @@ sv_NtscPal:	dc.w	32,0
 sv_MovSav:	dc.w	0,0
 sv_SecondEnemy:	dc.w	0
 sv_AddMove:	dc.w	0,0			;x,y external add
-ab_BloodAdr:	dc.l	0,0,0
+;ab_BloodAdr:	dc.l	0,0,0
 eh_FirePos:	dc.l	0,0
 sv_MapOn:	dc.w	0			;0-off, 1-on
 sv_OldCop:	dc.l	0,0,0
@@ -11662,6 +11721,7 @@ F2_ZeroTab:			rs.b	14*12*192					; table for zero (transparent) collumns. 192*12
 F2_ZeroTabEnd:		rs.b	14*2*192					; end of table for zero collumns + buffer
 F2_Sinus:			rs.b	$280						; sinus (256 words) + cosinus (offset 64 words) = 640
 F2_RotTable:		rs.b	$4200						; rotation table ($41f2)
+F2_TextureCache:	rs.b	TEXTURE_CACHE_SIZE*65*64	; cache for textures with blood/plaques ($10400 for 16)
 
 F2_TopMem:			rs.w	0
 
