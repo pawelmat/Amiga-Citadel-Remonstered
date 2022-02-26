@@ -24,8 +24,6 @@ MC68000:	equ		$7fff2			; 0 - 68000, 1 - 68020+
 MEMORY:		equ		$7fff8			; 1st 0.5 free memory
 DEBUGDATA:	equ		$80000			; for debug only. Deployed versions should not use it
 
-select_cache:	equ	0				;TODO: remove. 1-user selects cache
-
 ;BASEF1:	equ		$07e00000		; Fast on a real A4000
 BASEF1:		equ		$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $200000)
 ;BASEF1:	equ		$00cf0000		; Fast on a real A500 (starts at $c00000)
@@ -176,7 +174,16 @@ ENDM
 		ORG		BASEF1+CODESTART
 		LOAD	*
 s:
+; 	move.b	(a1)+,d7
+; 	move.b	(a1),40(a2)
+; 	move.b	(a1),d7
+; 	beq.s	.sss
+; 	move.b	d7,40(a2)
+; .sss:
+; 	nop
+
 		IFEQ	IS_EXE
+;		move	#0,DEBUGDATA
 		bra.s	.s1
 		dc.b	0,"DEVELOPMENT VERSION - DOES NOT WORK WITH WHDLOAD",0
 		even
@@ -4163,11 +4170,12 @@ dr_checkN:
 		move.b	4(a0,d5.w),d5		;get tables
  		andi	#$c0,d5
 		lsl		#2,d5
-		or		d4,d5
-		move	d5,d4
-		andi	#$03c0,d5		; is there blood or plaquest to add?
-		beq.s	.cnt1
-		bsr		dr_AddTablesAndBlood
+		or		d5,d4
+		; or		d4,d5
+		; move	d5,d4
+		; andi	#$03c0,d5		; is there blood or plaquest to add?
+		; beq.s	.cnt1
+		; bsr		dr_AddTablesAndBlood
 .cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5			; map position
 
@@ -4195,11 +4203,12 @@ dr_checkE:
 		move.b	4(a0,d5.w),d5		;get tables
  		andi	#$30,d5
 		lsl		#4,d5
-		or		d4,d5
-		move	d5,d4
-		andi	#$03c0,d5		; is there blood or plaquest to add?
-		beq.s	.cnt1
-		bsr		dr_AddTablesAndBlood
+		or		d5,d4
+		; or		d4,d5
+		; move	d5,d4
+		; andi	#$03c0,d5		; is there blood or plaquest to add?
+		; beq.s	.cnt1
+		; bsr		dr_AddTablesAndBlood
 .cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5
 
@@ -4227,11 +4236,12 @@ dr_checkS:
 		move.b	4(a0,d5.w),d5		;get tables
  		andi	#$0c,d5
 		lsl		#6,d5
-		or		d4,d5
-		move	d5,d4
-		andi	#$03c0,d5		; is there blood or plaquest to add?
-		beq.s	.cnt1
-		bsr		dr_AddTablesAndBlood
+		or		d5,d4
+		; or		d4,d5
+		; move	d5,d4
+		; andi	#$03c0,d5		; is there blood or plaquest to add?
+		; beq.s	.cnt1
+		; bsr		dr_AddTablesAndBlood
 .cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5
 
@@ -4259,11 +4269,12 @@ dr_checkW:
 		move.b	4(a0,d5.w),d5		;get tables
  		andi	#$03,d5
 		lsl		#8,d5
-		or		d4,d5
-		move	d5,d4
-		andi	#$03c0,d5		; is there blood or plaquest to add?
-		beq.s	.cnt1
-		bsr		dr_AddTablesAndBlood
+		or		d5,d4
+		; or		d4,d5
+		; move	d5,d4
+		; andi	#$03c0,d5		; is there blood or plaquest to add?
+		; beq.s	.cnt1
+		; bsr		dr_AddTablesAndBlood
 .cnt1:	bsr		ShowWalls		;draw walls
 		move	(sp),d5
 
@@ -4421,7 +4432,7 @@ sv_EDirSub:	dc.w	128,64+32,64,64,64,64+32
 ; in: d4 - plaque nr (1..3) << 8 + wall index (with blood and dir)
 ; a6 - lc_variables(pc)
 dr_AddTablesAndBlood:
-		movem.l	d0/a1-a5,-(sp)
+		movem.l	d0/d5/a1-a5,-(sp)
 
 		move	d4,d5
 		andi	#1,d5
@@ -4584,7 +4595,7 @@ dr_ExitFound:
 dr_Exit2:
 		or		(sp)+,d4			; add back direction to wall index
 		ori		#$8000,d4			; mark wall as using cache
-		movem.l	(sp)+,d0/a1-a5
+		movem.l	(sp)+,d0/d5/a1-a5
 		rts
 
 
@@ -5080,7 +5091,7 @@ ShowWalls:
 		clr		lc_wallInverted(a6)
 		addi	#2^SHLeft,d1		;center ROT point (z+256)
 		addi	#2^SHLeft,d3
-		cmp		d3,d1				;d1 - Zw
+		cmp		d3,d1				;d1 - Zw	(make sure d1>d3)
 		bpl.s	sh_W04				;if ok
 		exg		d0,d2
 		exg		d1,d3
@@ -5095,30 +5106,30 @@ sh_W04:	cmpi	#Min_Distance,d1	;chk borders
 		movem.l	ALL,-(sp)
 
 		move.l	#700,-(sp)		;plane width
-		cmpi	#Min_Distance,d3
-		bpl.s	sh_DrawOn		;if in range
-
 		move	d4,a3			;save d4 (wall index)
-		move	#Min_Distance,d7	;Cut wall to border
+		cmpi	#Min_Distance,d3
+		bpl.s	sh_DrawOn		;if closer Z (d3) in not too close then keep drawing
+
+		move	#Min_Distance,d7	;Cut wall to Z border - limit to min distance in depth
 		sub		d3,d7			;z'
 		move	d1,d6
 		sub		d3,d6			;dZ
 		move	d0,d5
 		sub		d2,d5			;dX
-		move	d5,d4			;dX
+		move	d5,d4
 		muls	d7,d5
 		divs	d6,d5			;x'=(dX*z')/dZ
-
 		add		d5,d2			;new x2
-		move	#Min_Distance,d3	;new y2
+		move	#Min_Distance,d3	;new z2 (clipped to min distance)
 
-		tst		d4
+		tst		d4				;dX
 		bpl.s	sh_WXorZ
 		neg		d4
-sh_WXorZ: cmp	d6,d4
+sh_WXorZ: 						; now the the wall has been clipped to closer Z, recalc texture start for the clip
+		cmp		d6,d4
 		bmi.s	sh_WZwX			;if dZ>dX - for accuracy
 
-		tst		d5			;for calculation accuracy
+		tst		d5				;for calculation accuracy
 		bpl.s	sh_WXwZ			;here are two algorithms
 		neg		d5
 sh_WXwZ: move	d4,d6
@@ -5128,48 +5139,67 @@ sh_WXwZ: move	d4,d6
 		addq	#1,d6			;cant be 0
 		ext.l	d6
 		move.l	d6,(sp)			;new width
-		move	a3,d4
 		bra.s	sh_DrawOn
 sh_WZwX: move	d6,d5
-		sub	d7,d5
+		sub		d7,d5
 		mulu	#700,d5
 		divu	d6,d5			;w=700(dZ-z')/dZ
 		addq	#1,d5			;cant be 0
 		ext.l	d5
 		move.l	d5,(sp)			;new width
-		move	a3,d4
 
 ;----------------------------
-; d4 - wall index (incl. blood and cache indicator)
 sh_DrawOn:
-	; lea		sh_Walldir1+2(pc),a3
-		lsr.b	d4				; check wall invert bit
-		bcc.s	sh_WD0
+; 		move	a3,d4			; get back wall index
+; 		move	d4,d7
+; 		andi	#$03c0,d7		; is there blood or plaquest to add?
+; 		beq.s	.noBloodTables
+; 		bsr		dr_AddTablesAndBlood
+; .noBloodTables:
+; 		lsr.b	d4				; check wall invert bit
+; 		bcc.s	sh_WD0
 
-		lea		sh_EorWallDir1(pc),a3
-		move.w	#63,(a3)
-		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
-		bra.s	sh_WD1
-sh_WD0:
-		lea		sh_EorWallDir1(pc),a3
-		move.w	#0,(a3)
-		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
-sh_WD1:
+; 		lea		sh_EorWallDir1(pc),a3	; if wall inverted then prepare some EOR values to do it later while drawing
+; 		move.w	#63,(a3)
+; 		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
+; 		bra.s	sh_WD1
+; sh_WD0:
+; 		lea		sh_EorWallDir1(pc),a3
+; 		move.w	#0,(a3)
+; 		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
+; sh_WD1:
 
-		tst		d4				; if MSbit is set then texture is in cache
-		bpl.s	.notCache
-		lea		lc_WallCacheOffsets(pc),a1		; cached textures offsets
-		move.l	lc_F2_TextureCache(pc),a3
-		bra.s	.cont
-.notCache:
-		subq	#1,d4				; wall index (1,2,3... cannot be 0 at this point)
-		lea		lc_WallOffsets(pc),a1
-		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
-.cont:
-		andi	#$1f,d4				; remove blood index and cache indicator 
-		lsl		#2,d4				; wall index *4
-		move.l	(a1,d4.w),d4		; offset to wall texture
-		lea		32(a3,d4.l),a3		; required wall start - middle pixel
+; 		tst		d4				; if MSbit is set then texture is in cache
+; 		bpl.s	.notCache
+; 		lea		lc_WallCacheOffsets(pc),a1		; cached textures offsets
+; 		move.l	lc_F2_TextureCache(pc),a3
+; 		bra.s	.cont
+; .notCache:
+; 		subq	#1,d4				; wall index (1,2,3... cannot be 0 at this point)
+; 		lea		lc_WallOffsets(pc),a1
+; 		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
+; .cont:
+; 		andi	#$1f,d4				; remove blood index and cache indicator 
+; 		lsl		#2,d4				; wall index *4
+; 		move.l	(a1,d4.w),d4		; offset to wall texture
+; 		lea		32(a3,d4.l),a3		; required wall start - middle pixel
+
+		; --- add perspective calculation to x1 an x2
+		ext.l	d0
+		ext.l	d2
+		lsl.l	#SHLeft,d0		;x1*256
+		divs	d1,d0			;x1*256/(z+256)
+		lsl.l	#SHLeft,d2		;x2*256
+		divs	d3,d2			;x2*256/(z+256)
+
+ 		tst		lc_wallInverted(a6)		;not draw 'back' walls. This cannot be checked earlier because of x1/x2 accuracy needing scaling first
+		bne.s	sh_cXd2
+		cmp		d2,d0					; Should ba x1>x2 for not Z-inverted walls
+		bmi		sh_exit2
+		bra.s	sh_cXdOK
+sh_cXd2: cmp	d0,d2
+		bmi		sh_exit2
+sh_cXdOK:
 
 		move	lc_size(a6),d4		; scale X to screen size (2..6)
 		cmpi	#6,d4
@@ -5178,34 +5208,18 @@ sh_WD1:
 		divs	#6,d0
 		muls	d4,d2
 		divs	#6,d2
-.noScX:
+.noScX:	
 
-		ext.l	d0
-		ext.l	d2
-		lsl.l	#SHLeft,d0		;x1*256
-		divs	d1,d0			;x1*256/(z+256)
-		lsl.l	#SHLeft,d2		;x2*256
-		divs	d3,d2			;x2*256/(z+256)
-
- ; TODO: can this be checked earlier?
-		tst		lc_wallInverted(a6)		;not draw 'back' walls
-		bne.s	sh_cXd2
-		cmp		d2,d0
-		bmi		sh_exit2
-		bra.s	sh_cXdOK
-sh_cXd2: cmp	d0,d2
-		bmi		sh_exit2
-sh_cXdOK:
-
+		; factor in screen ratio - calculate initial scaled y1 and y2 based on perspective
 		move.l	lc_scaledScreenHeigth(a6),d4	; scaled screen heigth * 256 (e.g. 128 * 256)
 		move.l	d4,d5
-		divu	d1,d4			;y1	 = d4 = screen heigth * 256 / y1_orig
-		divu	d3,d5			;y2	 = d5 = screen heigth * 256 / y2
+		divu	d1,d4			;y1	 = d4 = screen heigth * 256 /(z+256)
+		divu	d3,d5			;y2	 = d5 = screen heigth * 256 /(z+256)
 
-		cmp		d2,d0			;d0 - Xw
+		cmp		d2,d0			;d0 - Xw (wieksze) (Should ba x1(d0)>x2(d2))
 		bpl.s	sh_W0			;if ok (if d0>d2)
-		exg		d0,d2
-		exg		d4,d5
+		exg		d0,d2			; swap x1 and x2
+		exg		d4,d5			; swap y1 and y2
 sh_W0:	
 		; d0: right corner X, d2 - left corner X
 		move	lc_screenPixX2(a6),d7		; window width in pixels/2 -> centre of row
@@ -5229,6 +5243,45 @@ sh_W01:
 		move.l	lc_F1_Planes(pc),a5	; sv_planes (700) tab (lc_F1_Planes)
 		move.l	(a5,d3.w),a5	; get address of the right entry in the planes tab
 
+
+		; ---- find the right texture and add blood/plaques
+		move.l	d4,d6
+		move.l	a3,d4			; get back wall index
+		move	d4,d7
+		andi	#$03c0,d7		; is there blood or plaquest to add?
+		beq.s	.noBloodTables
+		bsr		dr_AddTablesAndBlood
+.noBloodTables:
+		lsr.b	d4				; check wall invert bit
+		bcc.s	sh_WD0
+
+		lea		sh_EorWallDir1(pc),a3	; if wall inverted then prepare some EOR values to do it later while drawing
+		move.w	#63,(a3)
+		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
+		bra.s	sh_WD1
+sh_WD0:
+		lea		sh_EorWallDir1(pc),a3
+		move.w	#0,(a3)
+		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
+sh_WD1:
+		tst		d4				; if MSbit is set then texture is in cache
+		bpl.s	.notCache
+		lea		lc_WallCacheOffsets(pc),a1		; cached textures offsets
+		move.l	lc_F2_TextureCache(pc),a3
+		bra.s	.cont
+.notCache:
+		subq	#1,d4				; wall index (1,2,3... cannot be 0 at this point)
+		lea		lc_WallOffsets(pc),a1
+		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
+.cont:
+		andi	#$1f,d4				; remove blood index and cache indicator 
+		lsl		#2,d4				; wall index *4
+		move.l	(a1,d4.w),d4		; offset to wall texture
+		lea		32(a3,d4.l),a3		; required wall start - middle pixel
+
+		move.l	d6,d4
+
+		; --- Final calculations
 		exg		d0,d2
 		sub		d0,d2			;dX
 		move	d2,-(sp)		; (sp) - Dx
@@ -5245,22 +5298,25 @@ sh_Dok:	sub		d5,d4
 		moveq	#0,d6
 		moveq	#0,d1			;wybrana
 
-		cmpi	#maxWallHeigth*2,d2		; just in case limit to max the table can handle to protect from corner cases
+; 		cmpi	#maxWallHeigth*2,d2		; just in case limit to max the table can handle to protect from corner cases
+; 		bmi.s	.nc
+; 		move	#maxWallHeigth*2,d2
+; .nc:	subq	#1,d2
+		cmpi	#470,d2		; just in case limit to max the table can handle to protect from corner cases
 		bmi.s	.nc
-		move	#maxWallHeigth*2,d2
+		move	#470,d2		; theoretically can be maxWallHeigth*2=700 but max practical value is 466
 .nc:	subq	#1,d2
 
 		; caculate Y interpolation table
 		move	d5,d7
-		move.l	lc_F1_WallCode(pc),a0	; fast code tab
-		move.l	lc_F2_Htab(pc),a1	; slow Htab
+		move.l	lc_F1_WallCode(pc),a0		; fast code tab
+		move.l	lc_F2_Htab(pc),a1			; slow Htab
 		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
 		add		d4,d6
 sh_Lloop0: addx	d3,d1			;interpolate Y
 		move	d7,d5			;Y start
 		add		d1,d5			;add delta Y
-		add		d5,d5
-		add		d5,d5
+		lsl		#2,d5
 		move.l	(a1,d5.w),4*700(a4)	; Htab entry for cache procedure
 		add		d4,d6			;to gain mem access speed
 		move.l	(a0,d5.w),(a4)+		;Y draw code jump address
@@ -5299,7 +5355,7 @@ sh_BorOK1:
 		bra.s	sh_Cont
 
 sh_Left: 
-		neg	d6
+		neg		d6
 		move.l	(sp)+,d3			;norm. 700
 		addq	#2,d6
 
@@ -5371,7 +5427,7 @@ sh_MloopCPU:
 		bne.s	sh_SaveZero1
 
 		clr.b	64*192(a2)		; mark column as drawn
-		subi.l	#$10000,d2		; decrease remaining collumn counte
+		subi.l	#$10000,d2		; decrease remaining collumn counter
 		jsr		(a6)			; copy 1 collumn with required Y stretching
 
 sh_NoLine1:
@@ -5590,7 +5646,7 @@ sc_BorOK: subq	#1,d6
 
 ;a0 - screen center
 ;a1 - width table
-;a2 - cell addr
+;a2 - Htab cell addr
 ;a3 - collumn addr
 
 sc_ColLoop:	
@@ -5600,8 +5656,8 @@ sc_ColLoop:
 		addq	#1,d0
 		bmi.s	sc_Noline
 		move.b	(a1,d0.w),d7
-		lea		(a0,d7.w),a4		;screen
-		tst.b	64*192(a4)		;is column drawn?
+		lea		(a0,d7.w),a4	;screen
+		tst.b	64*192(a4)		;is screen column already filled?
 		beq.s	sc_NoLine
 
 		move	d4,d5
@@ -5609,7 +5665,7 @@ sc_ColLoop:
 		add		d4,d5			;*65
 		lea		(a3,d5.w),a5		;wall
 
-		tst		(sp)
+		tst		(sp)			;up/down/(0)norm coll. flag
 		bne.s	sc_NoChk
 		tst.b	32(a5)
 		bne.s	sc_NoLine		;don't draw translucient
@@ -6020,6 +6076,7 @@ lc_remainingCollumns:	dc.w	0				; how many of the total screen collumns are rema
 lc_zeroPtr:				dc.l	0				; zero tab running pointer
 lc_scaledScreenHeigth:	dc.l	0				; scaled screen heigth * 256 (e.g. 128 * 256)
 lc_wallInverted:		dc.w	0				; temporary indicator of an inverted wall (used in ShowWalls)
+lc_wallsOrigX:			dc.w	0,0				; temp storage for wall x1 and x2 while drawing
 lc_moveTab:				dc.w	0,0,0,0,0,0,0	;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
 lc_textureCacheNext:	dc.w	0				; index of the next slot to use in the texture cache
 lc_textureCacheTags:	blk.w	TEXTURE_CACHE_SIZE,0	; tags for texture cach entries (combination of wall , blood and plaque #)
@@ -10337,12 +10394,12 @@ mc_l322: moveq	#0,d0
 
 		subq	#1,d0
 		move.b	#1,(a6,d0.w)		;set bar in Htab cell
-		move	#$1569,(a2)+		;move.b
+		move	#$1569,(a2)+		;move.b x(a1),y(a2)
 		move	d0,(a2)+		; X1 X2
 		move	d4,(a2)+		;down - Y1 Y2
 		addq	#1,d0
 		neg		d0
-		move	#$1569,(a2)+
+		move	#$1569,(a2)+		;move.b x(a1),y(a2)
 		move	d0,(a2)+
 		move	d2,(a2)+		;up
 		add		d3,d4
@@ -10390,20 +10447,23 @@ mc_M4:	addq	#1,d6
 mc_M5:	move	d4,(a3)+
 		move	#-1,(a3)		;end of tab
 
-
+	; --- create tabs (Htab and code) for cell
 		move.l	a2,(a1)+		;code part addr
 		move.l	a6,(a5)+		;H cell addr
 		move	d2,d0
 		neg		d0
 		cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_1
-		move	#$43e9,(a2)+		;lea x(a1),a1
+		move	#$43e9,(a2)+		;lea x(a1),a1 - t the start of the line
 		move	d0,(a2)+
 .mc_1:	move	d6,d0
 		mulu	d3,d0
 		neg		d0			;SVGA first offset
 		subq	#1,d2
-mc_c2loop:	move	-(a3),d6
+
+		; ---- this loop goes from top to middle
+mc_c2loop:	
+		move	-(a3),d6
 		move	d6,-(sp)
 mc_c21:	subq	#1,d6
 		beq.s	mc_m6
@@ -10411,7 +10471,7 @@ mc_c21:	subq	#1,d6
 		bpl.s	.mc_2
 		move	#$1551,(a2)+		;move	(a1),y(a2)
 		move	d0,(a2)+
-.mc_2:	add	d3,d0
+.mc_2:	add		d3,d0
 		bra.s	mc_c21
 mc_M6:
 		move	(sp)+,d6
@@ -10423,7 +10483,9 @@ mc_M6:
 .mc_3:	add		d3,d0
 		dbf		d2,mc_c2loop
 
-mc_c2loop2:	move	(a3)+,d6
+		; ---- this loop goes middle to bottom following the reverse pattern
+mc_c2loop2:	
+		move	(a3)+,d6
 		bmi.s	mc_M8
 		move.b	d6,(a6)+		;set row repeats in cell
 		move	d6,-(sp)
@@ -10451,25 +10513,42 @@ mc_M8:	cmpi	#maxWallHeigth-90,d7
 .mc_6:	move.b	#-1,(a6)+		;end cell
 
 
-		move.l	-4(a1),a3		;compress code
+		move.l	-4(a1),a3		;compress code - at full zoom displayed pixels may not change so eliminate duplicates
 		move.l	a2,d6
 		move.l	a3,d5
 		sub.l	d5,d6
-		lsr	d6
+		lsr		d6
 		beq.s	mc_notequ
 		subq	#1,d6			;nr of words
 		move.l	-8(a1),a4
-mc_check1:	move	(a4)+,d0
+mc_check1:	
+		move	(a4)+,d0
 		cmp		(a3)+,d0
 		bne.s	mc_notequ		;if not the same
 		dbf		d6,mc_check1
 		move.l	-4(a1),a2
 		move.l	-8(a1),-4(a1)
-		move.l	-4(a5),a6		;remove last cell
+		move.l	-4(a5),a6		;remove last cell because concent same as one before, so set address back
 		move.l	-8(a5),-4(a5)
-mc_notequ:	addq	#1,d7
+mc_notequ:	
+		addq	#1,d7
 		cmpi	#maxWallHeigth,d7
-		bne.L	mc_loopMore
+		bne.L	mc_loopMore		; iterate through all wall sizes (cells)
+
+;	move.l	a2,DEBUGDATA
+
+		; pre-fill the interpolation table with a large value
+		move.l	lc_F1_WallCode(pc),a0		; fast code tab
+		move.l	[(maxWallHeigth-1)*4](a0),d0	; last entry
+		move.l	lc_F2_Htab(pc),a1			; slow Htab
+		move.l	[(maxWallHeigth-1)*4](a1),d1	; last entry
+		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
+ 		move	#maxWallHeigth*2-1,d2
+.prefill:
+		move.l	d1,4*700(a4)	; Htab entry for cache procedure
+		move.l	d0,(a4)+		;Y draw code jump address
+		dbf		d2,.prefill
+
 		movem.l	(sp)+,ALL
 		rts
 
@@ -10673,8 +10752,8 @@ mk_FTend: move	d0,(a3)				; on first word remember nr of rows to draw -1
 		or		d2,d0
 		move	d0,lc_floorGapBlit(a6)	; BLTSIZE for ceiling/floor gap
 
-		move.l	lc_F1_WallCode(pc),a4
-		move.l	lc_F1_Planes(pc),a5
+		; move.l	lc_F1_WallCode(pc),a4
+		; move.l	lc_F1_Planes(pc),a5
 
 		move.l	lc_F2_DeltaTab(pc),a2
 		lea		(a2),a3
