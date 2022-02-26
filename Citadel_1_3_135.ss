@@ -5554,8 +5554,8 @@ ShowEnemy:
 		bpl.w	sc_exit1
 
 		movem.l	ALL,-(sp)
-		moveq	#0,d2			;norm coll. flag
-		moveq	#0,d5
+		moveq	#0,d2			; norm coll. flag - full heigth
+		moveq	#0,d5			; offset from top
 		bra.s	sc_EnemyCont
 
 ;-------------------------------------------------------------------
@@ -5610,6 +5610,7 @@ sc_EnemyCont:
 		move.l	lc_F2_Htab(pc),a1	;slow Htab
 		lsl		#2,d3
 		move.l	(a1,d3.w),a2		;cell addr
+
 		move	lc_screenPixX2(a6),d7	; width in pixels/2
 		add		d7,d2
 		bmi.w	sc_exit2		;if < left border
@@ -10415,8 +10416,7 @@ mc_l322: moveq	#0,d0
 		cmpi	#32,d7
 		bne.s	mc_loop32
 
-;---------------Bigger than 32 lines...
-;		moveq	#32,d7			;linii
+;--------------- Wall heigth bigger than 32 lines...
 		move	sv_ViewHeigth,d1
 		lsr		d1
 mc_loopMore:
@@ -10452,7 +10452,7 @@ mc_M5:	move	d4,(a3)+
 		move.l	a6,(a5)+		;H cell addr
 		move	d2,d0
 		neg		d0
-		cmpi	#maxWallHeigth-90,d7
+		cmpi	#maxWallHeigth-90,d7	; beyond 350-90 = 260 wall heigth just replicate data
 		bpl.s	.mc_1
 		move	#$43e9,(a2)+		;lea x(a1),a1 - t the start of the line
 		move	d0,(a2)+
@@ -10463,49 +10463,21 @@ mc_M5:	move	d4,(a3)+
 
 		; ---- this loop goes from top to middle
 mc_c2loop:	
-		move	-(a3),d6
-		move	d6,-(sp)
-mc_c21:	subq	#1,d6
-		beq.s	mc_m6
-		cmpi	#maxWallHeigth-90,d7
-		bpl.s	.mc_2
-		move	#$1551,(a2)+		;move	(a1),y(a2)
-		move	d0,(a2)+
-.mc_2:	add		d3,d0
-		bra.s	mc_c21
-mc_M6:
-		move	(sp)+,d6
+		move	-(a3),d6			; bar width
 		cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_3
-		bsr.w	mc_optim
-		move	#$1559,(a2)+		;move	(a1)+,y(a2)
-		move	d0,(a2)+
-.mc_3:	add		d3,d0
-		dbf		d2,mc_c2loop
+		bsr.w	mc_optimCopyFull
+.mc_3:	dbf		d2,mc_c2loop
 
 		; ---- this loop goes middle to bottom following the reverse pattern
 mc_c2loop2:	
 		move	(a3)+,d6
 		bmi.s	mc_M8
 		move.b	d6,(a6)+		;set row repeats in cell
-		move	d6,-(sp)
-mc_c22:	subq	#1,d6
-		beq.s	mc_m7
-		cmpi	#maxWallHeigth-90,d7
-		bpl.s	.mc_4
-		move	#$1551,(a2)+		;move	(a1),y(a2)
-		move	d0,(a2)+
-.mc_4:	add		d3,d0
-		bra.s	mc_c22
-mc_M7:
-		move	(sp)+,d6
 		cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_5
-		bsr.s	mc_optim
-		move	#$1559,(a2)+		;move	(a1)+,y(a2)
-		move	d0,(a2)+
-.mc_5:	add		d3,d0
-		bra		mc_c2loop2
+		bsr.s	mc_optimCopyFull
+.mc_5:	bra		mc_c2loop2
 
 mc_M8:	cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_6
@@ -10535,7 +10507,7 @@ mc_notequ:
 		cmpi	#maxWallHeigth,d7
 		bne.L	mc_loopMore		; iterate through all wall sizes (cells)
 
-;	move.l	a2,DEBUGDATA
+	move.l	a2,DEBUGDATA
 
 		; pre-fill the interpolation table with a large value
 		move.l	lc_F1_WallCode(pc),a0		; fast code tab
@@ -10553,18 +10525,31 @@ mc_notequ:
 		rts
 
 
-mc_optim:
+mc_optimCopyFull:
 		cmpi	#4,d6
-		bmi.s	.mc_o1
+;		cmpi	#3,d6
+		bmi.s	mc_notUseD
+
+		move	#$1e19,(a2)+		;move.b	(a1)+,d7
+		subq	#1,d6
+.mc_d7:	move	#$1547,(a2)+		;move.b	d7,y(a2)
+		move	d0,(a2)+			; y(a2) offset
+		add		d3,d0				; d3 = chunky row width
+		dbf		d6,.mc_d7
+		rts
+
+mc_notUseD:							; use copy mem directly, not via d7
 		subq	#2,d6
-		lea		(a2),a4
-.mc_s4:	move	-(a4),2(a4)
-		move	#$1547,(a4)
-		lea		-2(a4),a4
-		dbf		d6,.mc_s4
-		lea		2(a2),a2
-		move.l	#$1e111547,(a4)		;m.(a1)+,d7   m.d7,x(a1)
-.mc_o1:	rts
+		bmi.s	.mc_1
+.mc_nd:	move	#$1551,(a2)+		;move	(a1),y(a2)
+		move	d0,(a2)+			; y(a2) offset
+		add		d3,d0				; d3 = chunky row width
+		dbf		d6,.mc_nd
+.mc_1:	move	#$1559,(a2)+		;move	(a1)+,y(a2)
+		move	d0,(a2)+
+		add		d3,d0				; d3 = chunky row width
+		rts
+
 
 ;-------------------------------------------------------------------
 ;Make plane tables ... no input. This has to be called only once
