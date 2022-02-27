@@ -11,8 +11,8 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220222
-BUILD:		SET		$02
+VERSION: 	SET		$220226
+BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -3989,8 +3989,8 @@ dr_d4:	add.b	d2,d0			;add offset to position
 
 dr_checkEnemy:	
 		move	#32,sv_CollumnWid
-		move	#0,sv_SecondEnemy
-		move.b	7(a0,d5.w),d4		;get enemy in front
+		clr		sv_SecondEnemy
+		move.b	7(a0,d5.w),d4		;get enemy in front of collumn
 		beq.s	dr_checkITEM
 		lea		sv_EnemyData,a5		;EnemyTab
 		andi	#$ff,d4
@@ -3999,10 +3999,10 @@ dr_checkEnemy:
 		andi	#$80,d0
 		sne		sv_SecondEnemy
 		bne.s	dr_checkITEM
-		bsr		dr_DrawEnemy
+		bsr		dr_DrawEnemy		; ultimately uses ShowCollumns
 
-dr_checkITEM:	
-		move	#0,lc_collumnDrawInd(a6)
+dr_checkITEM:
+		clr		lc_collumnDrawInd(a6)
 		move	d5,-(sp)
 		move.b	6(a0,d5.w),d4		;get item
 		andi	#63,d4
@@ -4019,12 +4019,13 @@ dr_checkITEM:
 		beq.s	dr_scok3
 		moveq	#0,d5
 		ori		#$8000,d4		;if up
-		move	#1,lc_collumnDrawInd(a6)		;draw column
+		move	#1,lc_collumnDrawInd(a6)		;draw up column
 		bra.s	dr_scok4
 dr_scok3: moveq	#-32,d5
 		ori		#$c000,d4		;if down
-dr_scok4: andi	#$c01f,d4
-		addi	#28,d4
+dr_scok4: 
+		andi	#$c01f,d4
+		addi	#28,d4			; offset the entire lc_CollumnOffsets table (28 entries) to end up in the items table
 		bsr		ShowCollumns
 		move	(sp),d5			; map position
 
@@ -4050,8 +4051,8 @@ dr_checkDEAD:
 		move	(sp),d5			; map position
 
 
-dr_checkOBJECT:	
-		move.b	6(a0,d5.w),d4		;get object before COL
+dr_checkOBJECT:
+		move.b	6(a0,d5.w),d4		;get object (projectile) in front of collumn
 		andi	#$80,d4
 		beq.s	dr_checkCOL
 
@@ -4066,7 +4067,7 @@ dr_SeekUsed:
 		beq.s	dr_moreSeek		;if behind column
 		cmp		10(a5),d5		;compare offset
 		bne.s	dr_moreSeek
-		bsr		dr_AddObject
+		bsr		dr_AddObject		; ultimately uses ShowCollumns
 		move	2(sp),d5		;get offset back
 dr_moreSeek:	
 		lea		-12(a5),a5
@@ -4080,7 +4081,7 @@ dr_checkCOL:
 		andi	#31,d4
 		beq.s	dr_checkENEMY2
 		tst		lc_collumnDrawInd(a6)
-		bne.s	.dr_ccol2		;if item here
+		bne.s	.dr_ccol2		; 1 if there is an "up" object here (half collumn in the upper position)
 		tst		lc_details(a6)		;test detsils
 		beq.s	.dr_ccol2
 		cmpi	#3,d4			;low detail columns
@@ -4110,7 +4111,7 @@ dr_scok2: or	#$8000,d4		;if up col
 dr_scok1: bsr	ShowCollumns
 		move	(sp),d5					;get offset back
 
-dr_checkEnemy2:	
+dr_checkEnemy2:						; now check things BEHIND the collumn
 		tst		sv_SecondEnemy
 		beq.s	dr_checkOBJECT2
 		move.b	7(a0,d5.w),d4		;get enemy
@@ -4143,10 +4144,11 @@ dr_moreSeek2:
 
 ;		lea		lc_variables(pc),a6
 		tst		lc_updateFrame(a6)
-		beq.s	.sv_noActionUpdate1			; this is needed as otherwise shots do not show correctly as they get wiped too early
+		beq.s	.sv_noActionUpdate1			; this is needed as otherwise projectiles do not show correctly as they get wiped too early
 		andi.b	#$7f,6(a0,d5.w)
 .sv_noActionUpdate1:
 
+; check walls around the currently processed map square
 dr_checkN:
 		move	-2(a3),d1
 		move	2(a4),d0		;check N
@@ -4420,7 +4422,7 @@ de_CONT: lea	lc_Enemy1Offsets(pc),a3
 		bne.s	de_enemy2
 		lea		lc_Enemy2Offsets(pc),a3
 de_enemy2:
-		bsr		ShowEnemy
+		bsr		ShowEnemy		; a3: enemy X textures, d4: texture offset. Ultimately uses showCollumns
 
 		movem.l	(sp)+,ALL
 		rts
@@ -5150,40 +5152,6 @@ sh_WZwX: move	d6,d5
 
 ;----------------------------
 sh_DrawOn:
-; 		move	a3,d4			; get back wall index
-; 		move	d4,d7
-; 		andi	#$03c0,d7		; is there blood or plaquest to add?
-; 		beq.s	.noBloodTables
-; 		bsr		dr_AddTablesAndBlood
-; .noBloodTables:
-; 		lsr.b	d4				; check wall invert bit
-; 		bcc.s	sh_WD0
-
-; 		lea		sh_EorWallDir1(pc),a3	; if wall inverted then prepare some EOR values to do it later while drawing
-; 		move.w	#63,(a3)
-; 		move.w	#0,sh_EorWallDir2-sh_EorWallDir1(a3)
-; 		bra.s	sh_WD1
-; sh_WD0:
-; 		lea		sh_EorWallDir1(pc),a3
-; 		move.w	#0,(a3)
-; 		move.w	#63,sh_EorWallDir2-sh_EorWallDir1(a3)
-; sh_WD1:
-
-; 		tst		d4				; if MSbit is set then texture is in cache
-; 		bpl.s	.notCache
-; 		lea		lc_WallCacheOffsets(pc),a1		; cached textures offsets
-; 		move.l	lc_F2_TextureCache(pc),a3
-; 		bra.s	.cont
-; .notCache:
-; 		subq	#1,d4				; wall index (1,2,3... cannot be 0 at this point)
-; 		lea		lc_WallOffsets(pc),a1
-; 		move.l	lc_F1_Walls(pc),a3	; wall textures start addr
-; .cont:
-; 		andi	#$1f,d4				; remove blood index and cache indicator 
-; 		lsl		#2,d4				; wall index *4
-; 		move.l	(a1,d4.w),d4		; offset to wall texture
-; 		lea		32(a3,d4.l),a3		; required wall start - middle pixel
-
 		; --- add perspective calculation to x1 an x2
 		ext.l	d0
 		ext.l	d2
@@ -5298,10 +5266,6 @@ sh_Dok:	sub		d5,d4
 		moveq	#0,d6
 		moveq	#0,d1			;wybrana
 
-; 		cmpi	#maxWallHeigth*2,d2		; just in case limit to max the table can handle to protect from corner cases
-; 		bmi.s	.nc
-; 		move	#maxWallHeigth*2,d2
-; .nc:	subq	#1,d2
 		cmpi	#470,d2		; just in case limit to max the table can handle to protect from corner cases
 		bmi.s	.nc
 		move	#470,d2		; theoretically can be maxWallHeigth*2=700 but max practical value is 466
@@ -5424,7 +5388,7 @@ sh_MloopCPU:
 		move	sh_65MulTab(pc,d7.w),d7	; *65
 		lea		(a3,d7.w),a1		;wall - middle pixel
 		tst.b	32(a1)
-		bne.s	sh_SaveZero1
+		bne.s	sh_SaveZero1		; <>0 means that there is a transparent pixel in this rexture collumn
 
 		clr.b	64*192(a2)		; mark column as drawn
 		subi.l	#$10000,d2		; decrease remaining collumn counter
@@ -5545,7 +5509,7 @@ sh_EorWallDir1:	dc.w	0
 sh_EorWallDir2:	dc.w	0
 
 ;-------------------------------------------------------------------
-;a3 - enemy 1 or 2 offsets
+;in: a3 - enemy 1 or 2 textures offset, a4 - actual enemy texture frame offset 
 ShowEnemy:	
 		addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
 		cmpi	#Min_Distance,d1	;chk borders
@@ -5560,7 +5524,9 @@ ShowEnemy:
 
 ;-------------------------------------------------------------------
 ; This adds the collumn's vertical rows to the zerotab
-; in: a6 - lc_variables(pc)
+; in: a6 - lc_variables(pc), 
+; d4 - collumn offset (3 MSB bits = heigth&screen Y position, rest: texture offset)
+; d5 - Y offset of the texture centre from middle of screen (0 for full cols, different for smaller ones)
 ShowCollumns:	
 		addi	#[2^SHLeft]-70,d1	;center ROT point (z+256)
 		cmpi	#Min_Distance,d1	;chk borders
@@ -5575,19 +5541,44 @@ ShowCollumns:
 		subq	#1,d4
 		lsl		#2,d4
 		lea		lc_CollumnOffsets(pc),a3
-sc_EnemyCont:	
-		move	d2,-(sp)		;up/down/norm coll. flag
+
+; a3: texture set, d4: texture offset, d2: position flag (3 MSBs)
+sc_EnemyCont:
 		move.l	(a3,d4.w),d4
 		move.l	lc_F1_Walls(pc),a3
-		lea		32(a3,d4.l),a3		;required collumn start
-		lea		(a3,d5.w),a3		;fix up/down offset
+		lea		32(a3,d4.l),a3		;required collumn start - middle pixel
+		lea		(a3,d5.w),a3		;fix up/down offset. 
+		; full=0. Half up=0 and half down=-32. This means that this points to the bottom of the texture for up, and top for down.
 
+		move	#0,d7					; by default no mask -> small object
+		move	d2,-(sp)				; up/down/norm coll. flag. 0-full, 8000-up, c000-down. Others: middle
+		beq.s	.sc_full
+		cmpi	#$8000,d2
+		beq.s	.sc_top
+		cmpi	#$c000,d2
+		bne.s	.sc_cont
+		move	#%0011,d7				; bottom mask
+		bra.s	.sc_fullHalf
+.sc_full: move	#%1111,d7				; full mask
+		bra.s	.sc_fullHalf
+.sc_top: move	#%1100,d7				; up mask
+.sc_fullHalf:
+		divu	#65,d4
+		swap	d4						; this is 0 (full collumn or top texture) or 32 (half one bottom)
+		neg		d4
+		addi	#32,d4
+		sub		d5,d4					; this points to the trasparent mask row w.r.t. a3
+		move	d4,lc_collumnMaskOfs(a6)
+.sc_cont:
+		move	d7,lc_collumnMask(a6)
+
+		; depending on collumn texture width set it's image width in map coords 
 		move	d0,d2
-		subi	#256,d0			;x left - 512 wide
+		subi	#256,d0			;x left - 512 wide (half) on screen
 		addi	#256,d2			;x right
-		cmpi	#32,sv_CollumnWid
+		cmpi	#32,sv_CollumnWid		; 32 normal width or 16 for small objects (some projectiles)
 		beq.s	.sc_wide32
-		addi	#128,d0			;256 wide
+		addi	#128,d0			;256 wide (quarter) on screen
 		subi	#128,d2
 .sc_wide32:	
 		move	lc_size(a6),d4
@@ -5607,10 +5598,6 @@ sc_EnemyCont:
 		move.l	lc_scaledScreenHeigth(a6),d3
 		divu	d1,d3			;y
 
-		move.l	lc_F2_Htab(pc),a1	;slow Htab
-		lsl		#2,d3
-		move.l	(a1,d3.w),a2		;cell addr
-
 		move	lc_screenPixX2(a6),d7	; width in pixels/2
 		add		d7,d2
 		bmi.w	sc_exit2		;if < left border
@@ -5620,6 +5607,12 @@ sc_EnemyCont:
 
 		move	d2,d6
 		sub		d0,d6			;x delta
+
+		move.l	lc_F2_Htab(pc),a1	;slow Htab
+		lsl		#2,d3
+		move.l	(a1,d3.w),-(sp)		;cell addr
+		move.l	lc_F1_WallCode(pc),a1		; fast code tab
+		move.l	(a1,d3.w),a4		; wall drawing code for this collumn
 
 		moveq	#0,d3
 		move	sv_CollumnWid,d3	;32 or 16 wide
@@ -5640,44 +5633,134 @@ sc_EnemyCont:
 sc_BorOK: subq	#1,d6
 		subq	#1,d0
 
-		moveq	#0,d7
+		move	lc_remainingCollumns(a6),d2		; non filled collumns counter
+		swap	d2
 		move.l	lc_chunkyBufMidAddr(a6),a0	;scr tab middle
-		lea		sv_widthTable(pc),a1
+		lea		sv_widthTable(pc),a5
+		moveq	#0,d7
+
+		move	lc_collumnMask(a6),d5			; select procedure to used based on collumn/object heigth and type
+		beq		sc_ColLoopMiddle
+		cmpi	#%1111,d5
+		bne.s	sc_ColLoopHalf
+
+; a0 - scr tab middle
+; (a1) - texture Y/2 and X starting point for every collumn
+; (a2) - screen middle for collumn used
+; a3 - required texture start - middle pixel
+; a4 - wall draw code address
+; a5 - width table
+; a6 - zero table
+; --- version for full collumns
+sc_ColLoopFull:
 		move.l	lc_zeroPtr(a6),a6		;zero wall table
-
-;a0 - screen center
-;a1 - width table
-;a2 - Htab cell addr
-;a3 - collumn addr
-
-sc_ColLoop:	
+.sc_ColLoop:
 		add		d3,d2			;interpolation
 		addx	d1,d4
 
 		addq	#1,d0
-		bmi.s	sc_Noline
-		move.b	(a1,d0.w),d7
-		lea		(a0,d7.w),a4	;screen
-		tst.b	64*192(a4)		;is screen column already filled?
-		beq.s	sc_NoLine
+		bmi.s	.sc_Noline
+		move.b	(a5,d0.w),d7
+		lea		(a0,d7.w),a2	;screen
+		tst.b	64*192(a2)		;is screen column already filled?
+		beq.s	.sc_NoLine
 
 		move	d4,d5
 		lsl		#6,d5
 		add		d4,d5			;*65
-		lea		(a3,d5.w),a5		;wall
+		lea		(a3,d5.w),a1	;texture
 
-		tst		(sp)			;up/down/(0)norm coll. flag
-		bne.s	sc_NoChk
-		tst.b	32(a5)
-		bne.s	sc_NoLine		;don't draw translucient
-sc_NoChk:
-		move.l	a5,(a6)+		;wall addr
-		move.l	a4,(a6)+		;screen addr
-		move.l	a2,(a6)+		;cell addr
-		move	(sp),(a6)+		;up/down/norm coll. flag
+		tst.b	32(a1)
+		beq.s	.sc_NoLine		;don't draw empty lines
+		bpl.s	.sc_putOnStack	; MSB indicates solid line which can be drawn straight away
 
-sc_NoLine:	
-		dbf		d6,sc_ColLoop
+		clr.b	64*192(a2)		; mark column as drawn
+		subi.l	#$10000,d2		; decrease remaining collumn counter
+		jsr		(a4)			; draw full collumn strip as there are no gaps
+		bra.s	.sc_NoLine		;don't draw empty lines
+.sc_putOnStack:
+		move.l	a1,(a6)+		;wall addr
+		move.l	a2,(a6)+		;screen addr
+		move.l	(sp),(a6)+		;cell addr
+		move	4(sp),(a6)+		;up/down/norm coll. flag
+
+.sc_NoLine:	
+		dbf		d6,.sc_ColLoop
+		bra		sc_PostLoop
+
+;----------------------------------
+; --- version for half size top/bottom collumns
+sc_ColLoopHalf:
+		move	lc_collumnMaskOfs(a6),d5
+		lea		(a3,d5.w),a4	; mask row in textures
+		move	lc_collumnMask(a6),-(sp)	;AND mask: %1100 up, %0011 down
+		move.l	lc_zeroPtr(a6),a6		;zero wall table
+.sc_ColLoop:
+		add		d3,d2			;interpolation
+		addx	d1,d4
+
+		addq	#1,d0
+		bmi.s	.sc_Noline
+		move.b	(a5,d0.w),d7
+		lea		(a0,d7.w),a2	;screen
+		tst.b	64*192(a2)		;is screen column already filled?
+		beq.s	.sc_NoLine
+
+		move	d4,d5
+		lsl		#6,d5
+		add		d4,d5			;*65
+		lea		(a3,d5.w),a1	;texture
+
+		move.b	(a4,d5.w),d5	; texture collumn mask
+		and		(sp),d5			;%1100 up, %0011 down
+		beq.s	.sc_NoLine		;don't draw empty lines
+
+		move.l	a1,(a6)+		;wall addr
+		move.l	a2,(a6)+		;screen addr
+		move.l	2(sp),(a6)+		;cell addr
+		move	6(sp),(a6)+		;up/down/norm coll. flag
+
+; 	bra.s	.sc_NoLine
+; .sc_NoLine2:
+; 	clr.b	64*192(a2)		; mark column as drawn
+; 	subi.l	#$10000,d2		; decrease remaining collumn counter
+
+.sc_NoLine:	
+		dbf		d6,.sc_ColLoop
+		lea		2(sp),sp	; take off AND mask
+		bra.s	sc_PostLoop
+
+;----------------------------------
+; --- version for quarter-size as well as any middle objects 
+sc_ColLoopMiddle:
+		move.l	lc_zeroPtr(a6),a6		;zero wall table
+		move.l	(sp),a4			; htab cell addr
+.sc_ColLoop:
+		add		d3,d2			;interpolation
+		addx	d1,d4
+
+		addq	#1,d0
+		bmi.s	.sc_Noline
+		move.b	(a5,d0.w),d7
+		lea		(a0,d7.w),a2	;screen
+		tst.b	64*192(a2)		;is screen column already filled?
+		beq.s	.sc_NoLine
+
+		move	d4,d5
+		lsl		#6,d5
+		add		d4,d5			;*65
+		lea		(a3,d5.w),a1	;texture
+
+		move.l	a1,(a6)+		;wall addr
+		move.l	a2,(a6)+		;screen addr
+		move.l	a4,(a6)+		;cell addr
+		move	4(sp),(a6)+		;up/down/norm coll. flag
+.sc_NoLine:	
+		dbf		d6,.sc_ColLoop
+
+;----------------------------------
+sc_PostLoop:
+		lea		4(sp),sp
 
 		move.l	a6,d0
 		lea		lc_variables(pc),a6
@@ -5686,6 +5769,9 @@ sc_NoLine:
 		move.l	lc_F2_ZeroTabEnd(pc),d0
 .NicTo:	
 		move.l	d0,lc_zeroPtr(a6)
+
+		swap	d2
+		move	d2,lc_remainingCollumns(a6)				; update full collumns counter
 
 sc_exit2:	
 		lea	2(sp),sp
@@ -5711,7 +5797,7 @@ shZ_ZeroLoop:
 		beq.w	shZ_PixEnd		;if reached beg of table
 
 		move	-(a0),d0		;what is the object pos: up, down, fullsize, mid, ...
-		beq.s	shZ_NotMinus
+		beq.s	shZ_NotMinus	; zero - full heigth object
 		cmpi	#$8000,d0
 		beq	shZ_UpObject
 		cmpi	#$c000,d0
@@ -6082,7 +6168,8 @@ lc_moveTab:				dc.w	0,0,0,0,0,0,0	;(boolean) key pressed: ;0 up, 2 dn, 4 turn_le
 lc_textureCacheNext:	dc.w	0				; index of the next slot to use in the texture cache
 lc_textureCacheTags:	blk.w	TEXTURE_CACHE_SIZE,0	; tags for texture cach entries (combination of wall , blood and plaque #)
 lc_details:				dc.w	0				; 2-low,	 1-medium,  0-high
-
+lc_collumnMask:			dc.w	0				; AND mask for collumn drawing loop
+lc_collumnMaskOfs:		dc.w	0				; mask value offset for collumn drawing loop
 
 ENDOFF
 
@@ -6212,27 +6299,27 @@ lc_WallOffsets:		;start offsets of walls in table
 	dc.l	15*65*64,16*65*64,17*65*64,18*65*64,19*65*64
 
 	dc.l	20*65*64,21*65*64,22*65*64,23*65*64,24*65*64
-	dc.l	25*65*64,26*65*64,39*65*64				;+buffer
+	dc.l	25*65*64,26*65*64, 39*65*64				;26 walls + buffer at the end of second set
 
-lc_CollumnOffsets:
-	dc.l	27*65*64,27*65*64+[65*32],28*65*64,28*65*64+[65*32]	;collumns
+lc_CollumnOffsets: ;  (28)
+	dc.l	27*65*64,27*65*64+[65*32],28*65*64,28*65*64+[65*32]	;collumns (8)
 	dc.l	29*65*64,29*65*64+[65*32],30*65*64,30*65*64+[65*32]
-	dc.l	31*65*64,31*65*64+32,31*65*64+[65*32],31*65*64+[65*32]+32 ;up
+	dc.l	31*65*64,31*65*64+32,31*65*64+[65*32],31*65*64+[65*32]+32 ;up (8) - half size
 	dc.l	32*65*64,32*65*64+32,32*65*64+[65*32],32*65*64+[65*32]+32
-	dc.l	33*65*64,33*65*64+32,33*65*64+[65*32],33*65*64+[65*32]+32 ;down
+	dc.l	33*65*64,33*65*64+32,33*65*64+[65*32],33*65*64+[65*32]+32 ;down (8) - half size
 	dc.l	34*65*64,34*65*64+32,34*65*64+[65*32],34*65*64+[65*32]+32
 
-	dc.l	52*65*64,52*65*64+32			;25-28 killed enemies
+	dc.l	52*65*64,52*65*64+32			;25-28 dead enemies - 4 x half size
 	dc.l	64*65*64+[65*32],64*65*64+[65*32]+32
 
 lc_ItemOffsets:
-; items, 29-48
+	; items, 29-48 (20) - half size
 	dc.l	65*65*64,65*65*64+32,65*65*64+[65*32],65*65*64+[65*32]+32
 	dc.l	66*65*64,66*65*64+32,66*65*64+[65*32],66*65*64+[65*32]+32
 	dc.l	67*65*64,67*65*64+32,67*65*64+[65*32],67*65*64+[65*32]+32
 	dc.l	68*65*64,68*65*64+32,68*65*64+[65*32],68*65*64+[65*32]+32
 	dc.l	69*65*64,69*65*64+32,69*65*64+[65*32],69*65*64+[65*32]+32
-	;objects, 49-64
+	;objects, 49-64	- some quarter and some half size
 	dc.l	70*65*64-16,70*65*64
 	dc.l	70*65*64+[65*32]-16,70*65*64+[65*32]
 	dc.l	70*65*64+[65*48]-16,70*65*64+[65*48]
@@ -6257,14 +6344,14 @@ lc_WallCacheOffsets:		;start offsets of textures in wall cache
 	dc.l	8*65*64,9*65*64,10*65*64,11*65*64
 	dc.l	12*65*64,13*65*64,14*65*64,15*65*64
 
-lc_Enemy1Offsets:
+lc_Enemy1Offsets: ; (24) full size (does not include the 2 dead ones)
 	dc.l	40*65*64,40*65*64+[65*32],41*65*64,41*65*64+[65*32]
 	dc.l	42*65*64,42*65*64+[65*32],43*65*64,43*65*64+[65*32]
 	dc.l	44*65*64,44*65*64+[65*32],45*65*64,45*65*64+[65*32]
 	dc.l	46*65*64,46*65*64+[65*32],47*65*64,47*65*64+[65*32]
 	dc.l	48*65*64,48*65*64+[65*32],49*65*64,49*65*64+[65*32]
 	dc.l	50*65*64,50*65*64+[65*32],51*65*64,51*65*64+[65*32]
-lc_Enemy2Offsets:
+lc_Enemy2Offsets:	; (24) full size (does not include the 2 dead ones)
 	dc.l	52*65*64+[65*32]
 	dc.l	53*65*64,53*65*64+[65*32],54*65*64,54*65*64+[65*32]
 	dc.l	55*65*64,55*65*64+[65*32],56*65*64,56*65*64+[65*32]
@@ -8110,12 +8197,10 @@ br2_UP:
 		bmi.s	br2_DOWN
 		cmpi	#min_distance-60,d3
 		bpl.s	br2_Uright
-;		tst.b	3(a2)			;any border walls? W wall on N square
-		move.b	3(a2),d4
+		move.b	3(a2),d4			;any border walls? W wall on N square
 		bsr		br_ChkTransparent
 		bne.s	br2_U2
-;		tst.b	(a1)			; check N wall on W square
-		move.b	(a1),d4
+		move.b	(a1),d4			; check N wall on W square
 		bsr		br_ChkTransparent
 		beq.s	br2_Uright
 br2_u2:	move	#min_distance-60,d4
@@ -8131,11 +8216,9 @@ br2_u3:	move	#min_distance-60,d3
 		; up right
 br2_Uright:	cmpi	#1024-min_distance+60,d3
 		bmi.s	br2_DOWN
-;		tst.b	1(a2)
 		move.b	1(a2),d4
 		bsr		br_ChkTransparent
 		bne.s	br2_U4
-;		tst.b	(a3)
 		move.b	(a3),d4
 		bsr		br_ChkTransparent
 		beq.s	br2_DOWN
@@ -8155,11 +8238,9 @@ br2_DOWN:
 		bpl.s	br2_END
 		cmpi	#min_distance-60,d3
 		bpl.s	br2_Dright
-;		tst.b	3(a4)
 		move.b	3(a4),d4
 		bsr		br_ChkTransparent
 		bne.s	br2_D2
-;		tst.b	2(a1)
 		move.b	2(a1),d4
 		bsr		br_ChkTransparent
 		beq.s	br2_Dright
@@ -8176,11 +8257,9 @@ br2_D3:	move	#min_distance-60,d3
 		; down right
 br2_Dright:	cmpi	#1024-min_distance+60,d3
 		bmi.s	br2_END
-;		tst.b	1(a4)
 		move.b	1(a4),d4
 		bsr.s	br_ChkTransparent
 		bne.s	br2_D4
-;		tst.b	2(a3)
 		move.b	2(a3),d4
 		bsr.s	br_ChkTransparent
 		beq.s	br2_END
@@ -10827,17 +10906,22 @@ mk_NotFR:
 		move.l	(a2),d0
 		move.l	lc_F1_Walls(pc),a2
 		lea		(a2,d0.l),a2		;first col.addr
-		move	#[8*32]-1,d7		;collumn nr.
-		bsr		mk_coll1
+		move	#[16*32]-1,d7		;nr of full size collumns to handle (8) + hald size (8)
+		bsr		mk_calcCollumnMask
 
-		move.l	lc_F1_Walls(pc),a2	;same with enemy
+		move.l	lc_F1_Walls(pc),a2	;same with enemy 1
 		addi.l	#40*65*64,a2		;enemy 1 addr
-		move	#[24*32]-1,d7
-		bsr		mk_coll1
+		move	#[25*32]-1,d7		; all full size enemies + dead
+		bsr		mk_calcCollumnMask
+
 		move.l	lc_F1_Walls(pc),a2	;same with enemy 2
 		addi.l	#105*65*32,a2		;enemy 2 addr
-		move	#[24*32]-1,d7
-		bsr		mk_coll1
+		move	#[25*32]-1,d7		; all full size enemies + dead
+		bsr		mk_calcCollumnMask
+
+		move.l	lc_F1_Items(pc),a2	;same with all items and projectiles
+		move	#[27*16]-1,d7
+		bsr		mk_calcCollumnMask
 
 		lea		lc_BloodOffsets(pc),a2	;blood not zero-wall! - clear zero wall indicators
 		move.l	(a2),d0
@@ -10870,28 +10954,45 @@ mk_fixblood:	move.b	#0,64(a2)
 		rts
 
 
-;in a2 - col addr, d7 - width?
-mk_Coll1:	
-		moveq	#63,d6			;col.heigth
-		moveq	#1,d0			;test byte 1-not draw
+; Calculate collumn transparency mask - over 4 quarters of its heigth
+;in a2 - start col addr, d7 - width (nr of pixel collumns)
+; 00000000 - fully transparent
+; xxxx1000 - top quater has pixels
+; xxxx0100 - second from top has pixels
+; xxxx0010 - third from top has pixels
+; xxxx0001 - bottom quater has pixels
+; 1xxxxxxx - full collumn is solid
+mk_calcCollumnMask:
+		moveq	#3,d6			; 4 quarters of the collumn
+		moveq	#0,d0			; transparency per quarter
+		move	#$80,d1			; indicator of full solid collumn
+mk_coll1:
+		moveq	#15,d5			;4 quarters of the collumn
 mk_coll2:
 		tst.b	(a2)+
 		beq.s	mk_coll3
-		moveq	#0,d0
+		ori		#1,d0			; 1 - there are pixels to draw in this quadrant
+		bra.s	mk_coll4
 mk_coll3:
-		dbf		d6,mk_coll2
-		move.b	d0,(a2)+
-		dbf		d7,mk_Coll1
+		moveq	#0,d1			; column is not solid
+mk_coll4:
+		dbf		d5,mk_coll2
+		lsl		#1,d0
+		dbf		d6,mk_coll1
+		or		d1,d0			; add full solid indicator
+		move.b	d0,(a2)+		; store transparency mask just beneath the collumn
+		dbf		d7,mk_calcCollumnMask
 		rts
 
 ;-------------------------------------------------------------------
 ; remove the 65-th collumn (the transpacency one) from floors as drawing needs to iterate through 64-pixel textures
+; in: a2 - texture address
 mk_FixFloors:	
-		lea		64(a2),a2		;floor row1 end
+		lea		64(a2),a2				;floor row1 end  - skip first row as it's already in place
 		cmpi.l	#"KANE",63*64(a2)		; why do it only once?
 		beq.s	mk_FFquit
 		lea		1(a2),a3
-		moveq	#62,d0
+		moveq	#62,d0					; copy remaining 63 rows
 mk_FixFloor1:	moveq	#63,d1
 mk_FF1:	move.b	(a3)+,(a2)+			; just move them left by 1 pixel
 		dbf		d1,mk_FF1
@@ -11559,7 +11660,7 @@ max_distance:	equ	12000		;FOV, 12000 equals to 12 squares (max can be ok.22000)
 sv_Upoffset:	equ	16		;view window pos offsets - in lines from top
 sv_Leftoffset:	equ	8		; in bytes from left
 wall_floor1:	equ	[13-1]*4	;nr. of floor wall *4
-wall_floor2:	equ	[14-1]*4	;nr. of ceiling wall
+wall_floor2:	equ	[14-1]*4	;nr. of ceiling wall *4
 
 ;---------------CHIP LOCATIONS:
 ;sv_Offsets:	equ	BASEC+$2a000		;$300   - defined upper
@@ -11626,7 +11727,7 @@ sv_DebugPos2:	equ	screen2+[20*40*5]
 sc_colors:		equ	BASEC+$7d600		;$40 (64)	- DO NOT MOVE
 sc_Text:		equ	BASEC+$7d642		;$1b58 max (7000)	- DO NOT MOVE
 sv_CompasClr:	equ	BASEC+$7f1a0		;$6c - this MUST be in CHIP
-sv_DATA_AREA:	equ	BASEC+$7f220		;$1a0
+sv_DATA_AREA:	equ	BASEC+$7f220		;$1a0 - this MUST have a fixed address
 sv_TextOffsets:	equ	BASEC+$7f500		;$100 (to 128 texts)
 ; Do not exceed $7f800 because that's where the server keeps STRUCTURE and other data
 
