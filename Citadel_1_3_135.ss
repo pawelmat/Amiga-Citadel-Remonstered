@@ -12,7 +12,7 @@ IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
 VERSION: 	SET		$220228
-BUILD:		SET		$01
+BUILD:		SET		$02
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -30,15 +30,15 @@ BASEF1:		equ		$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $
 ;BASEF1:	equ		$40400000		; Z3 fast. First 0.5MB memory. Hopefully Fast
 BASEF2:		equ		BASEF1+$80000	; Z3 fast. Second 0.5MB memory. Hopefully Fast
 
-CODESTART:	equ		$0000			; this is where the code is placed w.r.t. BASEF1 start. CANNOT BE $1000 (???)
+CODESTART:	equ		$0000			; this is where the code is placed w.r.t. BASEF1 start.
 
 	IFEQ		IS_EXE
-BASEC:		equ		$100000			; free 0.5 meg chip(A1200). If assembled on a machine with less than 1MB chip then change to 0
+BASEC:		equ		$100000			; free 0.5 meg chip(A1200) - used for development only
 	ELSE
 BASEC:		equ		$000000			; deployed (exe) version must always use lower chip to work with the rest of the game
 	ENDC
 
-UPDATE_TIME: equ	6			; minimum period (in frames) between game logic updates. Default is 6.
+UPDATE_TIME: equ	6				; minimum period (in frames) between game logic updates. Default is 6.
 
 	TTL		VIRTUAL_DESIGN_PRODUCTION
 	JUMPPTR		S
@@ -154,8 +154,6 @@ CNTSTOP: MACRO		; \1 - counter index (0..15)
 		move	#\1,d0
 		bsr		DebugCntStop
 .c1\@:		
-;		nop
-;		nop
 ENDM
 
 ; get random number (long). 
@@ -176,7 +174,6 @@ ENDM
 		LOAD	*
 s:
 		IFEQ	IS_EXE
-;		move	#0,DEBUGDATA
 		bra.s	.s1
 		dc.b	0,"DEVELOPMENT VERSION - DOES NOT WORK WITH WHDLOAD",0
 		even
@@ -189,7 +186,7 @@ s:
 		moveq	#31,d0
 .scs:	clr.l	(a2)+
 		dbf		d0,.scs
-		move	#6,(a1)			;size
+		move	#6,(a1)			;size (6)
 		move	#1,2(a1)		;floor (1=floor, 0=no floor)
 		move	#0,4(a1)		;details (0-all, 1-med, 2-low)
 		move	#-150,6(a1)		;energy
@@ -210,8 +207,10 @@ s:
 		move	#-2,46(a1)		; rocket launcher ammo
 		move	#0,48(a1)		; last byte of guns
 		move	#0,50(a1)		;difficulty (0=hard by default, 1=easy). 8 bytes free after this. Also 100-124 is free and initialised to 0
-		move.b	#0,STR_DISTURBANCES(a1)		; ofs 52. On by default
-		move.b	#0,STR_GODMODE(a1)			; ofs 53. Off by default
+		move.b	#0,STR_DISTURBANCES(a1)		; ofs 52. Off by default (0). Note that this is enforced on below
+		move.b	#0,STR_GODMODE(a1)			; ofs 53. Off by default (0)
+		move.b	#0,STR_CROSSHAIRS(a1)		; ofs 54. On by default (0)
+		move.b	#0,STR_USERSCRSIZE(a1)		; ofs 55. No stretch by default (0)
 		; 52-58 free
 		; 60-98 used by server (level progress data etc.)
 		move	#1,60(a1)		; 60 - complex nr (1,2,...). 1 = dungeons
@@ -301,13 +300,21 @@ start:
 .InitStruct:
 		move.l	lc_Structure(pc),a1
 		move	(a1),lc_size(a6)		; actual window size (determining the nr of bytes): 2-6
-		move	(a1),lc_size+2(a6)		; user selected window size, cannot be set to stretched at start
-		move	(a1),cc_requesttab+2	; TODO: is this needed since no key is pressed? maybe can be zero at start
+		move	(a1),lc_size+2(a6)		; user selected window size, by default cannot be set to stretched at start
+		moveq	#0,d0
+		move.b	STR_USERSCRSIZE(a1),d0
+		beq.s	.size2
+		move	d0,lc_size+2(a6)		; carry over user selected window size to enable stretching
+		cmpi	#7,d0					; 7..9 are stretched screens
+		bmi.s	.size2
+		st		lc_StrFlag(a6)
+.size2:	move	#0,lc_requestTab+2(a6)		; 0 = no key pressed so no need fo screen change
 		move	2(a1),lc_floor(a6)
 		move	4(a1),lc_details(a6)
 		move	6(a1),sv_Energy
 		move	8(a1),sv_Glowica
 		move	50(a1),lc_difficulty(a6)
+		move.b	#1,STR_DISTURBANCES(a1)		; off by default
 		move	#-10,16(a1)		; handgun ammo
 		move	#-10,22(a1)		; shotgun ammo
 		move	#-30,28(a1)		; machine gun ammo
@@ -334,7 +341,7 @@ start:
 		beq.s	.fe
 		move.l	d0,a1
 		move	#0,(a1)
-		lea		4(a3),a3		; skip freq/len
+		lea		4(a3),a3				; skip freq/len
 		bra.s	.fix_s
 .fe:
 
@@ -684,7 +691,7 @@ MAIN_LOOP:
 		addi	#UPDATE_TIME,lc_updateTimer(a6)
 .sv_noActionUpdate0:
 
-		lea		cc_RequestTab,a1	; this table contains "requests" to do things, coming from other places such as keypresses which could not be fully handled in the interrupt
+		lea		lc_requestTab(a6),a1	; this table contains "requests" to do things, coming from other places such as keypresses which could not be fully handled in the interrupt
 		tst		(a1)				; was ESC pressed?
 		beq.s	ml2
 		moveq	#0,d0
@@ -728,7 +735,7 @@ ml2:
 ;--------------------------------
 NOT_Paused:
 		lea		lc_variables(pc),a6
-		lea		cc_RequestTab,a1
+		lea		lc_requestTab(a6),a1
 		move	2(a1),d0			;window size button (F1-F8) pressed? Returns 2..6 for (F1-F5) and 7..9 for (F6-F8)
 		beq		sv_NoScrChange
 		clr		2(a1)
@@ -739,12 +746,12 @@ NOT_Paused:
 		bmi.s	sv_SizeNoStr		;if <2,6> screen is not stretched
 
 		move	#5,lc_size(a6)		; bit-size for non-stretched is always 5 (which is same as F4, 20 bytes)
-		st		sv_StrFlag			; mark screen as not stretched
+		st		lc_StrFlag(a6)			; mark screen as stretched
 		move	#1,lc_c2pType(a6)	; on stretched screens use CPU C2P
 		bra.s	sv_cont1
 sv_SizeNoStr:
 		move	d0,lc_size(a6)		; user screen size same as bit-size for non-stretched
-		clr		sv_StrFlag			; mark screen as not stretched
+		clr		lc_StrFlag(a6)		; mark screen as not stretched
 		move	lc_c2pTypePreferred(a6),lc_c2pType(a6)	; on non-stretched screens use preferred C2P
 sv_cont1:
 		st		lc_ledChange(a6)	; re-draw debug LEDs
@@ -759,7 +766,7 @@ sv_cont1:
 sv_NoScrChange:
 		move	4(a1),d0			; user triggered c2p mode change
 		beq.s	sv_cont2
-		tst		sv_StrFlag			; C2P can only be changed on a non-stretched screen
+		tst		lc_StrFlag(a6)			; C2P can only be changed on a non-stretched screen
 		bne.s	sv_cont2
 		clr		4(a1)
 		move	lc_c2pTypePreferred(a6),lc_c2pType(a6)	; on non-stretched screens use preferred C2P
@@ -826,7 +833,8 @@ sv_startFrame:
 		beq.s	.sv_NoSpace
 		bsr		Check_RMB		;if space - hand used
 		bra.s	.sv_NotRMB
-.sv_NoSpace:	tst.l	cc_RequestTab+6		; RMB or RF2
+.sv_NoSpace:	
+		tst.l	lc_requestTab+6(a6)		; RMB or RF2
 		beq.s	.sv_NotRMB
 		bsr		Check_RMB		;shots, etc.
 .sv_NotRMB:	
@@ -881,6 +889,12 @@ sv_Cloop0:
 		lea		lc_variables(pc),a6
 		tst		sv_SzumTime
 		beq.s	.sv_NoSzum
+		bpl.s	.sv_NoFlashRed
+		andi	#$7fff,sv_SzumTime		; remove the N "flash" bit
+		move	#$900,lc_flashColor(a6)	; flash red
+		move	#$100,lc_flashColorSub(a6)
+		move	#7,lc_doFlash(a6)	;flash screen
+.sv_NoFlashRed:
 		tst		lc_updateFrame(a6)
 		beq.s	.sv_noActionUpdate2
 		subq	#1,sv_SzumTime
@@ -1024,6 +1038,8 @@ sv_quit:
 
 		move.l	lc_Structure(pc),a1		;update structure in prep for exit
 		move	lc_size(a6),(a1)
+		move	lc_size+2(a6),d0
+		move.b	d0,STR_USERSCRSIZE(a1)
 		move	lc_floor(a6),2(a1)
 		move	lc_details(a6),4(a1)
 		move	sv_Energy+2,6(a1)
@@ -1110,7 +1126,9 @@ interruptL3Vertb:
 	CNTSTART 2
 		tst		lc_doFlash(a6)
 		beq.s	.nl_2
-		move	#$0f0,RealCopper+2		; flash green
+		move	lc_flashColor(a6),RealCopper+2		; flash green
+		move	lc_flashColorSub(a6),d0
+		sub		d0,lc_flashColor(a6)	; decrease colourintensity in time
 		subi	#1,lc_doFlash(a6)
 		bne.s	.nl_2
 		move	#0,RealCopper+2
@@ -1158,7 +1176,7 @@ swapScreen:
 		move.l	lc_screen+4(a6),lc_screen(a6)
 		move.l	d0,lc_screen+4(a6)
 
-		tst		sv_StrFlag				; is screen sretched?
+		tst		lc_StrFlag(a6)				; is screen sretched?
 		bne.s	.stretched
 
 		lea		copper1_std,a1			; modify standard copper
@@ -1193,13 +1211,14 @@ Check_RMB:	movem.l	ALL,-(sp)
 		bne.s	rm_HandUsed
 		cmpi	#3*6,d0					; is it machine gun?
 		bne.s	RMB_other
-		move	#0,cc_RequestTab+6
+		move	#0,lc_requestTab+6(a6)
 		bra		rm_MachineGun
 
-RMB_other:	tst	cc_RequestTab+6
+RMB_other:	
+		tst		lc_requestTab+6(a6)
 		beq.s	RMB_End
-		move	#0,cc_RequestTab+6
-		tst	d0
+		move	#0,lc_requestTab+6(a6)
+		tst		d0
 		beq.s	rm_HandUsed
 		cmpi	#6,d0
 		beq		rm_HandGunUsed
@@ -2272,7 +2291,7 @@ eh_cont2:	add	d1,sv_Energy		;loose energy
 		ext	d0
 		add	d0,sv_Angle
 		andi	#$1fe,sv_Angle
-		move	#2,sv_SzumTime
+		move	#$8002,sv_SzumTime			; flash red (N bit) + set szum time to 2
 		rts
 
 
@@ -2422,7 +2441,7 @@ rm_BolterUsed:	tst	2(a1)
 		neg	d0
 		andi	#$1fe,d0
 		move	d0,sv_LastMove+6
-		move	#2,sv_szumtime
+		move	#$8002,sv_SzumTime			; flash red (N bit) + set szum time to 2
 		addi	#1,sv_Energy		;loose energy
 		bsr	EXCITE			;quicker beat
 
@@ -2437,10 +2456,10 @@ PrepareStruct:	move	sv_PosX,6(a1)		;set object structure
 		lea		$80(a1),a2
 		move	#256,d6
 		sub		sv_angle,d6
-	bsr	GetRandom
-	andi	#6,d0
-	ext	d0
-	add	d0,d6
+		bsr		GetRandom
+		andi	#6,d0
+		ext		d0
+		add		d0,d6
 		andi	#$1fe,d6
 		moveq	#0,d0
 ;		move	#600,d1			;vector length
@@ -2504,7 +2523,7 @@ rm_FlamerUsed:	tst	2(a1)
 		andi	#$1fe,d0
 		move	d0,sv_LastMove+6
 		addi	#5,sv_Energy		;loose energy
-		move	#2,sv_szumtime
+		move	#$8002,sv_SzumTime			; flash red (N bit) + set szum time to 2
 		bsr	EXCITE			;quicker beat
 
 		bra	RMB_End
@@ -2562,7 +2581,7 @@ rm_LauncherUsed:
 		andi	#$1fe,d0
 		move	d0,sv_LastMove+6
 		addi	#5,sv_Energy		;loose energy
-		move	#2,sv_szumtime
+		move	#$8002,sv_SzumTime			; flash red (N bit) + set szum time to 2
 		bsr	EXCITE			;quicker beat
 
 		bra	RMB_End
@@ -5590,20 +5609,23 @@ sc_EnemyCont:
 		; full=0. Half up=0 and half down=-32. This means that this points to the bottom of the texture for up, and top for down.
 
 		move	#0,d7					; by default no mask -> small object
-		move	d2,-(sp)				; up/down/norm coll. flag. 0-full, 8000-up, c000-down. Others: middle
-		beq.s	.sc_full
-		cmpi	#$8000,d2
-		beq.s	.sc_top
-		cmpi	#$c000,d2
-		bne.s	.sc_cont
-		move	#%0011,d7				; bottom mask
-		bra.s	.sc_fullHalf
-.sc_full: move	#%1111,d7				; full mask
-		bra.s	.sc_fullHalf
-.sc_top: move	#%1100,d7				; up mask
-.sc_fullHalf:
 		divu	#65,d4
 		swap	d4						; this is 0 (full collumn or top texture) or 32 (half one bottom)
+		move	d2,-(sp)				; up/down/norm coll. flag. 0-full, 8000-up, c000-down. Others: middle
+		beq.s	.sc_full
+		cmpi	#$8000,d2				; filter out any non-halves
+		beq.s	.sc_half
+		cmpi	#$c000,d2
+		bne.s	.sc_cont
+.sc_half:
+		tst		d4						; 0 (top texture) or 32 (half one bottom)
+		beq.s	.sc_top
+		move	#%0011,d7				; bottom mask
+		bra.s	.sc_fullHalf
+.sc_top: move	#%1100,d7				; top mask
+		bra.s	.sc_fullHalf
+.sc_full: move	#%1111,d7				; full mask
+.sc_fullHalf:
 		neg		d4
 		addi	#32,d4
 		sub		d5,d4					; this points to the trasparent mask row w.r.t. a3
@@ -5740,12 +5762,12 @@ sc_ColLoopHalf:
 		lsl		#3,d5
 		move.l	lc_F2_WallCodeTrans(pc),a1	; transparent code tab
 		lea		(a1,d5.w),a1
-		move.l	a1,-(sp)				; pointer to upper half of wall drawing code for this collumn
+		move.l	a1,-(sp)					; pointer to upper half of wall drawing code for this collumn
 
 		move	lc_collumnMaskOfs(a6),d5
-		lea		(a3,d5.w),a4	; mask row in textures
+		lea		(a3,d5.w),a4				; mask row in textures
 		move	lc_collumnMask(a6),-(sp)	;AND mask: %1100 up, %0011 down
-		move.l	lc_zeroPtr(a6),a6		;zero wall table
+		move.l	lc_zeroPtr(a6),a6			;zero wall table
 .sc_ColLoop:
 		add		d3,d2			;interpolation
 		addx	d1,d4
@@ -6104,6 +6126,7 @@ lc_drunk:				dc.w	0				; 0 - all OK, >0 time left drunk
 lc_momentum:			dc.w	0				; 0 - not moving, >0 moving momentum which builds up to 255 while moving
 lc_kickback:			dc.w	0				; additional crosshair kickback effect strength after shooting
 lc_size:				dc.w	6,6				; screen size: 0:(2..6) actual size, 2:(2..9) user size including stretched
+lc_StrFlag:				dc.w	0,0				; 0-no stretch, 1-stretch. 0: current screen, 2: previous
 lc_floor:				dc.w	1				; show floors: 0-off,  1-floors on
 lc_screen:				dc.l	screen1,screen2	; 0: screen to draw on (buffer), 4: screen being shown
 lc_scrOffset:			dc.l	[sv_Upoffset*row*5]+sv_Leftoffset		;view start
@@ -6129,6 +6152,8 @@ lc_ceilingTexture:		dc.l	0				; ceiling texture address
 lc_transMarkerTabAddr:	dc.l	0				; address of the transparent marker tab (behind the chunky buffer)
 lc_scrollBitsLeft:		dc.w	0				; how many bits of the scroll left on screen (0..272)
 lc_doFlash:				dc.w	0				; >0 - flash screen
+lc_flashColor:			dc.w	0				; flash colour. $0f0 green, $f00 red
+lc_flashColorSub:		dc.w	0				; flash colour decrease value. E.g. $010 will decrease the green 1 per frame.
 lc_doPikaj:				dc.w	0,55			; beep when energy low. 0.w beeb on flag, 2.w time between beeps
 lc_fatigue:				dc.w	3				; fatigue when getting hit etc. 2 - normal, 8 - max
 lc_hbFrameNr:			dc.w	0				; heart beat current frame number (0..49)
@@ -6162,6 +6187,8 @@ lc_details:				dc.w	0				; 2-low,	 1-medium,  0-high
 lc_difficulty:			dc.w	0				; 0-difficult(normal), 1-easy
 lc_collumnMask:			dc.w	0				; AND mask for collumn drawing loop
 lc_collumnMaskOfs:		dc.w	0				; mask value offset for collumn drawing loop
+lc_requestTab:			dc.w	0,6,0,0,0		;0 quit, 2 window size key pressed, 4 c2p preference changed (blit_use), 6 RMB pressed (RMB_flag), 8 Rf2
+						dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys (up/down etc.)
 
 ENDOFF
 
@@ -6667,7 +6694,8 @@ fl_DCodeEnd:
 ;Copy SVGA format to Amiga screen (blitter) - by Kane/SCT, 07.02.1994
 ; this is a blitter based chunky 2 planar
 c2p_Copy:
-		tst		sv_StrFlag							; blitter can only be used on a non-stretched screen
+		lea		lc_variables(pc),a6
+		tst		lc_StrFlag(a6)							; blitter can only be used on a non-stretched screen
  		bne		c2p_CPU_Stretch
 
 		move	lc_variables+lc_c2pType(pc),d0		; C2P: 0 - blitter, 1 - CPU
@@ -7600,8 +7628,8 @@ NewLev2:
 
 		
 InputKeyParse:
-		lea		cc_RequestTab,a1
 		lea		lc_variables(pc),a6
+		lea		lc_requestTab(a6),a1
 		move	d0,-(sp)
 
 		tst		lc_EndLevel(a6)		;if killed
@@ -7788,7 +7816,7 @@ cc_b:
 		bne.s	cc_cache
 		tst		lc_fpsOn(a6)
 		beq.s	cc_NoKey
-		tst		sv_StrFlag			; C2P can only be changed on a non-stretched screen
+		tst		lc_StrFlag(a6)			; C2P can only be changed on a non-stretched screen
 		bne.s	cc_NoKey
 		move	#1,4(a1)		; cc_RequestTab+4 - notify the main loop that the change happened 
 		eori	#1,lc_c2pTypePreferred(a6)		; chenge preferred C2P mode
@@ -7854,7 +7882,7 @@ cc_KeyTab:	dc.w	$67,$65,$61,$63,$df,$dd,$db
 
 ;-------------------------------------------------------------------
 cc_FixKeys:	
-		lea		cc_RequestTab,a1
+		lea		lc_requestTab(a6),a1
 		lea		lc_variables+lc_moveTab(pc),a2		;fix move keys pressed
 		move	10(a1),d1		;up
 		or		20(a1),d1
@@ -8334,11 +8362,11 @@ br_BumpWall:	;>0, ^128, <256, v378 (degrees of rotation)
 		move	d5,sv_LastMove+4
 		move	sv_LastMove+2,d5
 		addi	#256,d5			;turn 180 degrees
-		sub	d5,d4
+		sub		d5,d4
 		andi	#$1fe,d4
 		move	d4,sv_LastMove+6
 		;move	#2,sv_SzumTime
-		move	#3,sv_SzumTime
+		move	#$0003,sv_SzumTime		; clear the N bit to indicate that screen shall not flash red
 		; do not lose energy on bumping walls
 		;tst	sv_difficult
 		;bne.s	.NieOd
@@ -9109,7 +9137,7 @@ DebugCntRedrawArea:				; in: a6 - lc_variables
 		rts
 
 DebugCntShow:
-		tst		sv_StrFlag
+		tst		lc_StrFlag(a6)
 		beq		.nostr
 		bsr		DebugCntClearArea		; if screen stretched then clear the area
 .nostr:	
@@ -10167,6 +10195,8 @@ Take_Items:
 		bpl.w	ti_NoItem
 
 		andi.b	#$c0,6(a1,d0.w)		;delete item from map
+		move	#$0f0,lc_flashColor(a6)	; green
+		move	#$020,lc_flashColorSub(a6)
 		move	#5,lc_doFlash(a6)	;flash screen
 
 		lea		sv_ITEMS+4,a2
@@ -10597,20 +10627,6 @@ MakeCodeSolid:
 		cmpi	#maxWallHeigth,d7
 		bne.L	.mc_loopMore		; iterate through all wall sizes (cells)
 
-;	move.l	a2,DEBUGDATA
-
-		; pre-fill the interpolation table with a large value
-; 		move.l	lc_F1_WallCode(pc),a0		; fast code tab
-; 		move.l	[(maxWallHeigth-1)*4](a0),d0	; last entry
-; 		move.l	lc_F2_Htab(pc),a1			; slow Htab
-; 		move.l	[(maxWallHeigth-1)*4](a1),d1	; last entry
-; 		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
-;  		move	#maxWallHeigth*2-1,d2
-; .prefill:
-; 		move.l	d1,4*700(a4)	; Htab entry for cache procedure
-; 		move.l	d0,(a4)+		;Y draw code jump address
-; 		dbf		d2,.prefill
-
 		movem.l	(sp)+,ALL
 		rts
 
@@ -10822,8 +10838,6 @@ MakeCodeTransparent:
 		addq	#1,d7
 		cmpi	#maxWallHeigth,d7
 		bne.L	.mc_loopMore		; iterate through all wall sizes (cells)
-
-;	move.l	a2,DEBUGDATA
 
 		; pre-fill the interpolation table with a large value
 		move.l	lc_F1_WallCode(pc),a0		; full code tab
@@ -11295,7 +11309,7 @@ sv_SetWindowSize:
 		add		d0,d0
 		add		d0,d0			;max 24
 		move	d0,sv_ViewWidth			; in bytes (pixels/8)
-		tst		sv_StrFlag
+		tst		lc_StrFlag(a6)
 		beq.s	sv_SWS1
 		move	#128,d1			; this causes screen distortion as it should be different for "size 4" which is used while stretching
 		bra.s	sv_SWS2
@@ -11353,11 +11367,11 @@ sv_SWS2:
 		move.b	#$c9,cop_cont		;panel pos
 		move.b	#$ca,cop_cont2
 		move.b	#$f2,cop_cont2+8
-		tst		sv_StrFlag			; is current screen stretched?
+		tst		lc_StrFlag(a6)			; is current screen stretched?
 		beq		sv_SWS7				; no - omit this section
 
 ; -------- handle stretched screen ----------------
-		move	#1,sv_StrFlag+2		; mark last screen as stretched
+		move	#1,lc_StrFlag+2(a6)		; mark last screen as stretched
  		VBLANKR 2
 		; wait for any blitter c2p to finish
 .waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
@@ -11537,9 +11551,10 @@ clearScreenCPUWindow:
 
 ; -------- handle non-stretched screen ----------------
 ; the code enters here if the current screen is not stretched
-sv_SWS7:tst		sv_StrFlag+2		; last was stretched?
+sv_SWS7:
+		tst		lc_StrFlag+2(a6)		; last was stretched?
 		beq		sv_SWS9				; no - omit this section
-		move	#0,sv_StrFlag+2
+		clr		lc_StrFlag+2(a6)
 
 		lea		CUSTOM,a0
 		VBLANK
@@ -11596,7 +11611,7 @@ sv_SWS9:
 sv_SWS5:
 		lea		cop_ACTUAL,a1
 		move.l	#copper1_std,d1				; cop_screen is the usual non-stretched copperlist
-		tst		sv_StrFlag
+		tst		lc_StrFlag(a6)
 		beq.s	sv_SWS3
 		move.l	#copper2_str,d1				; if screen stretched then use this one
 sv_SWS3:
@@ -11979,7 +11994,7 @@ sv_WallHeigth:	dc.w	450			;max 500 - percent
 ;---------------DATA AREA:
 ;sv_ChunkyBuffer:	dc.l	0		; SVGA (chunky) screen - in chip for blitter c2p, otherwise in fast
 
-sv_StrFlag:	dc.w	0,0			;0-no stretch, 1-stretch
+;sv_StrFlag:	dc.w	0,0			;0-no stretch, 1-stretch
 sv_MapPos:	dc.w	0			;user offset on map
 sv_SzumTime:	dc.w	0
 sc_TextAddr:	dc.l	0,0,0			;adr 1,2,flag
@@ -12031,9 +12046,9 @@ sv_LastMove:	dc.w	0,0,0,0			;vec len, angle, bump l,a
 sv_LastPos:	dc.w	0,0			;last X,Y pos
 ;cc_MoveTab:	dc.w	0,0,0,0,0,0,0		;(boolean) key pressed: ;0 up, 2 dn, 4 turn_left, 6 turn_right, 8 left, 10 right, 12 fire
 
-cc_RequestTab:	dc.w	0,6,0,0,0		; 5*2 = 10 bytes
+;cc_RequestTab:	dc.w	0,6,0,0,0		; 5*2 = 10 bytes
 ;0 quit, 2 window size key pressed, 4 c2p preference changed (blit_use), 6 RMB pressed (RMB_flag), 8 Rf2
-		dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys (up/down etc.)
+;		dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys (up/down etc.)
 
 ;oc_HitPos:	dc.w	0,0,0,0, 0,0,0,0	;flag,Xpos,Ypos,Offset
 
@@ -12095,6 +12110,7 @@ lc_items_end:
 STR_DISTURBANCES:	equ		52				; byte, on-creen disturbaces, 0=on, 1=off
 STR_GODMODE:		equ		53				; byte, god mode 0=off, 1=on (hex $35 in Structure)
 STR_CROSSHAIRS:		equ		54				; 0=on, 1=off
+STR_USERSCRSIZE:	equ		55
 
 ; --------- FAST 1 offsets -------------
 RSRESET

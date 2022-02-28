@@ -53,11 +53,11 @@ _expmem		dc.l	_expmem_size		;ws_ExpMem
 		dc.w	0			;ws_kickcrc
 		dc.w	slv_config-_base	;ws_config
 
-_name		dc.b	"Citadel",0
-_copy		dc.b	"1995 VD",0
+_name		dc.b	"Citadel (Remonstered)",0
+_copy		dc.b	"1995, 2022 VD",0
 _info		
-		dc.b	"adapted by asman",10,10
-		dc.b	"previous version installed & fixed:",10
+		dc.b	"Adapted by Asman",10,10
+		dc.b	"Previous version installed & fixed:",10
 		dc.b	"Psygore, Boread Seal, JOTD, Wepl",10,10
 
 		dc.b	"V1.3 "
@@ -65,7 +65,7 @@ _info
 	INCBIN	"T:date"
 		dc.b	0
 
-slv_config	dc.b	"C1:B:enable unlimited energy",0
+slv_config	dc.b	"C1:B:Enable Unlimited Energy",0
 		EVEN
 
 _expmem_size	=	$80000*2+$1000
