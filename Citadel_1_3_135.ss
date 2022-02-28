@@ -11,7 +11,7 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220226
+VERSION: 	SET		$220228
 BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
@@ -69,7 +69,8 @@ LMB:	MACRO
 		ENDM
 SCROLL:		MACRO		; \1 - offset of text
 		movem.l	d0/a1,-(sp)
-		move	sv_TextOffsets+[[\1]*2],d0
+		move.l	lc_F2_TextOffsets(pc),a1
+		move	[[\1]*2](a1),d0
 		lea		sc_Text,a1
 		lea		(a1,d0.w),a1
 		move.l	a1,sc_TextAddr+4
@@ -78,7 +79,7 @@ SCROLL:		MACRO		; \1 - offset of text
 SCROLL1:	MACRO			; d0 - offset of text
 		movem.l	d0/a1,-(sp)
 		add		d0,d0
-		lea		sv_TextOffsets,a1
+		move.l	lc_F2_TextOffsets(pc),a1
 		move	(a1,d0.w),d0
 		lea		sc_Text,a1
 		lea		(a1,d0.w),a1
@@ -174,14 +175,6 @@ ENDM
 		ORG		BASEF1+CODESTART
 		LOAD	*
 s:
-; 	move.b	(a1)+,d7
-; 	move.b	(a1),40(a2)
-; 	move.b	(a1),d7
-; 	beq.s	.sss
-; 	move.b	d7,40(a2)
-; .sss:
-; 	nop
-
 		IFEQ	IS_EXE
 ;		move	#0,DEBUGDATA
 		bra.s	.s1
@@ -314,7 +307,7 @@ start:
 		move	4(a1),lc_details(a6)
 		move	6(a1),sv_Energy
 		move	8(a1),sv_Glowica
-		move	50(a1),sv_Difficult
+		move	50(a1),lc_difficulty(a6)
 		move	#-10,16(a1)		; handgun ammo
 		move	#-10,22(a1)		; shotgun ammo
 		move	#-30,28(a1)		; machine gun ammo
@@ -345,12 +338,41 @@ start:
 		bra.s	.fix_s
 .fe:
 
-		lea		sv_sinus,a1					; copy sinus to fast mem
-		move.l	lc_F2_Sinus(pc),a2
-		moveq	#($280/8)-1,d0
-.cpSin:	move.l	(a1)+,(a2)+
+		lea		sc_Text,a1					; copy sinus to fast mem
+		move.l	lc_F2_Text(pc),a2
+		move	#(TEXT_SIZE/16)-1,d0
+.cpTxt:	REPT 4
 		move.l	(a1)+,(a2)+
+		ENDR
+		dbf		d0,.cpTxt
+
+		lea		sv_bomba,a1					; copy sinus to fast mem
+		move.l	lc_F2_Bomba(pc),a2
+		move	#(BOMB_SIZE/4)-1,d0
+.cpBmb:	move.l	(a1)+,(a2)+
+		dbf		d0,.cpBmb
+
+		lea		sv_ChaosTab,a1					; copy chaos b, c, numbers, fonts, sinus to fast mem
+		move.l	lc_F2_ChaosTab(pc),a2
+		move	#(TABLES_SIZE/4),d0
+.cpSin:	move.l	(a1)+,(a2)+
 		dbf		d0,.cpSin
+
+		lea		sv_RotTable,a2
+		move.l	lc_F2_RotTable(pc),a3	; move rotation table to fast
+		move	#($4200/32)-1,d0
+.cpRot:	REPT	8
+		move.l	(a2)+,(a3)+
+		ENDR
+		dbf		d0,.cpRot
+
+		lea		sv_MAP,a1					; copy MAP to fast mem
+		move.l	lc_F2_Map(pc),a2
+		move	#(MAP_FULL_SIZE/32)-1,d0
+.cpMap:	REPT	8
+		move.l	(a1)+,(a2)+
+		ENDR
+		dbf		d0,.cpMap
 
 		move.l	lc_F2_UserMap(pc),a1		;clr user map
 		moveq	#127,d0
@@ -361,7 +383,7 @@ start:
 		move.l	#0,sv_cards+8
 		move.l	#0,sv_cards+14
 
-		lea		sv_LevelData,a1			; set player starting position based on the one in the new map
+		move.l	lc_F2_LevelData(pc),a1			; set player starting position based on the one in the new map
 		move	16(a1),d0
 		mulu	#1024,d0
 		addi	#512,d0
@@ -372,12 +394,13 @@ start:
 		move	d0,sv_PosY
 		move	20(a1),sv_Angle
 
+		lea		lc_variables(pc),a6
 		move	sv_Energy,d0
 		neg		d0
 		cmpi	#999,d0			; limit HP to 999 - just in case as it should never be more anyway
 		bmi.s	.ne1
 		move	#999,d0
-.ne1:	tst		sv_DIFFICULT		;ustaw poziom trudnosci
+.ne1:	tst		lc_difficulty(a6)		;ustaw poziom trudnosci
 		beq.s	.ne2			; 0 = hard (default)
 		cmpi	#150,d0			; on easy start with no less than 150 energy
 		bpl.s	.ne2
@@ -385,11 +408,11 @@ start:
 .ne2:	neg	d0
 		move	d0,sv_Energy
 
-		tst		sv_DIFFICULT		;ustaw poziom trudnosci
+		tst		lc_difficulty(a6)		;ustaw poziom trudnosci
 		beq.s	.sv_DIF			; 0 = hard (default)
 	; easy settings
-		lea		sv_enemyDATA,a1
-		lea		sv_MAP,a2
+		move.l	lc_F2_EnemyData(pc),a1
+		move.l	lc_F2_Map(pc),a2
 		moveq	#62,d7
 .sv_UsunEn:	move	(a1),d0			;usun co 4 przeciwnika
 		beq.s	.sv_u1
@@ -408,7 +431,7 @@ start:
 .sv_u1:	lea	16*4(a1),a1
 		dbf	d7,.sv_UsunEn
 
-		lea		sv_levelDATA,a1
+		move.l	lc_F2_LevelData(pc),a1
 		move	8(a1),d0		;EASY agresja na 1/3 (was: 4/5)
 		mulu	#1,d0
 		divu	#3,d0
@@ -421,7 +444,7 @@ start:
 
 	; difficult settings
 .sv_DIF:
-		lea		sv_levelDATA,a1
+		move.l	lc_F2_LevelData(pc),a1
 		move	8(a1),d0		;DIFFICULT agresja na 50% (was: 4/5)
 		lsr		#1,d0
 		move	d0,8(a1)
@@ -787,7 +810,7 @@ sv_startFrame:
 		bsr		OpenCloseDoors
 		bsr		Take_Items_pass
 		bsr		Test_Counters
-		bsr		Move_Enemy
+		bsr		Move_Enemy			; this uses a6
 	CNTSTOP 4
 
 		lea		lc_variables(pc),a6
@@ -1213,7 +1236,7 @@ rm_HandUsed:
 		bpl.s	.rm_FindDir
 		andi	#3,d1
 
-		lea		sv_Map,a1
+		move.l	lc_F2_Map(pc),a1
 		addi	sv_MapPos,d1		;your map location
 		move.b	(a1,d1.w),d0		;wall you're facing
 		bne		rm_FacingWall
@@ -1327,7 +1350,7 @@ rm_ServeSwitch:
 		SOUND	2,1,63
 		andi.b	#%11000001,(a1,d1.w)
 		ori.b	d0,(a1,d1.w)		;switch in!
-		lea		sv_SwitchData,a2	;command tab
+		move.l	lc_F2_SwitchData(pc),a2	;command tab
 .rm_SeekPos:	move	(a2)+,d0
 		cmpi	#-1,d0
 		bne.s	.rm_SeekPos
@@ -1470,7 +1493,7 @@ rm_CardExists:	move	sv_Angle,d0
 		subi	#128,d0
 		bpl.s	.rm_FindDir
 
-		lea	sv_Map,a1
+		move.l	lc_F2_Map(pc),a1
 		move	sv_MapPos,d0		;your map location
 		move	d0,d2
 		move.b	4(a1,d0.w),d0		;get slots
@@ -1488,7 +1511,7 @@ rm_CardExists:	move	sv_Angle,d0
 rm_UsedSlot:	SCROLL	58			;full slot
 		bra.w	rm_CardEnd
 rm_FreeSlot:
-		lea	sv_SwitchData,a2	;command tab
+		move.l	lc_F2_SwitchData(pc),a2	;command tab
 		moveq	#0,d4
 		move	sv_Items,d4
 		divu	#6,d4
@@ -1678,7 +1701,7 @@ rm_HandGunUsed:					; input: d0 = weapon index: 0 (hand), 6 (handgun) etc.
 		move.b	#1,(a1)
 
 		lea		lc_HitPos(pc),a2
-		lea		sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		moveq	#19,d7			;up to 8000
 .ChkCollision:	bsr.s	Object_Collision	;seek collision
 		bmi.s	rm_beczka1
@@ -1922,7 +1945,7 @@ oc_PlayerNot:	move	10(a1),d1		;Enemy hit?
 		move.b	7(a3,d0.w),d0
 		beq.s	.oc_e9
 
-		lea		sv_EnemyData,a4		;EnemyTab
+		move.l	lc_F2_EnemyData(pc),a4		;EnemyTab
 		andi	#$ff,d0
 		lsl		#4,d0
 		lea		(a4,d0.w),a4
@@ -1949,7 +1972,9 @@ oc_NothingHit:	dbf	d6,oc_LOOP
 oc_AddTab:	dc.w	0,8,-8,512,-512,512-8,512+8,-512-8,-512+8
 
 oc_EnemyHit:	move	#3,-(sp)
+		move.l	a6,-(sp)		; this is used in enemyHitServe
 		bsr		EnemyHitServe
+		move.l	(sp)+,a6
 		bra.s	oc_CheckError
 oc_MeHit: move	#2,-(sp)		;if player hit
 		bsr		oc_PlayerHit
@@ -2037,6 +2062,7 @@ oc_bla:		move	(sp)+,d0
 ; Check what to do when enemy hit
 ;a1 - object struct, a4 - enemy struct, a2,a3,d6,d7 - don't touch
 EnemyHitServe:
+		move.l	lc_F2_LevelData(pc),a6
 ;		cmpi.b	#1,12(a4)		;not if hit,kill,burn.
 ;		beq.s	eh_End
 		cmpi.b	#2,12(a4)
@@ -2046,10 +2072,12 @@ EnemyHitServe:
 
 		btst.b	#0,1(a4)
 		beq.s	.me01
-		move.b	sv_LevelData+4,d2		;czy czuly na to?
+		move.b	4(a6),d2		;czy czuly na to?
 		bra.s	.me02
-.me01:		move.b	sv_LevelData+10,d2
-.me02:		move.b	(a1),d0			;hit by what?
+.me01:		
+		move.b	10(a6),d2
+.me02:		
+		move.b	(a1),d0			;hit by what?
 		cmpi.b	#1,d0			;pocisk
 		bne.s	.eh1
 		btst	#0,d2
@@ -2300,7 +2328,7 @@ rm_AmmoLoop:	move	d7,-(sp)
 		move.b	#1,(a1)
 
 		lea		lc_HitPos(pc),a2
-		lea	sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		moveq	#24,d7			;up to 10000
 .ChkCollision:	bsr.w	Object_Collision	;seek collision
 		bmi.s	rm_beczka2
@@ -2372,7 +2400,7 @@ rm_BolterUsed:	tst	2(a1)
 		move	#600/8,d1		;vector length
 		bsr.s	PrepareStruct
 		lea		lc_HitPos(pc),a2
-		lea	sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		bsr.w	Object_Collision	;seek collision
 		bne.s	.FirstHit		;if hit first time
 
@@ -2450,7 +2478,7 @@ rm_FlamerUsed:	tst	2(a1)
 		move	#400/8,d1		;vector length
 		bsr.w	PrepareStruct
 		lea		lc_HitPos(pc),a2
-		lea	sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		bsr.w	Object_Collision	;seek collision
 		bmi.s	.rm_beczka3
 		bne.s	.FirstHit		;if hit first time
@@ -2516,7 +2544,7 @@ rm_LauncherUsed:
 		move	#600/8,d1		;vector length
 		bsr.w	PrepareStruct
 		lea		lc_HitPos(pc),a2
-		lea	sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		bsr.w	Object_Collision	;seek collision
 		bne.s	.FirstHit		;if hit first time
 
@@ -2545,7 +2573,7 @@ rm_LauncherUsed:
 Anim_Objects:	
 ;		movem.l	ALL,-(sp)
 		move.l	lc_F2_ObjectTab(pc),a1
-		lea		sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		moveq	#29,d7
 ao_Seek: move.b	(a1),d0
 		beq.s	ao_StillSeek
@@ -2777,8 +2805,9 @@ ro_DirTab:
 ;-------------------------------------------------------------------
 me_Enemies:	ds.b	256
 Move_Enemy:
-		lea		sv_MAP,a1
-		lea		sv_EnemyData,a2		;EnemyTab
+		move.l	lc_F2_Map(pc),a1
+		move.l	lc_F2_LevelData(pc),a6
+		move.l	lc_F2_EnemyData(pc),a2		;EnemyTab
 		lea		me_Enemies(pc),a3
 		move	sv_MapPos,d0	;your offset
 		subi	#[12*512]+[12*8]+1,d0
@@ -2839,9 +2868,9 @@ me_walk:
 		move	d0,d4
 		btst.b	#0,1(a3)
 		beq.s	.me01
-		add		sv_LevelData+6,d4
+		add		6(a6),d4
 		bra.s	.me02
-.me01:	add		sv_LevelData+12,d4
+.me01:	add		12(a6),d4
 .me02:	cmp		d1,d4
 ;		bpl.w	me_w4			;not to player or shoot
 		bpl.s	me_ShootIt		;not to player or shoot
@@ -2863,37 +2892,37 @@ me_angletab:
 ;dc.w	138,150,160,170,184,198,216,256
 
 me_ShootIt:				;only shoot
-	cmpi	#5000,d1
-	bmi.s	me_w4
-	ext.l	d2
-	lsl.l	#4,d2
-	divs	d0,d2			;(x*16)/r
-	add	d2,d2
-	move	me_angletab+32(pc,d2),d2
-	tst	d3
-	bpl.s	me_a11
-	neg	d2
+		cmpi	#5000,d1
+		bmi.s	me_w4
+		ext.l	d2
+		lsl.l	#4,d2
+		divs	d0,d2			;(x*16)/r
+		add	d2,d2
+		move	me_angletab+32(pc,d2),d2
+		tst	d3
+		bpl.s	me_a11
+		neg	d2
 me_a11:	addi	#256,d2
-	andi	#$1fe,d2
-	move	d2,8(a3)		;new angle - to player
-	bsr	CanShoot
-	bne.s	me_w4
-	move.b	#4,12(a3)		;shoot on
-	move.b	#60,13(a3)
-	bra	me_Found
+		andi	#$1fe,d2
+		move	d2,8(a3)		;new angle - to player
+		bsr	CanShoot
+		bne.s	me_w4
+		move.b	#4,12(a3)		;shoot on
+		move.b	#60,13(a3)
+		bra	me_Found
 
 
-me_a1:		addi	#256,d2
+me_a1:	addi	#256,d2
 		andi	#$1fe,d2
 		move	d2,8(a3)		;new angle - to player
 
-me_w3:		move	d0,d2			;DIST en-pl in d0
+me_w3:	move	d0,d2			;DIST en-pl in d0
 		btst.b	#0,1(a3)
 		beq.s	.me03
-		add	sv_LevelData+8,d2	;prawd. delta
+		add		8(a6),d2	;prawd. delta
 		bra.s	.me04
-.me03:		add	sv_LevelData+14,d2
-.me04:		divu	d2,d1
+.me03:	add		14(a6),d2
+.me04:	divu	d2,d1
 		swap	d1			;reszta
 		cmp	d1,d0
 		bpl.s	me_w4
@@ -3093,16 +3122,16 @@ me_killed:	cmpi.b	#72,13(a3)
 		move	#0,(a3)
 		andi	#3,d1
 		move.l	a2,-(sp)
-		lea		sv_LevelData+5,a2
+		lea		5(a6),a2
 		cmpi	#2,d1
 		bne.s	.m2
 		ori.b	#64+32,5(a1,d0.w)	;trup2
-		lea		sv_LevelData+11,a2
+		lea		11(a6),a2
 
 .m2:	move	d0,d2			; Dead enemy item drops
 		bsr		GetRandom
 		andi	#$ff,d0
-		tst		sv_DIFFICULT
+		move	lc_variables+lc_difficulty(pc),d1
 		beq.s	.m2_DIF				; 0 - hard (default)
 		cmpi	#100,d0				; easy: 120/256 % chance for drop
 		bpl.s	.m3
@@ -3506,15 +3535,15 @@ cs_ChkDoors2:	andi	#$3e,d4
 .m2:		rts
 
 ;------------------------------------------------------------------------
-;a3 - enemy, a1 - map
+;a3 - enemy, a1 - map, a6 - leveldata
 es_SND:		dc.b	0,7,25,24,5,6,3,3
 es_EnemyShoot:
 		movem.l	ALL,-(sp)
 		moveq	#0,d3
-		move.b	sv_LEVELDATA+5,d3
+		move.b	5(a6),d3
 		btst.b	#0,1(a3)
 		bne.s	.me01
-		move.b	sv_LEVELDATA+11,d3		;if enemy 2
+		move.b	11(a6),d3		;if enemy 2
 .me01:		move.b	es_SND(pc,d3.w),d2
 		movem	4(a3),d0/d1
 		SOUND3	4				;gives dist in d4
@@ -3615,7 +3644,7 @@ es_PrepStruct0:	move.l	a1,-(sp)
 		add	d1,d0			;map pos
 		move	d0,10(a1)
 		lea		lc_HitPos(pc),a2
-		lea	sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		rts
 
 ;------------------------------------------------------------------------
@@ -3687,7 +3716,7 @@ es_PrepStruct:	move.l	a1,-(sp)
 		add	d1,d0			;map pos
 		move	d0,10(a1)
 		lea		lc_HitPos(pc),a2
-		lea	sv_MAP,a3
+		move.l	lc_F2_Map(pc),a3
 		bsr	Object_Collision	;seek collision
 		rts
 
@@ -3911,11 +3940,11 @@ sv_DA3:	move	d0,2(a1)
 		rts
 
 ;-------------------------------------------------------------------
-;Main draw walls & objects loop - scaning from sv_MAP. No input.
+;Main draw walls & objects loop - scaning from map. No input.
 DrawAll:
 		movem.l	ALL,-(sp)
 		lea		lc_variables(pc),a6
-		lea		sv_MAP,a0
+		move.l	lc_F2_Map(pc),a0
 		move.l	lc_F2_Sinus(pc),a1
 		lea		$80(a1),a2		;cosinus
 		move.l	lc_F2_RotTable(pc),a3
@@ -3992,7 +4021,7 @@ dr_checkEnemy:
 		clr		sv_SecondEnemy
 		move.b	7(a0,d5.w),d4		;get enemy in front of collumn
 		beq.s	dr_checkITEM
-		lea		sv_EnemyData,a5		;EnemyTab
+		move.l	lc_F2_EnemyData(pc),a5		;EnemyTab
 		andi	#$ff,d4
 		lsl		#4,d4
 		move.b	1(a5,d4.w),d0
@@ -4388,7 +4417,7 @@ dr_SOEnd:
 
 dr_DrawEnemy:	
 		movem.l	ALL,-(sp)
-		lea	sv_EnemyData,a4		;EnemyTab
+		move.l	lc_F2_EnemyData(pc),a4		;EnemyTab
 ;		andi	#$ff,d4
 ;		lsl	#4,d4
 		lea		(a4,d4.w),a4		;enemy structure
@@ -4753,7 +4782,7 @@ sm_Wait2:	move	#0,sv_MapOn
 ;-------------------------------------------------------------------
 ; draw user map on screen
 DrawUserMap:
-		lea		sv_Map,a1
+		move.l	lc_F2_Map(pc),a1
 		move.l	lc_F2_UserMap(pc),a2
 		lea		Screen1+[sv_Upoffset*5*row]+sv_LeftOffset,a3
 		move	sv_SquarePos,d0			;X pos
@@ -4926,12 +4955,11 @@ du_c3:		andi.b	#%11100111,400+80(a3)
 ;-------------------------------------------------------------------
 ; Update areas shown on user map
 UpdateUserMap:
-		lea		sv_MAP,a1
+		move.l	lc_F2_Map(pc),a1
 		move.l	lc_F2_UserMap(pc),a2
 		move	sv_SquarePos,d0			;X pos
 		move	sv_SquarePos+2,d1		;Y
 
-;		move	sv_MapPos,d7			;map offset
 		move	d0,d2
 		move	d1,d7
 		lsl		#7,d7
@@ -5020,8 +5048,9 @@ um_Update:
 ;-------------------------------------------------------------------
 SetLocation:
 		movem.l	d0/a1,-(sp)
-		move	sv_TextOffsets+74*2,d0
-		lea		sc_Text,a1
+		move.l	lc_F2_TextOffsets(pc),a1
+		move	74*2(a1),d0
+		move.l	lc_F2_Text(pc),a1
 		lea		15(a1,d0.w),a1
 		moveq	#0,d0
 		move	sv_Squarepos,d0
@@ -5263,27 +5292,37 @@ sh_Dok:	sub		d5,d4
 		move	d4,d3			;C
 		move	#0,d4
 		divu	d2,d4			;R
-		moveq	#0,d6
-		moveq	#0,d1			;wybrana
 
-		cmpi	#470,d2		; just in case limit to max the table can handle to protect from corner cases
+; 		cmpi	#470,d2		; just in case limit to max the table can handle to protect from corner cases
+; 		bmi.s	.nc
+; 		move	#470,d2		; theoretically can be maxWallHeigth*2=700 but max practical value is 466
+; .nc:	subq	#1,d2
+		cmpi	#maxWallHeigth*2,d2		; just in case limit to max the table can handle to protect from corner cases
 		bmi.s	.nc
-		move	#470,d2		; theoretically can be maxWallHeigth*2=700 but max practical value is 466
+		move	#maxWallHeigth*2,d2		; theoretically can be maxWallHeigth*2=700 but max practical value is 466
 .nc:	subq	#1,d2
 
 		; caculate Y interpolation table
-		move	d5,d7
-		move.l	lc_F1_WallCode(pc),a0		; fast code tab
-		move.l	lc_F2_Htab(pc),a1			; slow Htab
+		move.l	lc_F1_WallCode(pc),a0		; code tab
+;		move.l	lc_F2_Htab(pc),a1			; slow Htab
+;		move.l	lc_F1_WallCode(pc),a1		; transparent code tab
+		move.l	lc_F2_WallCodeTrans(pc),a1		; transparent code tab
 		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
+		moveq	#0,d6
+		moveq	#0,d1			;wybrana
+		move	d5,d7
 		add		d4,d6
-sh_Lloop0: addx	d3,d1			;interpolate Y
+sh_Lloop0: 
+		addx	d3,d1			;interpolate Y
 		move	d7,d5			;Y start
 		add		d1,d5			;add delta Y
 		lsl		#2,d5
-		move.l	(a1,d5.w),4*700(a4)	; Htab entry for cache procedure
-		add		d4,d6			;to gain mem access speed
 		move.l	(a0,d5.w),(a4)+		;Y draw code jump address
+		add		d5,d5
+		add		d4,d6			;to gain mem access speed
+;		move.l	(a1,d5.w),4*700-4(a4)	; transparent wall code entry
+		lea		(a1,d5.w),a2
+		move.l	a2,4*700-4(a4)	; pointer to first (up) transparent wall code entry
 		dbf		d2,sh_Lloop0	; repeat Dx times
 
 		move.l	lc_chunkyBufMidAddr(a6),a0			;scr tab middle
@@ -5605,14 +5644,10 @@ sc_EnemyCont:
 		bpl.w	sc_exit2		;if > right border
 		add		d7,d0			;center x
 
+		move	d3,-(sp)		; save Y for later use
+
 		move	d2,d6
 		sub		d0,d6			;x delta
-
-		move.l	lc_F2_Htab(pc),a1	;slow Htab
-		lsl		#2,d3
-		move.l	(a1,d3.w),-(sp)		;cell addr
-		move.l	lc_F1_WallCode(pc),a1		; fast code tab
-		move.l	(a1,d3.w),a4		; wall drawing code for this collumn
 
 		moveq	#0,d3
 		move	sv_CollumnWid,d3	;32 or 16 wide
@@ -5653,6 +5688,15 @@ sc_BorOK: subq	#1,d6
 ; a6 - zero table
 ; --- version for full collumns
 sc_ColLoopFull:
+		move	(sp)+,d5		;Y
+		lsl		#2,d5
+		move.l	lc_F1_WallCode(pc),a4		; fast code tab
+		move.l	(a4,d5.w),a4				; wall drawing code for this collumn
+		add		d5,d5
+		move.l	lc_F2_WallCodeTrans(pc),a1	; transparent code tab
+		lea		(a1,d5.w),a1
+		move.l	a1,-(sp)				; pointer to upper half of wall drawing code for this collumn
+
 		move.l	lc_zeroPtr(a6),a6		;zero wall table
 .sc_ColLoop:
 		add		d3,d2			;interpolation
@@ -5681,16 +5725,23 @@ sc_ColLoopFull:
 .sc_putOnStack:
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
-		move.l	(sp),(a6)+		;cell addr
+		move.l	(sp),(a6)+		;draw transparent code addr (first pointer out of 2: up, down)
 		move	4(sp),(a6)+		;up/down/norm coll. flag
 
 .sc_NoLine:	
 		dbf		d6,.sc_ColLoop
+		lea		4(sp),sp
 		bra		sc_PostLoop
 
 ;----------------------------------
 ; --- version for half size top/bottom collumns
 sc_ColLoopHalf:
+		move	(sp)+,d5		;Y
+		lsl		#3,d5
+		move.l	lc_F2_WallCodeTrans(pc),a1	; transparent code tab
+		lea		(a1,d5.w),a1
+		move.l	a1,-(sp)				; pointer to upper half of wall drawing code for this collumn
+
 		move	lc_collumnMaskOfs(a6),d5
 		lea		(a3,d5.w),a4	; mask row in textures
 		move	lc_collumnMask(a6),-(sp)	;AND mask: %1100 up, %0011 down
@@ -5717,24 +5768,23 @@ sc_ColLoopHalf:
 
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
-		move.l	2(sp),(a6)+		;cell addr
+		move.l	2(sp),(a6)+		;draw transparent code addr (first pointer out of 2: up, down)
 		move	6(sp),(a6)+		;up/down/norm coll. flag
-
-; 	bra.s	.sc_NoLine
-; .sc_NoLine2:
-; 	clr.b	64*192(a2)		; mark column as drawn
-; 	subi.l	#$10000,d2		; decrease remaining collumn counter
 
 .sc_NoLine:	
 		dbf		d6,.sc_ColLoop
-		lea		2(sp),sp	; take off AND mask
+		lea		6(sp),sp	; take off AND mask and address
 		bra.s	sc_PostLoop
 
 ;----------------------------------
 ; --- version for quarter-size as well as any middle objects 
 sc_ColLoopMiddle:
+		move	(sp)+,d5		;Y
+		move.l	lc_F2_Htab(pc),a1	;slow Htab
+		lsl		#2,d5
+		move.l	(a1,d5.w),a4		;Htab cell addr
+
 		move.l	lc_zeroPtr(a6),a6		;zero wall table
-		move.l	(sp),a4			; htab cell addr
 .sc_ColLoop:
 		add		d3,d2			;interpolation
 		addx	d1,d4
@@ -5753,15 +5803,13 @@ sc_ColLoopMiddle:
 
 		move.l	a1,(a6)+		;wall addr
 		move.l	a2,(a6)+		;screen addr
-		move.l	a4,(a6)+		;cell addr
-		move	4(sp),(a6)+		;up/down/norm coll. flag
+		move.l	a4,(a6)+		;Htab cell addr
+		move	(sp),(a6)+		;up/down/norm coll. flag
 .sc_NoLine:	
 		dbf		d6,.sc_ColLoop
 
 ;----------------------------------
 sc_PostLoop:
-		lea		4(sp),sp
-
 		move.l	a6,d0
 		lea		lc_variables(pc),a6
 		cmpi.l	lc_F2_ZeroTabEnd(pc),d0					; check if zero walls not exceeding allocated space
@@ -5786,203 +5834,138 @@ ShowZeroWalls:
 		movem.l	a0-a6/d0-d7,-(sp)
 
 		lea		lc_variables(pc),a6
-		move.l	lc_zeroPtr(a6),a0		;Zero lines table
+		move.l	lc_zeroPtr(a6),a0		;Zero lines table - pointer at the end (last entry)
 		moveq	#0,d6
 		move	lc_screenPixX(a6),d6	; width in pixels
-		move.l	lc_F2_ZeroTab(pc),a4
-		lea		shZ_WMulTab(pc),a5
+		move.l	lc_F2_ZeroTab(pc),a4	; zero tab start - for comparison only
 
 shZ_ZeroLoop:
 		cmpa.l	a4,a0
-		beq.w	shZ_PixEnd		;if reached beg of table
+		beq.s	shZ_PixEnd		;if reached beg of table
 
 		move	-(a0),d0		;what is the object pos: up, down, fullsize, mid, ...
-		beq.s	shZ_NotMinus	; zero - full heigth object
+		beq.s	shZ_FullHeigth	; zero - full heigth object
 		cmpi	#$8000,d0
-		beq	shZ_UpObject
+		beq		shZ_UpObject	; half (32) up
 		cmpi	#$c000,d0
-		beq	shZ_DownObject
+		beq		shZ_DownObject	; half (32) down
 		cmpi	#$a000,d0
-		beq	shZ_Down16
+		beq		shZ_Down16		; quater (16) down
 		cmpi	#$e000,d0
-		beq	shZ_Up16
-		moveq	#8,d5			;middle 16 object
+		beq		shZ_Up16		; quater (16) up
+		moveq	#8,d5			; middle 16 object
 		cmpi	#$2000,d0
-		beq	shZ_MID_16_32
-		moveq	#16,d5			;mid. 32 object
-		bra	shZ_MID_16_32
+		beq		shZ_MID_16_32
+		moveq	#16,d5			; mid. 32 object
+		bra		shZ_MID_16_32
 
-shZ_NotMinus:	move.l	-(a0),a3		;cell
-		move.l	-(a0),a2		;screen
-		move.l	-(a0),a1		;wall
-		moveq	#0,d0			;wall count
-		moveq	#0,d4			;screen count down
-		move	d6,d5
-		neg		d5			;screen count up
-
-shZ_PixLoop:
-		moveq	#0,d3
-		move.b	(a3)+,d3
-		beq.s	shZ_NOPix
-		bmi.s	shZ_ZeroLoop		;end of cell
-		subq	#1,d3
-
-		move.b	(a1,d0.w),d1		;take down pixel
-		beq.s	shZ_Pix1_0
-		not	d0
-		move.b	(a1,d0.w),d2		;up pixel
-		beq.s	shZ_Pix2_0
-		not	d0
-shZ_InnerPix12:	move.b	d1,(a2,d4.w)
-		add		d6,d4
-		move.b	d2,(a2,d5.w)
-		sub		d6,d5
-		dbf		d3,shZ_InnerPix12
-shZ_NOPix:	addq	#1,d0
-		bra.s	shZ_Pixloop
-
-shZ_Pix1_0:	not	d0
-		move.b	(a1,d0.w),d2
-		beq.s	shZ_PixBoth0
-		not		d0
-		move	d3,d7
-		add		d7,d7
-		add		shZ_WmulTab(pc,d7.w),d4
-shZ_InnerPix1:	move.b	d2,(a2,d5.w)		;draw up pixel
-		sub		d6,d5
-		dbf		d3,shZ_InnerPix1
-		addq	#1,d0
-		bra.s	shZ_Pixloop
-
-shZ_Pix2_0:		not	d0
-		move	d3,d7
-		add		d7,d7
-		sub		shZ_WmulTab(pc,d7.w),d5
-shZ_InnerPix2:	move.b	d1,(a2,d4.w)		;draw down pixel
-		add		d6,d4
-		dbf		d3,shZ_InnerPix2
-		addq	#1,d0
-		bra.s	shZ_Pixloop
-
-shZ_PixBoth0:	not	d0			;both are 0
-		add		d3,d3
-		add		shZ_WmulTab(pc,d3.w),d4	;only add on screen
-		sub		shZ_WmulTab(pc,d3.w),d5
-		addq	#1,d0
-		bra.s	shZ_Pixloop
-
-shZ_PixEnd:	movem.l	(sp)+,a0-a6/d0-d7
+shZ_PixEnd:	
+		movem.l	(sp)+,a0-a6/d0-d7
 		rts
 
-shZ_WmulTab:	ds.w	16			;1-16 * width
+;-------------------------------------------------------------------
+; Full heigth walls
+shZ_FullHeigth:	
+		move.l	-(a0),a5		;transparent draw code addr
+		move.l	-(a0),a2		;screen addr
+		move.l	-(a0),a1		;texture addr
+		move.l	(a5),a3
+		jsr		(a3)			; draw up half of collumn strip 
+		move.l	4(a5),a3
+		jsr		(a3)			; draw bottm half of collumn strip
+ 		bra.s	shZ_ZeroLoop
+
 ;-------------------------------------------------------------------
 shZ_UpObject:
+		move.l	-(a0),a5		;transparent draw code addr
+		move.l	-(a0),a2		;screen addr
+		move.l	-(a0),a1		;texture addr
+		move.l	(a5),a3
+		jsr		(a3)			; draw up half of collumn strip 
+ 		bra.s	shZ_ZeroLoop
+
+;-------------------------------------------------------------------
+shZ_DownObject:	
+		move.l	-(a0),a5		;transparent draw code addr
+		move.l	-(a0),a2		;screen addr
+		move.l	-(a0),a1		;texture addr
+		move.l	4(a5),a3
+		jsr		(a3)			; draw bottm half of collumn strip
+ 		bra.s	shZ_ZeroLoop
+
+;-------------------------------------------------------------------
+shZ_Up16:	
+		lea		shZ_WMulTab(pc),a5
 		move.l	-(a0),a3		;cell
 		move.l	-(a0),a2		;screen
 		move.l	-(a0),a1		;wall
-shZ_UpPix:	move.b	-(a1),d0
-		bne.s	shZ_Upix1
-		moveq	#0,d3
-		move.b	(a3)+,d3
-		beq.s	shZ_UpPix
-		bmi	shZ_ZeroLoop
-		add	d3,d3
-		sub	shZ_WmulTab-2(pc,d3.w),a2
-		bra.s	shZ_UpPix
-shZ_Upix1:	moveq	#0,d3
-		move.b	(a3)+,d3
-		beq.s	shZ_UpPix
-		bmi	shZ_ZeroLoop		;end of cell
-		subq	#1,d3
-shZ_UPix2:	sub.l	d6,a2
-		move.b	d0,(a2)
-		dbf	d3,shZ_Upix2
-		bra.s	shZ_UpPix
-
-shZ_DownObject:	move.l	-(a0),a3		;cell
-		move.l	-(a0),a2		;screen
-		move.l	-(a0),a1		;wall
-shZ_DownPix:	move.b	(a1)+,d0
-		bne.s	shZ_Dpix1
-		moveq	#0,d3
-		move.b	(a3)+,d3
-		beq.s	shZ_DownPix
-		bmi	shZ_ZeroLoop
-		add	d3,d3
-		add	shZ_WmulTab-2(pc,d3.w),a2
-		bra.s	shZ_DownPix
-shZ_Dpix1:	moveq	#0,d3
-		move.b	(a3)+,d3
-		beq.s	shZ_DownPix
-		bmi	shZ_ZeroLoop		;end of cell
-		subq	#1,d3
-shZ_DPix2:	move.b	d0,(a2)
-		lea	(a2,d6.w),a2
-		dbf	d3,shZ_Dpix2
-		bra.s	shZ_DownPix
-
-;---------------
-shZ_Up16:	move.l	-(a0),a3		;cell
-		move.l	-(a0),a2		;screen
-		move.l	-(a0),a1		;wall
 		moveq	#16,d4
-shZ_U16Pix:	subq	#1,d4
+shZ_U16Pix:	
+		subq	#1,d4
 		bmi.w	shZ_ZeroLoop
 		move.b	-(a1),d0
 		bne.s	shZ_U16pix1
 		moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_U16Pix
-		bmi	shZ_ZeroLoop
-		add	d3,d3
-		sub	-2(a5,d3.w),a2
+		bmi		shZ_ZeroLoop
+		add		d3,d3
+		sub		-2(a5,d3.w),a2
 		bra.s	shZ_U16Pix
 shZ_U16pix1:	moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_U16Pix
-		bmi	shZ_ZeroLoop
+		bmi		shZ_ZeroLoop
 		subq	#1,d3
 shZ_U16pix2:	sub.l	d6,a2
 		move.b	d0,(a2)
-		dbf	d3,shZ_U16pix2
+		dbf		d3,shZ_U16pix2
 		bra.s	shZ_U16Pix
 
-
-shZ_Down16:	move.l	-(a0),a3		;cell
+shZ_WmulTab:	ds.w	16			;1-16 * width
+;-------------------------------------------------------------------
+shZ_Down16:	
+		lea		shZ_WMulTab(pc),a5
+		move.l	-(a0),a3		;cell
 		move.l	-(a0),a2		;screen
 		move.l	-(a0),a1		;wall
 		moveq	#16,d4
-shZ_D16Pix:	subq	#1,d4
+shZ_D16Pix:	
+		subq	#1,d4
 		bmi.w	shZ_ZeroLoop
 		move.b	(a1)+,d0
 		bne.s	shZ_D16pix1
 		moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_D16Pix
-		bmi	shZ_ZeroLoop
-		add	d3,d3
-		add	-2(a5,d3.w),a2
+		bmi		shZ_ZeroLoop
+		add		d3,d3
+		add		-2(a5,d3.w),a2
 		bra.s	shZ_D16Pix
 shZ_D16pix1:	moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_D16Pix
-		bmi	shZ_ZeroLoop
+		bmi		shZ_ZeroLoop
 		subq	#1,d3
 shZ_D16Pix2:	move.b	d0,(a2)
-		lea	(a2,d6.w),a2
-		dbf	d3,shZ_D16pix2
+		lea		(a2,d6.w),a2
+		dbf		d3,shZ_D16pix2
 		bra.s	shZ_D16Pix
 
 
-shZ_MID_16_32:	move.l	-(a0),a3		;cell
+;-------------------------------------------------------------------
+shZ_MID_16_32:	
+		lea		shZ_WMulTab(pc),a5
+		move.l	-(a0),a3		;cell
 		move.l	-(a0),a2		;screen
 		lea		(a2),a6
 		move.l	-(a0),a1		;wall
 		moveq	#-1,d4
-shZ_M16Pix:	addq	#1,d4
-		cmp	d5,d4			;d5= 8+1 or 16+1
-		bpl	shZ_ZeroLoop
-		not	d4
+shZ_M16Pix:	
+		addq	#1,d4
+		cmp		d5,d4			;d5= 8+1 or 16+1
+		bpl		shZ_ZeroLoop
+		not		d4
 		move.b	(a1,d4.w),d0		;up
 		not	d4
 		move.b	(a1,d4.w),d1		;down
@@ -5992,42 +5975,46 @@ shZ_M16Pix:	addq	#1,d4
 		moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_M16Pix
-		bmi	shZ_ZeroLoop
-		add	d3,d3
-		sub	-2(a5,d3.w),a2		;up scr
-		add	-2(a5,d3.w),a6		;down scr
+		bmi		shZ_ZeroLoop
+		add		d3,d3
+		sub		-2(a5,d3.w),a2		;up scr
+		add		-2(a5,d3.w),a6		;down scr
 		bra.s	shZ_M16Pix
 shZ_M16pix1:	moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_M16Pix
-		bmi	shZ_ZeroLoop
+		bmi		shZ_ZeroLoop
 		subq	#1,d3
 		tst.b	d0
 		bne.s	shZ_M16both
 shZ_M16down:	move.b	d1,(a6)
-		lea	(a6,d6.w),a6
-		dbf	d3,shZ_M16down
+		lea		(a6,d6.w),a6
+		dbf		d3,shZ_M16down
 		bra.s	shZ_M16Pix
 	
-shZ_M16up:	moveq	#0,d3
+shZ_M16up:	
+		moveq	#0,d3
 		move.b	(a3)+,d3
 		beq.s	shZ_M16Pix
-		bmi	shZ_ZeroLoop
+		bmi		shZ_ZeroLoop
 		subq	#1,d3
-shZ_M16up1:	sub.l	d6,a2
-		move.b	d0,(a2)
-		dbf	d3,shZ_M16up1
-		bra.s	shZ_M16Pix
-
-shZ_M16both:	move.b	d1,(a6)
-		lea	(a6,d6.w),a6
+shZ_M16up1:	
 		sub.l	d6,a2
 		move.b	d0,(a2)
-		dbf	d3,shZ_M16both
+		dbf		d3,shZ_M16up1
+		bra.s	shZ_M16Pix
+
+shZ_M16both:	
+		move.b	d1,(a6)
+		lea		(a6,d6.w),a6
+		sub.l	d6,a2
+		move.b	d0,(a2)
+		dbf		d3,shZ_M16both
 		bra.s	shZ_M16Pix
 
 
-
+;-------------------------------------------------------------------
+;-------------------------------------------------------------------
 ;-------------------------------------------------------------------
 clearCPUCache:
 		move.l	d0,-(sp)
@@ -6076,6 +6063,10 @@ setTexelArrangement_pass:	bra		setTexelArrangement
 ; LOCAL CONSTANTS
 ;-------------------------------------------------------------------
 TEXTURE_CACHE_SIZE:			equ		16
+MAP_FULL_SIZE:				equ		$9a00
+BOMB_SIZE:					equ		$15cc
+TABLES_SIZE:				equ		($6c0+$800+$1ae+$300+$280+4)	; chaos b, c, numbers, fonts, sinus
+TEXT_SIZE:					equ		$2000
 
 ;-------------------------------------------------------------------
 ; LOCAL STRUCTURES
@@ -6168,6 +6159,7 @@ lc_moveTab:				dc.w	0,0,0,0,0,0,0	;(boolean) key pressed: ;0 up, 2 dn, 4 turn_le
 lc_textureCacheNext:	dc.w	0				; index of the next slot to use in the texture cache
 lc_textureCacheTags:	blk.w	TEXTURE_CACHE_SIZE,0	; tags for texture cach entries (combination of wall , blood and plaque #)
 lc_details:				dc.w	0				; 2-low,	 1-medium,  0-high
+lc_difficulty:			dc.w	0				; 0-difficult(normal), 1-easy
 lc_collumnMask:			dc.w	0				; AND mask for collumn drawing loop
 lc_collumnMaskOfs:		dc.w	0				; mask value offset for collumn drawing loop
 
@@ -6218,9 +6210,22 @@ lc_F2_TexelL2MConvTab:	dc.l	F2_TexelL2MConvTab,0
 lc_F2_BlitC2PTab:		dc.l	F2_BlitC2PTab,0
 lc_F2_ZeroTab:			dc.l	F2_ZeroTab,0
 lc_F2_ZeroTabEnd:		dc.l	F2_ZeroTabEnd,0
-lc_F2_Sinus:			dc.l	F2_Sinus,0
 lc_F2_RotTable:			dc.l	F2_RotTable,0
 lc_F2_TextureCache:		dc.l	F2_TextureCache,0
+lc_F2_WallCodeTrans:	dc.l	F2_WallCodeTrans,0
+lc_F2_Map:				dc.l	F2_Map,0
+lc_F2_LevelData:		dc.l	F2_LevelData,0
+lc_F2_EnemyData:		dc.l	F2_EnemyData,0
+lc_F2_SwitchData:		dc.l	F2_SwitchData,0
+lc_F2_Bomba:			dc.l	F2_Bomba,0
+lc_F2_ChaosTab:			dc.l	F2_ChaosTab,0
+lc_F2_ChaosTac:			dc.l	F2_ChaosTac,0
+lc_F2_Numbers:			dc.l	F2_Numbers,0
+lc_F2_Fonts:			dc.l	F2_Fonts,0
+lc_F2_Sinus:			dc.l	F2_Sinus,0
+lc_F2_TextOffsets:		dc.l	F2_TextOffsets,0
+lc_F2_Text:				dc.l	F2_Text,0
+
 
 lc_F2_TopMem:			dc.l	F2_TopMem,0
 						dc.l	0
@@ -6374,7 +6379,7 @@ lc_EnemyDirTab:
 lc_GodModeCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$dd,-$d1,0	; hotkiwi - god mode
 lc_EnergyCode:		dc.b	-$b5,-$cf,-$d7,-$91,-$bf,-$91,-$bf,0 	; hotmama
 lc_AmmoCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$bd,-$bd,0	; hotkiss
-lc_CardCode:		dc.b	-$b5,-$cf,-$d7,-$cd,-$cf,-$cd,-$bd,0	; hotkpops
+lc_CardCode:		dc.b	-$b5,-$cf,-$d7,-$cd,-$cf,-$cd,-$bd,0	; hotpops
 lc_WallCode:		dc.b	-$d1,-$bb,-$bf,-$b5,-$cf,0				; idaho
 lc_MapCode:			dc.b	-$af,-$cf,-$d9,-$d1,-$db,-$93,0			; lorien
 lc_LevelCode:		dc.b	-$b1,-$d1,-$d7,-$d1,-$bf,-$d9,-$bf,0 	; kitiara
@@ -7982,6 +7987,7 @@ DeathTab:	blk.w	320,0
 sv_ClipMovements:
 		lea		lc_variables(pc),a6
 		lea		sv_SquarePos,a1
+		move.l	lc_F2_LevelData(pc),a2
 		move	sv_PosX,d3		;make in-square pos.
 		move	d3,d2
 		rol		#6,d2			;/1024
@@ -7994,9 +8000,9 @@ sv_ClipMovements:
 		andi	#63,d1
 		move	d1,2(a1)		;Y
 		andi	#1023,d0		;Y pos in-square (d0)
-		cmp		sv_LevelData+22,d2
+		cmp		22(a2),d2
 		bne.s	.sv_b1
-		cmp		sv_LevelData+24,d1
+		cmp		24(a2),d1
 		bne.s	.sv_b1
 		move	#1,lc_EndLevel(a6)	; level finished - i.e. standing the end square?
 .sv_b1:
@@ -8005,7 +8011,7 @@ sv_ClipMovements:
 		add		d1,d1			;d1-Z, d2-X
 		add		d2,d1			;d1 - pos offset
 		move	d1,sv_MapPos
-		lea		sv_MAP,a1
+		move.l	lc_F2_Map(pc),a1
 
 
 		movem.l	d0-d3,-(sp)
@@ -8083,7 +8089,7 @@ br_Yu:
 br2_Bumped_Enemy_Check:
 		move.b	7(a1,d1.w),d4		;if hit enemy...
 		beq.w	br2_Bumped_Collumn_Check
-		lea	sv_EnemyData,a2		;EnemyTab
+		move.l	lc_F2_EnemyData(pc),a2		;EnemyTab
 		andi	#$ff,d4
 		lsl	#4,d4
 		lea	(a2,d4.w),a2
@@ -8466,7 +8472,7 @@ br_CDS2:	subq	#2,d2
 ;find teleport in table & jump
 
 br_FindTeleport:
-		lea		sv_SwitchData,a2	;CommandTab
+		move.l	lc_F2_SwitchData(pc),a2	;CommandTab
 .rm_SeekPos:	
 		move	(a2)+,d4
 		cmpi	#-1,d4
@@ -8584,7 +8590,7 @@ sc_DoText1:
 
 		subi	#32,d0
 		lsl		#3,d0
-		lea		sv_Fonts,a1
+		move.l	lc_F2_Fonts(pc),a1
 		lea		(a1,d0.w),a1
 		lea		sv_ScrollArea-1,a2
 		REPT	7
@@ -8872,7 +8878,8 @@ Test_Counters:
 ; d1 - colour (16 = white)
 ; a2 - counter save area
 ; a3 - counter on-screen ares
-tc_DrawCounter:	lea	sv_Numbers,a4
+tc_DrawCounter:	
+		move.l	lc_F2_Numbers(pc),a4
 		andi.l	#$ffff,d0
 		divu	#100,d0
 		bsr.s	.tc_DoDraw
@@ -8952,7 +8959,8 @@ tc_DrawCounter:	lea	sv_Numbers,a4
 tc_DrawCardCnt:	
 		movem.l	d0-d5/a0-a4,-(sp)
 		lea		sv_Cards,a1
-		lea		sv_Numbers+[20*18],a2		; small numbers
+		move.l	lc_F2_Numbers(pc),a2
+		lea		[20*18](a2),a2		; small numbers
 		move.l	lc_F2_CardSav(pc),a3
 		lea		sv_CardCnt,a4
 		
@@ -9061,7 +9069,8 @@ DebugCntClearArea:
 		lea		36(a2),a2
 		dbf		d1,.c1
 
-		lea		sv_Numbers+[20*18],a1	; small numbers
+		move.l	lc_F2_Numbers(pc),a1
+		lea		[20*18](a1),a1	; small numbers
 		lea		sv_DebugPos1+[2*40*5]+40*2,a3
 		lea		sv_DebugPos2+[2*40*5]+40*2,a4
 		clr		d2
@@ -9103,7 +9112,9 @@ DebugCntShow:
 		tst		sv_StrFlag
 		beq		.nostr
 		bsr		DebugCntClearArea		; if screen stretched then clear the area
-.nostr:	lea		sv_Numbers+[20*18],a1	; small numbers
+.nostr:	
+		move.l	lc_F2_Numbers(pc),a1
+		lea		[20*18](a1),a1	; small numbers
 		lea		sv_DebugPos1+[2*40*5]+1,a3
 		lea		sv_DebugPos2+[2*40*5]+1,a4
 		move.l	lc_F2_AvPtrs(pc),a5
@@ -9186,7 +9197,8 @@ CounerAverageGet:
 		
 ; Show FPS counter
 FPSShow:
-		lea		sv_Numbers+[20*18],a1	; small numbers
+		move.l	lc_F2_Numbers(pc),a1
+		lea		[20*18](a1),a1	; small numbers
 		clr		d1				; fps is couter 0
 		bsr.s	CounerAverageGet			; in: d1 average counter index
 		move	d0,d6
@@ -9221,8 +9233,8 @@ StatusLedsShow:
 .fast:	bsr.s	StatusLedsShowCol
 		move	lc_variables+lc_isCache(pc),d0		; 0 - no cache, 1 - cache
 		bsr.s	StatusLedsShowCol
-		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter, 1 - cpu
-		eori	#1,d0
+		move	lc_variables+lc_c2pType(pc),d0		; 0 - blitter (red), 1 - cpu (green)
+;		eori	#1,d0
 		bsr.s	StatusLedsShowCol
 		rts
 
@@ -9487,7 +9499,7 @@ ci_DWMain:
 		move	sv_ChaosAddr,d0
 		move.l	lc_F2_ItemBuf(pc),a1
 		lea		sv_Weapon,a2
-		lea		sv_ChaosTab,a3
+		move.l	lc_F2_ChaosTab(pc),a3
 		lea		ci_200MulTab(pc),a4
 		move	#31,d1
 ci_DWLoop:	
@@ -9698,7 +9710,8 @@ oc_sdpEND:	rts
 ;-------------------------------------------------------------------
 ;serve all door anims...
 OpenCloseDoors:	
-		lea		sv_MAP,a2
+		move.l	lc_F2_Map(pc),a2
+		move.l	lc_F2_LevelData(pc),a5
 		lea		lc_variables(pc),a6
 		tst		sv_DoorFlag1+20		;door in use?
 		beq.w	oc_DOOR2
@@ -9713,7 +9726,7 @@ OpenCloseDoors:
 		addi	#512,d0
 		andi	#63*1024,d1		;y
 		addi	#512,d1
-		tst		sv_levelDATA+26
+		tst		26(a5)
 		beq.s	oc_k2
 		SOUND2	16,2
 		bra.s	oc_k1
@@ -9937,7 +9950,7 @@ TELEPORT:	movem.l	ALL,-(sp)
 		move	#0,sv_teleport
 		move.l	lc_screen(a6),a1		;hiden - with destination picture
 		move.l	lc_screen+4(a6),a2		;shown - to which copy will be made
-		lea		sv_ChaosTac,a3
+		move.l	lc_F2_ChaosTac(pc),a3
 		move	lc_size+2(a6),d0
 		cmpi	#7,d0
 		bpl.s	te_stretched
@@ -10138,7 +10151,7 @@ cco_check:	moveq	#31,d7
 Take_Items:	
 		lea		lc_variables(pc),a6
 		move	sv_MapPos,d0
-		lea		sv_Map,a1
+		move.l	lc_F2_Map(pc),a1
 		move.b	6(a1,d0.w),d1
 		andi	#31,d1
 		beq.w	ti_NoItem
@@ -10169,7 +10182,7 @@ Take_Items:
 		bsr.w	ti_mul6
 		bsr		GetRandom		; random weapon durability (damage)
 		andi	#127,d0
-		tst		sv_DIFFICULT
+		tst		lc_difficulty(a6)
 		beq.s	.sv_DIF				; 0 - hard (default)
 		addi	#250,d0
 .sv_DIF:
@@ -10200,7 +10213,7 @@ ti_ammo:	subq	#6,d1
 		addq	#1,d1
 		bsr.w	ti_mul6
 		move	2(a2,d1.w),d2
-		tst		sv_DIFFICULT
+		tst		lc_difficulty(a6)
 		beq.s	.sv_DIF2				; 0 - hard (default)
 		lsl		d2				; double ammo provided on EASY mode (2022 addition)
 .sv_DIF2:
@@ -10231,7 +10244,7 @@ ti_card:	subq	#6,d1
 ti_aid:		subq	#3,d1			; medkit
 		bne.s	ti_power
 		SCROLL	17
-		tst		sv_DIFFICULT
+		tst		lc_difficulty(a6)
 		beq.s	.sv_DIF3				; 0 - hard (default)
 		subi	#20,sv_Energy			; 30
 .sv_DIF3:
@@ -10397,7 +10410,7 @@ DrawBomb:	movem.l	ALL,-(sp)
 		subq	#2,d0
 		lsr		d0
 		mulu	#6,d0
-		lea		sv_Bomba,a1
+		move.l	lc_F2_Bomba(pc),a1
 		lea		(a1,d0.w),a1
 		lea		sv_BombPos,a2
 		move	#[31*5]-1,d1
@@ -10433,9 +10446,8 @@ db_4:	andi	#$f000,(a2)
 
 ;-------------------------------------------------------------------
 ; Make code for copying columns to bit-table... Kane/SCT, 09.02.1994
-; This is used in case of no cache
-;No input...
-mc_MakeCode:
+; This version is for solid objects/walls. No input.
+MakeCodeSolid:
 		movem.l	ALL,-(sp)
 		move.l	lc_F1_WallCode(pc),a1
 		lea		[maxWallHeigth*4](a1),a2	;code table
@@ -10445,7 +10457,6 @@ mc_MakeCode:
 		move	#$4e75,(a2)+		;rts
 		move.l	a6,(a5)+
 		move.b	#-1,(a6)+
-		move.l	lc_F2_LineTab(pc),a3
 
 		moveq	#0,d4			;down offset
 		move	sv_ViewWidth,d3
@@ -10455,19 +10466,19 @@ mc_MakeCode:
 		move	d2,d1			;store offsets
 		move	d4,d5
 		moveq	#1,d7			;linii
-mc_loop32:
+.mc_loop32:
 		move	d1,d2
 		move	d5,d4
 		move.l	a2,(a1)+		;code part addr
 		move.l	a6,(a5)+
 		moveq	#31,d6
-mc_cl32loop:	move.b	#0,(a6)+		;clear Htab cell
-		dbf		d6,mc_cl32loop
+.mc_cl32loop:	move.b	#0,(a6)+		;clear Htab cell
+		dbf		d6,.mc_cl32loop
 		move.b	#-1,(a6)+		;end cell. Each cell is 33 bytes
 		move.l	-4(a5),a6		; get back cell start address into a6
 
 		moveq	#1,d6			;n
-mc_l322: moveq	#0,d0
+.mc_l322: moveq	#0,d0
 		move	d6,d0
 		lsl		#5,d0
 		divu	d7,d0
@@ -10487,43 +10498,43 @@ mc_l322: moveq	#0,d0
 
 		addq	#1,d6
 		cmp		d6,d7
-		bpl.s	mc_l322
+		bpl.s	.mc_l322
 
 		lea		33(a6),a6		;set to next cell
 		move	#$4e75,(a2)+		;rts
 		addq	#1,d7
 		cmpi	#32,d7
-		bne.s	mc_loop32
+		bne.s	.mc_loop32
 
 ;--------------- Wall heigth bigger than 32 lines...
 		move	sv_ViewHeigth,d1
 		lsr		d1
-mc_loopMore:
+.mc_loopMore:
 		move.l	lc_F2_LineTab(pc),a3
 		moveq	#0,d5			;line lumber
 		moveq	#0,d4			;how many these?
 		moveq	#1,d2			;wall lines
 		moveq	#0,d6			;n
-mc_lM2:	moveq	#0,d0
+.mc_lM2:	moveq	#0,d0
 		move	d6,d0
 		lsl		#5,d0
 		divu	d7,d0
 
 		cmp		d0,d5
-		bne.s	mc_M3
+		bne.s	.mc_M3
 		addq	#1,d4
-		bra.s	mc_M4
-mc_M3:
+		bra.s	.mc_M4
+.mc_M3:
 		move	d4,(a3)+
 		moveq	#1,d4
 		move	d0,d5
 		addq	#1,d2			;next wall line
-mc_M4:	addq	#1,d6
+.mc_M4:	addq	#1,d6
 		cmp		d6,d1
-		beq.s	mc_M5
+		beq.s	.mc_M5
 		cmp		d6,d7
-		bne.s	mc_lM2
-mc_M5:	move	d4,(a3)+
+		bne.s	.mc_lM2
+.mc_M5:	move	d4,(a3)+
 		move	#-1,(a3)		;end of tab
 
 	; --- create tabs (Htab and code) for cell
@@ -10541,24 +10552,24 @@ mc_M5:	move	d4,(a3)+
 		subq	#1,d2
 
 		; ---- this loop goes from top to middle
-mc_c2loop:	
+.mc_c2loop:	
 		move	-(a3),d6			; bar width
 		cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_3
-		bsr.w	mc_optimCopyFull
-.mc_3:	dbf		d2,mc_c2loop
+		bsr.w	.mc_optimCopyFull
+.mc_3:	dbf		d2,.mc_c2loop
 
 		; ---- this loop goes middle to bottom following the reverse pattern
-mc_c2loop2:	
+.mc_c2loop2:	
 		move	(a3)+,d6
-		bmi.s	mc_M8
+		bmi.s	.mc_M8
 		move.b	d6,(a6)+		;set row repeats in cell
 		cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_5
-		bsr.s	mc_optimCopyFull
-.mc_5:	bra		mc_c2loop2
+		bsr.s	.mc_optimCopyFull
+.mc_5:	bra		.mc_c2loop2
 
-mc_M8:	cmpi	#maxWallHeigth-90,d7
+.mc_M8:	cmpi	#maxWallHeigth-90,d7
 		bpl.s	.mc_6
 		move	#$4e75,(a2)+		;rts
 .mc_6:	move.b	#-1,(a6)+		;end cell
@@ -10569,30 +10580,256 @@ mc_M8:	cmpi	#maxWallHeigth-90,d7
 		move.l	a3,d5
 		sub.l	d5,d6
 		lsr		d6
-		beq.s	mc_notequ
+		beq.s	.mc_notequ
 		subq	#1,d6			;nr of words
 		move.l	-8(a1),a4
-mc_check1:	
+.mc_check1:	
 		move	(a4)+,d0
 		cmp		(a3)+,d0
-		bne.s	mc_notequ		;if not the same
-		dbf		d6,mc_check1
+		bne.s	.mc_notequ		;if not the same
+		dbf		d6,.mc_check1
 		move.l	-4(a1),a2
 		move.l	-8(a1),-4(a1)
 		move.l	-4(a5),a6		;remove last cell because concent same as one before, so set address back
 		move.l	-8(a5),-4(a5)
-mc_notequ:	
+.mc_notequ:	
 		addq	#1,d7
 		cmpi	#maxWallHeigth,d7
-		bne.L	mc_loopMore		; iterate through all wall sizes (cells)
+		bne.L	.mc_loopMore		; iterate through all wall sizes (cells)
 
-	move.l	a2,DEBUGDATA
+;	move.l	a2,DEBUGDATA
 
 		; pre-fill the interpolation table with a large value
-		move.l	lc_F1_WallCode(pc),a0		; fast code tab
+; 		move.l	lc_F1_WallCode(pc),a0		; fast code tab
+; 		move.l	[(maxWallHeigth-1)*4](a0),d0	; last entry
+; 		move.l	lc_F2_Htab(pc),a1			; slow Htab
+; 		move.l	[(maxWallHeigth-1)*4](a1),d1	; last entry
+; 		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
+;  		move	#maxWallHeigth*2-1,d2
+; .prefill:
+; 		move.l	d1,4*700(a4)	; Htab entry for cache procedure
+; 		move.l	d0,(a4)+		;Y draw code jump address
+; 		dbf		d2,.prefill
+
+		movem.l	(sp)+,ALL
+		rts
+
+
+.mc_optimCopyFull:
+		cmpi	#4,d6
+		bmi.s	.mc_notUseD
+
+		move	#$1e19,(a2)+		;move.b	(a1)+,d7
+		subq	#1,d6
+.mc_d7:	move	#$1547,(a2)+		;move.b	d7,y(a2)
+		move	d0,(a2)+			; y(a2) offset
+		add		d3,d0				; d3 = chunky row width
+		dbf		d6,.mc_d7
+		rts
+
+.mc_notUseD:							; use copy mem directly, not via d7
+		subq	#2,d6
+		bmi.s	.mc_n1
+.mc_nd:	move	#$1551,(a2)+		;move	(a1),y(a2)
+		move	d0,(a2)+			; y(a2) offset
+		add		d3,d0				; d3 = chunky row width
+		dbf		d6,.mc_nd
+.mc_n1:	move	#$1559,(a2)+		;move	(a1)+,y(a2)
+		move	d0,(a2)+
+		add		d3,d0				; d3 = chunky row width
+		rts
+
+
+;-------------------------------------------------------------------
+; Make code for copying columns to bit-table... Kane/SCT, 09.02.1994
+; This version is for transparent objects/walls. No input.
+MakeCodeTransparent:
+		movem.l	ALL,-(sp)
+		move.l	lc_F2_WallCodeTrans(pc),a1
+		lea		[maxWallHeigth*8](a1),a2	;code table - 2 addresses for top and bottom of screen for transparent walls
+		move.l	a2,(a1)+		;fix zero up
+		move.l	a2,(a1)+		;fix zero down
+		move	#$4e75,(a2)+		;rts
+
+		moveq	#0,d4			;down offset
+		move	sv_ViewWidth,d3
+		lsl		#3,d3			;view window width
+		move	d3,d2
+		neg		d2			;up offset
+		move	d2,d1			;store offsets
+		move	d4,d5
+
+
+		moveq	#1,d7			;iterate over all heigths (1..31)
+.mc_loop32:
+		move	d1,d2
+		move	d5,d4
+		move.l	a2,(a1)+		;up code part addr
+		bsr.s	.mc_heigthUnder32Up		; create upper half code
+		move	#$4e75,(a2)+		;rts
+
+		move	d1,d2
+		move	d5,d4
+		move.l	a2,(a1)+		;down code part addr
+		bsr.s	.mc_heigthUnder32Down	; create upper half code
+		move	#$4e75,(a2)+		;rts
+
+		addq	#1,d7
+		cmpi	#32,d7
+		bne.s	.mc_loop32
+		bra.s	.mc_heigthOver32
+
+.mc_heigthUnder32Up:
+		moveq	#1,d6			;n
+.mc_l322up: 					; create code within one heigth value	
+		moveq	#0,d0
+		move	d6,d0
+		lsl		#5,d0
+		divu	d7,d0
+		neg		d0
+
+		move	#$1e29,(a2)+		;move.b x(a1),d7
+		move	d0,(a2)+
+		move	#$6704,(a2)+		;beq *+4
+		move	#$1547,(a2)+		;move.b d7,x(a2)
+		move	d2,(a2)+			;up
+		sub		d3,d2
+
+		addq	#1,d6
+		cmp		d6,d7
+		bpl.s	.mc_l322up
+		rts
+
+.mc_heigthUnder32Down:
+		moveq	#1,d6			;n
+.mc_l322down: 					; create code within one heigth value	
+		moveq	#0,d0
+		move	d6,d0
+		lsl		#5,d0
+		divu	d7,d0
+		subq	#1,d0
+
+		move	#$1e29,(a2)+		;move.b x(a1),d7
+		move	d0,(a2)+
+		move	#$6704,(a2)+		;beq *+4
+		move	#$1547,(a2)+		;move.b d7,x(a2)
+		move	d4,(a2)+			;down
+		add		d3,d4
+
+		addq	#1,d6
+		cmp		d6,d7
+		bpl.s	.mc_l322down
+		rts
+
+;--------------- Wall heigth bigger than 32 lines...
+.mc_heigthOver32:				; d3 - width in pixels
+		move	sv_ViewHeigth,d1
+		lsr		d1				; limit drawing to half screen up and down
+		moveq	#32,d7
+.mc_loopMore:
+		move.l	lc_F2_LineTab(pc),a3
+		moveq	#0,d5			;line lumber
+		moveq	#0,d4			;how many these?
+		moveq	#1,d2			;wall lines
+		moveq	#0,d6			;n
+.mc_lM2:	moveq	#0,d0
+		move	d6,d0
+		lsl		#5,d0
+		divu	d7,d0
+
+		cmp		d0,d5
+		bne.s	.mc_M3
+		addq	#1,d4
+		bra.s	.mc_M4
+.mc_M3:
+		move	d4,(a3)+
+		moveq	#1,d4
+		move	d0,d5
+		addq	#1,d2			;next wall line
+.mc_M4:	addq	#1,d6
+		cmp		d6,d1
+		beq.s	.mc_M5
+		cmp		d6,d7
+		bne.s	.mc_lM2
+.mc_M5:	move	d4,(a3)+
+		move	#-1,(a3)		;end of tab
+
+	; --- create code for cell
+		move.l	a2,(a1)+		;up code part addr
+		move	d2,d0
+		neg		d0
+		cmpi	#maxWallHeigth-90,d7	; beyond 350-90 = 260 wall heigth just replicate data pointers
+		bpl.s	.mc_1
+		move	#$43e9,(a2)+		;lea x(a1),a1 - t the start of the line
+		move	d0,(a2)+
+.mc_1:	move	d6,d0
+		mulu	d3,d0
+		neg		d0			;SVGA first offset
+		subq	#1,d2
+
+		; ---- this loop goes from top to middle
+.mc_c2loop:	
+		move	-(a3),d6			; bar width
+		cmpi	#maxWallHeigth-90,d7
+		bpl.s	.mc_3
+		bsr		.mc_optimCopy
+.mc_3:	dbf		d2,.mc_c2loop
+
+		cmpi	#maxWallHeigth-90,d7
+		bpl.s	.mc_6u
+		move	#$4e75,(a2)+		;up rts
+.mc_6u:
+
+		move.l	a2,(a1)+		;down code part addr
+		; ---- this loop goes middle to bottom following the reverse pattern
+.mc_c2loop2:	
+		move	(a3)+,d6
+		bmi.s	.mc_M8
+		cmpi	#maxWallHeigth-90,d7
+		bpl.s	.mc_5
+		bsr		.mc_optimCopy
+.mc_5:	bra		.mc_c2loop2
+
+.mc_M8:	cmpi	#maxWallHeigth-90,d7
+		bpl.s	.mc_6d
+		move	#$4e75,(a2)+		;down rts
+.mc_6d:
+
+		cmpi	#maxWallHeigth-90,d7
+		bpl.s	.mc_7d
+		move.l	-8(a1),a3		;compress code - at full zoom displayed pixels may not change so eliminate duplicates
+		move.l	a2,d6
+		move.l	a3,d5
+		sub.l	d5,d6
+		lsr		d6
+		beq.s	.mc_notequ
+		subq	#1,d6			;nr of words
+		move.l	-16(a1),a4
+.mc_check1:	
+		move	(a4)+,d0
+		cmp		(a3)+,d0
+		bne.s	.mc_notequ		;if not the same
+		dbf		d6,.mc_check1
+		move.l	-8(a1),a2		; roll back pointer
+		move.l	-12(a1),-4(a1)	; set pointers to previous ones
+		move.l	-16(a1),-8(a1)
+		bra.s	.mc_notequ
+.mc_7d:
+		move.l	-8(a1),a2		; roll back pointer
+		move.l	-12(a1),-4(a1)	; set pointers to previous ones
+		move.l	-16(a1),-8(a1)
+.mc_notequ:	
+		addq	#1,d7
+		cmpi	#maxWallHeigth,d7
+		bne.L	.mc_loopMore		; iterate through all wall sizes (cells)
+
+;	move.l	a2,DEBUGDATA
+
+		; pre-fill the interpolation table with a large value
+		move.l	lc_F1_WallCode(pc),a0		; full code tab
 		move.l	[(maxWallHeigth-1)*4](a0),d0	; last entry
-		move.l	lc_F2_Htab(pc),a1			; slow Htab
-		move.l	[(maxWallHeigth-1)*4](a1),d1	; last entry
+		move.l	lc_F2_WallCodeTrans(pc),a1		; transparent code tab
+		move.l	[(maxWallHeigth-1)*8](a1),d1	; last entry
 		move.l	lc_F2_LineTab(pc),a4		; create interpolated Y code tab + Heigth tab
  		move	#maxWallHeigth*2-1,d2
 .prefill:
@@ -10604,31 +10841,19 @@ mc_notequ:
 		rts
 
 
-mc_optimCopyFull:
-		cmpi	#4,d6
-;		cmpi	#3,d6
-		bmi.s	mc_notUseD
-
+.mc_optimCopy:
 		move	#$1e19,(a2)+		;move.b	(a1)+,d7
+		move	d6,d5
+		lsl		#2,d5
+		andi	#$00ff,d5
+		ori		#$6700,d5
+		move	d5,(a2)+			;beq *+x (x=d6)
 		subq	#1,d6
 .mc_d7:	move	#$1547,(a2)+		;move.b	d7,y(a2)
 		move	d0,(a2)+			; y(a2) offset
 		add		d3,d0				; d3 = chunky row width
 		dbf		d6,.mc_d7
 		rts
-
-mc_notUseD:							; use copy mem directly, not via d7
-		subq	#2,d6
-		bmi.s	.mc_1
-.mc_nd:	move	#$1551,(a2)+		;move	(a1),y(a2)
-		move	d0,(a2)+			; y(a2) offset
-		add		d3,d0				; d3 = chunky row width
-		dbf		d6,.mc_nd
-.mc_1:	move	#$1559,(a2)+		;move	(a1)+,y(a2)
-		move	d0,(a2)+
-		add		d3,d0				; d3 = chunky row width
-		rts
-
 
 ;-------------------------------------------------------------------
 ;Make plane tables ... no input. This has to be called only once
@@ -10881,7 +11106,7 @@ mk_DT2:	move	d3,(a3)+
 		asl		d0				; * 2 to go 2 lines back
 		move	d0,2(a3)
 
-		lea		sv_RotTable,a2		; correct rotation table (???)
+		move.l	lc_F2_RotTable(pc),a2		; correct rotation table (???)
 		cmpi.l	#$50100,(a2)
 		bne.s	mk_NotFR
 		move.l	a2,d2
@@ -10892,14 +11117,6 @@ mk_FixRot:	move.l	(a2),d1
 		move.l	d1,(a2)+
 		dbf		d0,mk_FixRot
 mk_NotFR:
-
-		lea		sv_RotTable,a2
-		move.l	lc_F2_RotTable(pc),a3	; move rotation table to fast
-		move	#($4200/32)-1,d0
-.cpRot:	REPT	8
-		move.l	(a2)+,(a3)+
-		ENDR
-		dbf		d0,.cpRot
 
 		; --- eliminate zero-line collumn & enemy drawing
 		lea		lc_CollumnOffsets(pc),a2
@@ -10932,9 +11149,9 @@ mk_fixblood:	move.b	#0,64(a2)
 		lea		65(a2),a2
 		dbf		d7,mk_fixblood
 
-		lea	sc_Text,a2		;make text offsets
+		move.l	lc_F2_Text(pc),a2		;make text offsets
 		move.l	a2,d1
-		lea	sv_TextOffsets,a3
+		move.l	lc_F2_TextOffsets(pc),a3
 .MTO1:	move.b	(a2)+,d0
 		cmpi.b	#"@",d0
 		bne.s	.MTO1
@@ -11111,8 +11328,9 @@ sv_SWS2:
 		bra.s	.sv_SWSL
 .sv_SWSL2:
 
-		bsr		mc_MakeCode		;generate raster code
-		bsr		make_tables		;different tables
+		bsr		MakeCodeSolid		;generate raster code for solid walls/objects
+		bsr		MakeCodeTransparent	;generate raster code for transparent walls/objects
+		bsr		make_tables			;different tables
 
 		exg		d0,d1
 		move	d0,d7			;store Y
@@ -11666,25 +11884,25 @@ wall_floor2:	equ	[14-1]*4	;nr. of ceiling wall *4
 ;sv_Offsets:	equ	BASEC+$2a000		;$300   - defined upper
 ;sv_UserMap:	equ	BASEC+$2a300		;$200 (64*8)
 
-sv_MAP:			equ	BASEC+$2b600		;$8000
-sv_LEVELDATA:	equ	BASEC+$2b600+$8000
-sv_EnemyDATA:	equ	BASEC+$2b600+$8000+40	; $1000 (4096)
-sv_SwitchDATA:	equ	BASEC+$2b600+$8000+4136	;all $9400 (37800)
+sv_MAP:			equ	BASEC+$2b600		;$8000	-> copied to fast
+;sv_LEVELDATA:	equ	BASEC+$2b600+$8000
+;sv_EnemyDATA:	equ	BASEC+$2b600+$8000+40	; $1000 (4096)
+;sv_SwitchDATA:	equ	BASEC+$2b600+$8000+4136	;all $9400 (37800)
 
 ; samples. These are read together with tables in STD
 sv_SAMPLES:		equ	BASEC+$34e58		;102108 ($18edc)
 
 ; tables (tables.dat)
-sv_Bomba:		equ	BASEC+$4dd34		;$15cc (addr is $34e58 + $18edc)
+sv_Bomba:		equ	BASEC+$4dd34		;$15cc (addr is $34e58 + $18edc) -> copied to fast
 sv_RotTable:	equ	BASEC+$4f300		;rot table ($41f2)	-> copied to fast
-sv_ChaosTab:	equ	BASEC+$534f2		;$6c0;nie rozbijac bloku!
-sv_ChaosTac:	equ	BASEC+$53bb2		;$800
-sv_Numbers:		equ	BASEC+$543b2		;$1ae	- bitmap numbers to print nr of cards
-sv_Fonts:		equ	BASEC+$54560		;$300
-sv_sinus:		equ	BASEC+$54860		;$280	-> copied to fast
+sv_ChaosTab:	equ	BASEC+$534f2		;$6c0;nie rozbijac bloku! -> copied to fast
+; sv_ChaosTac:	equ	BASEC+$53bb2		;$800
+; sv_Numbers:		equ	BASEC+$543b2		;$1ae	- bitmap numbers to print nr of cards
+; sv_Fonts:		equ	BASEC+$54560		;$300
+; sv_sinus:		equ	BASEC+$54860		;$280	-> copied to fast
 ; end tables
 
-;mc_Htab:	equ	BASEC+$54b00		;$1b34 round up to 1b80. Empirically found as this is a compressed table.
+;mc_Htab:		equ	BASEC+$54b00		;$1b34 round up to 1b80. Empirically found as this is a compressed table.
 ;sv_CompasClr:	equ	BASEC+$56770		;$6c - this MUST be in CHIP
 ;sv_CompasSav:	equ	BASEC+$567e0		;$21c
 ;sv_DATA_AREA:	equ	BASEC+$56a00		;$600
@@ -11692,11 +11910,11 @@ sv_sinus:		equ	BASEC+$54860		;$280	-> copied to fast
 ;sv_FloorTab:	equ	BASEC+$57050		;$8c for 140 lines, $80 for 128. Allocated $b0 =176 here.
 ;sv_DeltaTab:	equ	BASEC+$57100		;$12c0 (600*4 *2 = 4800)
 ;sv_ScrOffTab:	equ	BASEC+$58410		;$100
-;sv_TextOffsets:	equ	BASEC+$58520		;$100 (to 128 texts)
+;sv_TextOffsets:equ	BASEC+$58520		;$100 (to 128 texts)
 
 ;RealCopper:	equ	BASEC+$58630		;$da0	defined upper!
-;sv_C1Save:	equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
-;sv_C2Save:	equ	BASEC+$595f0		;$21c
+;sv_C1Save:		equ	BASEC+$593d0		;$21c + 4 bytes for "KANE"
+;sv_C2Save:		equ	BASEC+$595f0		;$21c
 
 ;sv_ZeroTab:	equ	BASEC+$59820		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
 ;sv_ZeroTab:	equ	BASEC+$5a000		;[192*8]*14 $5400	- this stores data aboue transparent items which need to be added later
@@ -11706,7 +11924,7 @@ sv_ChunkyBufC:	equ	BASEC+$60000	;chunky buffer ($6000 for 192x128 +  192 for dra
 									;This is the chip buffer for blitter
 
 ;sv_WindowSav:	equ	BASEC+$66d30		;$28a0 (do $695d0)
-;sv_ItemBuf:		equ	BASEC+$69600		;$21c (do $634bc)
+;sv_ItemBuf:	equ	BASEC+$69600		;$21c (do $634bc)
 ;screen2:		equ	BASEC+$69d00		;160*40*5=$7d00
 ;screen1:		equ	BASEC+$71a00		;($9c40 razem) - $7d00 main screen + bottom panel
 screen2:		equ	BASEC+$68000		;160*40*5=$7d00
@@ -11725,10 +11943,10 @@ sv_DebugPos2:	equ	screen2+[20*40*5]
 
 ;sv_LineTab:	equ	BASEC+$7b800		;$15e0 (heigths) ($1900)
 sc_colors:		equ	BASEC+$7d600		;$40 (64)	- DO NOT MOVE
-sc_Text:		equ	BASEC+$7d642		;$1b58 max (7000)	- DO NOT MOVE
+sc_Text:		equ	BASEC+$7d642		;$1b58 max (7000)	- DO NOT MOVE	-> copied to fast
 sv_CompasClr:	equ	BASEC+$7f1a0		;$6c - this MUST be in CHIP
 sv_DATA_AREA:	equ	BASEC+$7f220		;$1a0 - this MUST have a fixed address
-sv_TextOffsets:	equ	BASEC+$7f500		;$100 (to 128 texts)
+;sv_TextOffsets:	equ	BASEC+$7f500		;$100 (to 128 texts)
 ; Do not exceed $7f800 because that's where the server keeps STRUCTURE and other data
 
 ;ChangeCopper:	equ	BASEC+$7f1a0		;$1c		 - not used
@@ -11750,7 +11968,7 @@ screenMaxY:	equ		128		; in pixels
 ;sv_Size:	dc.w	3,3		;math value, real
 ;sv_Floor:	dc.w	1		;0-off,  1-floors on
 ;sv_DETAILS:	dc.w	0		;2-low,	 1-medium,  0-high
-sv_DIFFICULT:	dc.w	0		;0-difficult(normal), 1-easy
+;sv_DIFFICULT:	dc.w	0		;0-difficult(normal), 1-easy
 
 sv_ViewWidth:	dc.w	screenMaxX/8			;view window dims in bytes - max 192 pixels = 24 bytes
 sv_ViewHeigth:	dc.w	screenMaxY				;24/128 - maximum
@@ -11884,7 +12102,7 @@ F1_Code:			rs.b	$10c00						; MUST be this for compatibility with Citadel 1 serv
 F1_Walls:			rs.b	320*4*65*2+(320*2+160)*65*2	; Walls and enemies. 83200+83200+52000+52000,  all: 270400 = $42040
 F1_Items:			rs.b	27*16*65					; Items. 27 1/4 narrow textures, 28080 = $6db0
 F1_Planes:			rs.b	65*4+65*700					; 65 addresses (260) followed by 65 700-byte entries. $b2c0
-F1_WallCode:		rs.b	$1af00						; Code to draw walls. $1af00
+F1_WallCode:		rs.b	$1af00						; Code to draw solid walls/full size objects. $1af00
 
 F1_TopMem:			rs.w	0
 
@@ -11900,9 +12118,9 @@ F2_AvLastVal:		rs.l	AVCNTS						; last read start_value for debug counters (l)
 F2_AvPtrs:			rs.w	AVCNTS						; rolling pointers into 16 debug counters (averages). Next free slot.w for each
 F2_AvData:			rs.w	AVCNTS*8					; space for debug data (averages). buffer for 8*data.w (each is 16 bytes)
 F2_ClearTo1:		rs.w	0							; clear up to here on start
-F2_Buf1:			rs.b	256
+F2_Buf1:			rs.b	$1000
 F2_ChunkyBuf:		rs.b	screenMaxX*(screenMaxY+1)	; chunky buffer ($6000 for 192x128 +  192 for drawn marks = $60c0)
-F2_Buf2:			rs.b	256
+F2_Buf2:			rs.b	$1000
 F2_ChunkyTempBuf:	rs.b	(screenMaxX*screenMaxY)/4	; c2p temp chunky buffer ($1800)
 F2_HeartSav:		rs.b	6*12*5						; 360 ($168)
 F2_HBFrames:		rs.b	6*12*5*HB_ANIM_FRAMES		; 18000 ($4650) - 50 frames
@@ -11928,9 +12146,21 @@ F2_TexelL2MConvTab:	rs.b	256							; texture conversion tab: LSB to MSB
 F2_BlitC2PTab:		rs.b	8+16*5*8					; blitter c2p execution queue (general config + 40 blits)
 F2_ZeroTab:			rs.b	14*12*192					; table for zero (transparent) collumns. 192*12 entries.
 F2_ZeroTabEnd:		rs.b	14*2*192					; end of table for zero collumns + buffer
-F2_Sinus:			rs.b	$280						; sinus (256 words) + cosinus (offset 64 words) = 640
 F2_RotTable:		rs.b	$4200						; rotation table ($41f2)
 F2_TextureCache:	rs.b	TEXTURE_CACHE_SIZE*65*64	; cache for textures with blood/plaques ($10400 for 16)
+F2_WallCodeTrans:	rs.b	$22100						; Code to draw transparent walls/objects. $220d6
+F2_Map:				rs.b	$8000						; copy of map in fast ($9a00 altogether)
+F2_LevelData:		rs.b	40							; part of map
+F2_EnemyData:		rs.b	4136-40						; part of map
+F2_SwitchData:		rs.b	MAP_FULL_SIZE-$8000-4136	; part of map (all adds up to $9a00)
+F2_Bomba:			rs.b	$15cc						; bomb gfx
+F2_ChaosTab:		rs.b	$6c0						; chaos tab 1
+F2_ChaosTac:		rs.b	$800						; chaos tab 2
+F2_Numbers:			rs.b	$1ae						; numbers gfx
+F2_Fonts:			rs.b	$300						; fonts gfx
+F2_Sinus:			rs.b	$280+4						; sinus (256 words) + cosinus (offset 64 words) = 640 (+ small buffer)
+F2_TextOffsets:		rs.b	$200						; $100 (to 128 texts)
+F2_Text:			rs.b	$2000						; $1b58 max (7000) -> rounded up to $2000
 
 F2_TopMem:			rs.w	0
 
