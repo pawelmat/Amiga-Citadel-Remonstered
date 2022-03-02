@@ -11,8 +11,8 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220228
-BUILD:		SET		$02
+VERSION: 	SET		$220302
+BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -26,13 +26,13 @@ DEBUGDATA:	equ		$80000			; for debug only. Deployed versions should not use it
 
 ;BASEF1:	equ		$07e00000		; Fast on a real A4000
 BASEF1:		equ		$00400000		; Fast on a real 1200 or emulated A500 (Z2, starts at $200000)
-;BASEF1:	equ		$00cf0000		; Fast on a real A500 (starts at $c00000)
+;BASEF1:	equ		$00c80000		; Fast on a real A500 (starts at $c00000)
 ;BASEF1:	equ		$40400000		; Z3 fast. First 0.5MB memory. Hopefully Fast
 BASEF2:		equ		BASEF1+$80000	; Z3 fast. Second 0.5MB memory. Hopefully Fast
 
 CODESTART:	equ		$0000			; this is where the code is placed w.r.t. BASEF1 start.
 
-	IFEQ		IS_EXE
+	IFEQ	IS_EXE
 BASEC:		equ		$100000			; free 0.5 meg chip(A1200) - used for development only
 	ELSE
 BASEC:		equ		$000000			; deployed (exe) version must always use lower chip to work with the rest of the game
@@ -71,7 +71,7 @@ SCROLL:		MACRO		; \1 - offset of text
 		movem.l	d0/a1,-(sp)
 		move.l	lc_F2_TextOffsets(pc),a1
 		move	[[\1]*2](a1),d0
-		lea		sc_Text,a1
+		move.l	lc_F2_Text(pc),a1
 		lea		(a1,d0.w),a1
 		move.l	a1,sc_TextAddr+4
 		movem.l	(sp)+,d0/a1
@@ -81,7 +81,7 @@ SCROLL1:	MACRO			; d0 - offset of text
 		add		d0,d0
 		move.l	lc_F2_TextOffsets(pc),a1
 		move	(a1,d0.w),d0
-		lea		sc_Text,a1
+		move.l	lc_F2_Text(pc),a1
 		lea		(a1,d0.w),a1
 		move.l	a1,sc_TextAddr+4
 		movem.l	(sp)+,d0/a1
@@ -345,7 +345,7 @@ start:
 		bra.s	.fix_s
 .fe:
 
-		lea		sc_Text,a1					; copy sinus to fast mem
+		lea		sc_Text,a1					; copy texts to fast mem
 		move.l	lc_F2_Text(pc),a2
 		move	#(TEXT_SIZE/16)-1,d0
 .cpTxt:	REPT 4
@@ -719,7 +719,7 @@ ml2:
 .nl_5:
 
 		tst		sv_MapOn		; is map currently being displayed?
-		bne		ServeMap		; if map initialized
+		bne		ShowMap			; if map initialized
 
 		tst		sv_PAUSE
 		beq.s	NOT_Paused
@@ -4713,7 +4713,7 @@ cpuFill:
 
 ;-------------------------------------------------------------------
 ; show user map
-ServeMap:	movem.l	ALL,-(sp)
+ShowMap:	movem.l	ALL,-(sp)
 
 		; wait for any blitter c2p to complete
 .waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
@@ -11136,8 +11136,8 @@ mk_NotFR:
 		lea		lc_CollumnOffsets(pc),a2
 		move.l	(a2),d0
 		move.l	lc_F1_Walls(pc),a2
-		lea		(a2,d0.l),a2		;first col.addr
-		move	#[16*32]-1,d7		;nr of full size collumns to handle (8) + hald size (8)
+		lea		(a2,d0.l),a2		;first collumn addr
+		move	#[16*32]-1,d7		;nr of full size collumns to handle (8) + half size (8)
 		bsr		mk_calcCollumnMask
 
 		move.l	lc_F1_Walls(pc),a2	;same with enemy 1
@@ -11198,6 +11198,7 @@ mk_calcCollumnMask:
 		moveq	#0,d0			; transparency per quarter
 		move	#$80,d1			; indicator of full solid collumn
 mk_coll1:
+		lsl		#1,d0
 		moveq	#15,d5			;4 quarters of the collumn
 mk_coll2:
 		tst.b	(a2)+
@@ -11208,7 +11209,6 @@ mk_coll3:
 		moveq	#0,d1			; column is not solid
 mk_coll4:
 		dbf		d5,mk_coll2
-		lsl		#1,d0
 		dbf		d6,mk_coll1
 		or		d1,d0			; add full solid indicator
 		move.b	d0,(a2)+		; store transparency mask just beneath the collumn
