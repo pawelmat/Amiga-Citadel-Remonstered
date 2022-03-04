@@ -1,4 +1,4 @@
 Echo "Starting Citadel 1.3 (WHDload)"
-cd WHDLoad
+cd WHDLoad/Citadel
 whdload slave=citadel.slave
-cd /
+cd //

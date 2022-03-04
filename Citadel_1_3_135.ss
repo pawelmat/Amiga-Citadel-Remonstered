@@ -11,7 +11,7 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220302
+VERSION: 	SET		$220303
 BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
@@ -718,7 +718,7 @@ ml2:
 		move	#1,8(a1)		; rf2 flag (fire?)
 .nl_5:
 
-		tst		sv_MapOn		; is map currently being displayed?
+		tst		lc_MapOn(a6)		; is map currently being displayed?
 		bne		ShowMap			; if map initialized
 
 		tst		sv_PAUSE
@@ -737,10 +737,10 @@ NOT_Paused:
 		lea		lc_variables(pc),a6
 		lea		lc_requestTab(a6),a1
 		move	2(a1),d0			;window size button (F1-F8) pressed? Returns 2..6 for (F1-F5) and 7..9 for (F6-F8)
-		beq		sv_NoScrChange
+		beq.s	sv_NoScrChange
 		clr		2(a1)
 		cmp		lc_size+2(a6),d0	; is it the same as current size?
-		beq.w	sv_NoScrChange
+		beq.s	sv_NoScrChange
  		move	d0,lc_size+2(a6)	; size can be 2-9. 7-9 are stretched. Note that size 1-> sv_size=2 , size 5 -> sv_size=6
 		cmpi	#7,d0
 		bmi.s	sv_SizeNoStr		;if <2,6> screen is not stretched
@@ -829,7 +829,7 @@ sv_startFrame:
 .sv_k2:	move	d0,lc_kickback(a6)
 .sv_noKickback:
 
-		tst		sv_SpaceOn
+		tst		lc_spaceOn(a6)
 		beq.s	.sv_NoSpace
 		bsr		Check_RMB		;if space - hand used
 		bra.s	.sv_NotRMB
@@ -1153,6 +1153,13 @@ interruptL3Vertb:
 		SOUND	22,1,50				
 .nl_9:	
 
+		tst		lc_mapDelay(a6)			; delayed map show
+		beq.s	.nl_10
+		subi	#1,lc_mapDelay(a6)
+		bne.s	.nl_10
+		move	#1,lc_MapOn(a6)			; user map on
+.nl_10:
+
 		tst.l	play_sample
 		beq.s	.noSnd
 		bsr		play_sound_pass
@@ -1207,7 +1214,7 @@ Check_RMB:	movem.l	ALL,-(sp)
 		move	#1,sv_HitFlag
 		lea		sv_Items,a1
 		move	(a1),d0					; selected item (*6)
-		tst		sv_SpaceOn
+		tst		lc_spaceOn(a6)
 		bne.s	rm_HandUsed
 		cmpi	#3*6,d0					; is it machine gun?
 		bne.s	RMB_other
@@ -1244,8 +1251,9 @@ RMB_End:
 
 ;-------------------------------------------------------------------
 ; check all possible hand actions
+; in: a6 - lc_variables
 rm_HandUsed:	
-		move	#0,sv_SpaceOn		;clr space_used
+		move	#0,lc_spaceOn(a6)		;clr space_used
 		move	sv_Angle,d0
 		addi	#64,d0
 		andi	#$1fe,d0
@@ -4713,7 +4721,8 @@ cpuFill:
 
 ;-------------------------------------------------------------------
 ; show user map
-ShowMap:	movem.l	ALL,-(sp)
+ShowMap:	
+		movem.l	ALL,-(sp)
 
 		; wait for any blitter c2p to complete
 .waitb:	move	lc_variables+lc_blitC2PPos(pc),d7
@@ -4761,7 +4770,9 @@ ShowMap:	movem.l	ALL,-(sp)
 		bsr		DrawUserMap
 		bsr		p_SetColors
 		SCROLL	74
-sm_Wait:	tst	sv_MapOn
+		lea		lc_variables(pc),a6
+sm_Wait:	
+		tst		lc_MapOn(a6)
 		beq.s	sm_Wait2
 		btst.b	#6,$bfe001
 		beq.s	sm_wait2
@@ -4769,9 +4780,9 @@ sm_Wait:	tst	sv_MapOn
 		beq.s	sm_wait2
 		btst.b	#7,$bfe001
 		bne.s	sm_Wait
-sm_Wait2:	move	#0,sv_MapOn
-		bsr	p_FadeColors
-
+sm_Wait2:
+		move	#0,lc_MapOn(a6)
+		bsr		p_FadeColors
 
 		VBLANK
 		lea		cop_ACTUAL,a1
@@ -4783,19 +4794,24 @@ sm_Wait2:	move	#0,sv_MapOn
 		addi.l	#[sv_Upoffset*5*row],a1
 		addi.l	#[sv_Upoffset*5*row],a2
 		move	#[130*5]-1,d7
-.sv_CopWin:	REPT	10
+.sv_CopWin:	
+		REPT	10
 		move.l	(a2)+,(a1)+
 		ENDR
-		dbf	d7,.sv_CopWin
+		dbf		d7,.sv_CopWin
 
-		bsr	p_SetColors
+		bsr		p_SetColors
 		eori	#1,sv_Pause
 
 		lea		lc_variables(pc),a6
+		move	#0,lc_MapOn(a6)					; make sure double press does not show map again
+		clr.l	lc_lastEscTs(a6)
+		lea		lc_requestTab(a6),a1
+		clr		(a1)							; clear EXIT flag in case esc was double pressed while closing map
 		TIMESTAMP	d0
 		move.l	d0,lc_fps+4(a6)					; get and store start timestamp after map
 		movem.l	(sp)+,ALL
-		bra	MAIN_LOOP
+		bra		MAIN_LOOP
 
 
 ;-------------------------------------------------------------------
@@ -6187,8 +6203,14 @@ lc_details:				dc.w	0				; 2-low,	 1-medium,  0-high
 lc_difficulty:			dc.w	0				; 0-difficult(normal), 1-easy
 lc_collumnMask:			dc.w	0				; AND mask for collumn drawing loop
 lc_collumnMaskOfs:		dc.w	0				; mask value offset for collumn drawing loop
+lc_spaceOn:				dc.w	0				; 1 - space pressed (hand)
+lc_lastSpaceTs:			dc.l	0				; timestamp (lc_time) of when space was last pressed
+lc_lastEscTs:			dc.l	0				; timestamp (lc_time) of when ESC was last pressed
+lc_mapDelay:			dc.w	0				; delayed map show - to allow for esc double press
+lc_MapOn:				dc.w	0				; user map 0-off, 1-on
 lc_requestTab:			dc.w	0,6,0,0,0		;0 quit, 2 window size key pressed, 4 c2p preference changed (blit_use), 6 RMB pressed (RMB_flag), 8 Rf2
 						dc.w	0,0,0,0,0,0,0, 0,0,0,0,0,0,0	;key pressed - 14 keys (up/down etc.)
+lc_wallHeigth:			dc.w	450				; wall heigth for perspective calculation, max 500 - percent
 
 ENDOFF
 
@@ -6321,6 +6343,7 @@ txt_cache_on:			dc.b	"CPU CACHE: ON",0
 txt_cache_off:			dc.b	"CPU CACHE: OFF",0
 txt_c2p_cpu:			dc.b	"C2P: CPU",0
 txt_c2p_blitter:		dc.b	"C2P: BLITTER",0
+txt_exit_tap:			dc.b	"TAP TWICE TO EXIT TO MENU",0
 txt_version:			dc.b	"V1.30 BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48,0
 EVEN
 
@@ -6403,13 +6426,13 @@ lc_EnemyDirTab:
 
 
 ;-------------------------------------------------------------------
-lc_GodModeCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$dd,-$d1,0	; hotkiwi - god mode
-lc_EnergyCode:		dc.b	-$b5,-$cf,-$d7,-$91,-$bf,-$91,-$bf,0 	; hotmama
-lc_AmmoCode:		dc.b	-$b5,-$cf,-$d7,-$b1,-$d1,-$bd,-$bd,0	; hotkiss
-lc_CardCode:		dc.b	-$b5,-$cf,-$d7,-$cd,-$cf,-$cd,-$bd,0	; hotpops
-lc_WallCode:		dc.b	-$d1,-$bb,-$bf,-$b5,-$cf,0				; idaho
+lc_GodModeCode:		dc.b	-$b1,-$cf,-$d7,-$b1,-$d1,-$dd,-$d1,0	; kotkiwi - god mode
+lc_EnergyCode:		dc.b	-$b1,-$cf,-$d7,-$91,-$bf,-$91,-$bf,0 	; kotmama
+lc_AmmoCode:		dc.b	-$b1,-$cf,-$d7,-$b1,-$d1,-$bd,-$bd,0	; kotkiss
+lc_CardCode:		dc.b	-$b1,-$cf,-$d7,-$cd,-$cf,-$cd,-$bd,0	; kotpops
+lc_WallCode:		dc.b	-$d1,-$bb,-$bf,-$b1,-$cf,0				; idako
 lc_MapCode:			dc.b	-$af,-$cf,-$d9,-$d1,-$db,-$93,0			; lorien
-lc_LevelCode:		dc.b	-$b1,-$d1,-$d7,-$d1,-$bf,-$d9,-$bf,0 	; kitiara
+lc_LevelCode:		dc.b	-$b5,-$d1,-$d7,-$d1,-$bf,-$d9,-$bf,0 	; hitiara
 lc_BombCode:		dc.b	-$bf,-$af,-$d1,-$95,-$bf,-$95,-$bf,0 	; alibaba
 
 EVEN
@@ -7590,7 +7613,6 @@ SelectNextItem:
 
 NewLev2:
 		movem.l	d0-d4/a0-a2/a6,-(sp)
-;		movem.l	ALL,-(sp)
 		lea		CUSTOM,a0
 		moveq	#INTF_PORTS,d0
 		move	INTREQR(a0),d1			;check if is it level 2 interrupt
@@ -7616,11 +7638,7 @@ NewLev2:
 
 		and.b	#~(CIACRAF_SPMODE),CIAA+ciacra		;set input mode
 .end:
-;		move.w	#INTF_PORTS,INTREQ(a0)
-;		move.w	#INTF_PORTS,INTREQ(a0)
-;		nop
 		movem.l	(sp)+,d0-d4/a0-a2/a6
-;		movem.l(sp)+,ALL
 		move.w	#INTF_PORTS,CUSTOM+INTREQ
 		move.w	#INTF_PORTS,CUSTOM+INTREQ
 		nop
@@ -7637,12 +7655,19 @@ InputKeyParse:
 
 cc_m:	cmpi.b	#$91,d0			;m - map
 		bne.s	cc_IsMap
-cc_m1:	eori	#1,sv_MapOn
+cc_m1:	eori	#1,lc_MapOn(a6)
 		bra		cc_NoKey
 cc_IsMap:
-		tst		sv_MapOn
-		bne		cc_NoKey		;if map on
+		tst		lc_MapOn(a6)
+		beq.s	cc_p			; map not on
 
+		cmpi.b	#$75,d0			;esc - quit map in this case
+		bne		cc_NoKey
+		eori	#1,lc_MapOn(a6)
+		clr.l	lc_lastEscTs(a6)		
+		bra		cc_NoKey		;if map on
+
+; -----
 cc_p:	cmpi.b	#$cd,d0			;p - pause
 		bne.s	cc_esc
 		eori	#1,sv_Pause
@@ -7652,9 +7677,21 @@ cc_p:	cmpi.b	#$cd,d0			;p - pause
 		bra		cc_NoKey
 cc_p2:	SCROLL	38
 		bra		cc_NoKey
+
 cc_esc:	cmpi.b	#$75,d0			;esc - quit
 		bne.s	cc_ntsc
-		move	#1,(a1)
+		move.l	lc_time(a6),d1		; current ts
+		move.l	lc_lastEscTs(a6),d2
+		move.l	d1,lc_lastEscTs(a6)
+		sub.l	d2,d1				; delta from last TS
+		cmpi.l	#25,d1				; check if ESC double tapped
+		bpl.s	.not2Tap
+		clr		lc_mapDelay(a6)		; cancel map show
+		move	#1,(a1)				; EXIT flag
+		bra		cc_NoKey
+.not2Tap:
+		move	#35,lc_mapDelay(a6)		; one ESC tap = delayed map show
+		SCROLL2	txt_exit_tap			; tap twice to exit
 		bra		cc_NoKey
 cc_ntsc:
 
@@ -7773,9 +7810,23 @@ cc_plus: cmpi.b	#$e7,d0			;+ window size
 		bne		cc_NoKey
 		move	#9,2(a1)
 		bra		cc_NoKey
-cc_SPACE: cmpi.b	#$7f,d0			;hand use
+cc_SPACE: cmpi.b	#$7f,d0			;SPACE pressed - hand use or, if double tap, switch between screens 6 and 8
 		bne.s	cc_Tylda
-		move	#1,sv_SpaceOn
+		move.l	lc_time(a6),d1		; current ts
+		move.l	lc_lastSpaceTs(a6),d2
+		move.l	d1,lc_lastSpaceTs(a6)
+		sub.l	d2,d1				; delta from last TS
+		cmpi.l	#25,d1				; check if space double tapped
+		bpl.s	.not2Tap
+		clr.l	lc_lastSpaceTs(a6)	; prevent another change happening too quickly
+		moveq	#6,d1
+		cmp		lc_size+2(a6),d1	; current size
+		bne.s	.n1
+		moveq	#8,d1
+.n1:	move	d1,2(a1)			; swap screen size between 6 and 8 in main loop
+		bra		cc_NoKey
+.not2Tap:
+		move	#1,lc_spaceOn(a6)
 		bra		cc_NoKey
 cc_Tylda:	
 		cmpi.b	#$ff,d0				;quote (`) - FPS
@@ -11004,7 +11055,7 @@ mk_Wmt2: move	d2,(a3)+
 		lsr.l	#1,d1
 		move	d1,lc_quatScreenBytes(a6)		; 1/4 of chunky byte tab length
 
-		move	sv_WallHeigth,d1
+		move	lc_wallHeigth(a6),d1
 		muls	lc_size(a6),d1		;scale screen
 		divs	#6,d1
 		ext.l	d1
@@ -11987,7 +12038,7 @@ screenMaxY:	equ		128		; in pixels
 
 sv_ViewWidth:	dc.w	screenMaxX/8			;view window dims in bytes - max 192 pixels = 24 bytes
 sv_ViewHeigth:	dc.w	screenMaxY				;24/128 - maximum
-sv_WallHeigth:	dc.w	450			;max 500 - percent
+;sv_WallHeigth:	dc.w	450			;max 500 - percent
 
 ;sv_FillCols:	dc.l	$10101010,$e0e0e0e0	;background filling for ceiling and floor
 
@@ -12021,10 +12072,10 @@ sv_SecondEnemy:	dc.w	0
 sv_AddMove:	dc.w	0,0			;x,y external add
 ;ab_BloodAdr:	dc.l	0,0,0
 eh_FirePos:	dc.l	0,0
-sv_MapOn:	dc.w	0			;0-off, 1-on
+;sv_MapOn:	dc.w	0			;0-off, 1-on
 sv_OldCop:	dc.l	0,0,0
 ;sv_EndLevel:	dc.w	0,4			;1 - end of lev, -1 death
-sv_SpaceOn:	dc.w	0			;1 - space pressed (hand)
+;sv_SpaceOn:	dc.w	0			;1 - space pressed (hand)
 ;do_pikaj:	dc.w	0,50
 do_bron:	dc.w	0
 do_JakiKoniec:	dc.w	0			;+ good, - bad

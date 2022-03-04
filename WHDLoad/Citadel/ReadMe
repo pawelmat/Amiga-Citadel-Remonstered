@@ -1,0 +1,60 @@
+Short : Installer for Citadel 1.3 "Remonstered" edition
+Type : game
+Author : Asman, Kane, Bored Seal, Psygore, Jean-Francois Fabre, Wepl
+
+REQUIREMENTS:
+The game requires 0.5 MB Chip Mem + 1 MB of other memory (fast RAM is used if possible).
+Slave needs ROM image "DEVS:Kickstarts/kick34005.A500".
+You need 4.5 MB other memory for the preload option.
+
+SUPPORTED VERSION:
+- English version 1.3 only, bundled with the install
+
+FEATURES:
+- Significantly improved performance (4-5x +)
+- Significantly updated in-game graphics
+- Redesigned levels
+- Rebalanced gameplay
+- Extended backstory
+- Modern WASD + mouse control
+- Crosshairs 
+- Removed "disturbances" and energy drain when hitting walls
+- FPS (Frames per Second) display (press ` key)
+- Auto-weapon change
+- F1-F8 and numeric keys swapped for screen and weapon selection
+- Fast weapon change (press R/T keys)
+- Red hit and green take flash indications
+- LMB support for skipping loading screens and intro
+- Code protection fully removed
+- New manual
+- Unlimited Energy option built into the Install
+- Fixed running on accelerators (see notes below)
+- Improved exit option (double press ESC)
+- New icon
+- Known bugs removed
+- ... several other small improvements
+
+HISTORY:
+V1.0 (25-May-2001) - first release
+V1.1 (17-Oct-2002) - poland version support added
+V1.2 (08-Nov-2012) - fixed to work with WHDLoad v17+
+V1.3 (03-Mar-2022) - "Remonstered" update (support for all other versions removed)
+
+CHEAT CODES:
+- Seriously?
+
+BUGS:
+- None :-)
+
+NOTES:
+- On some accelerators, especially those 68060 based, the following 
+  options may need to be added to whdload for the game to run smoothly:
+   branchcache=0 cache=1 dcache=1
+  On some 68060 based emulated accelerator implementations this may still 
+  cause reduced frame rates, or game crashes. 
+- Savegames are stored on Disk.4 file. You need to exit through the game (F10) 
+  to flush the change to the HD (or set whdload options to flush while running)
+
+
+         Bug report form, full WHDLoad package and other installs:
+                           http://www.whdload.de
