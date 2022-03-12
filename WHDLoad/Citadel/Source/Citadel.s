@@ -54,7 +54,7 @@ _expmem		dc.l	_expmem_size		;ws_ExpMem
 		dc.w	slv_config-_base	;ws_config
 
 _name		dc.b	"Citadel (Remonstered)",0
-_copy		dc.b	"1995, 2022 VD",0
+_copy		dc.b	"1995, 2022 VD",0 
 _info		
 		dc.b	"Adapted by Asman",10,10
 		dc.b	"Previous version installed & fixed:",10
@@ -159,9 +159,13 @@ _68000
 
 
 .go
+
+		bsr	_SetupKeyboard
+
 		lea	CITADEL_LOADER,a1
 		lea	patchLoader(pc),a0
 		WHDL	Patch
+
 
 
 		move.l	_expmem,d1
@@ -184,7 +188,7 @@ patchLoader:
 
 		PL_P	$382,FixPatchIntro
 
-		PL_W	$2e8,$c020		;remove early keyboard init
+		PL_W	$2e8,$c028		;remove early keyboard init
 
 		PL_W	$82,$6002		;skip exec.supervisor
 
@@ -200,17 +204,37 @@ patchLoader:
 		PL_END
 
 fixWaitLoader:
+		move.l	a0,-(sp)
 
 .loop		btst	#6,$bfe001
 		beq	.exit
-
 		btst	#7,$bfe001
+		beq	.exit
+		
+		lea	_keycode(pc),a0
+		cmp.b	#$45,(a0)		;KEY_ESC
+		beq	.exit
+
+		cmp.b	#$40,(a0)		;KEY_SPACE
+		beq	.exit
+
+		cmp.b	#$44,(a0)		;KEY_ENTER
+		beq	.exit
+
+		cmp.b	#$4c,(a0)		;KEY_CRSR_UP
+		beq	.exit
+		cmp.b	#$4d,(a0)		;KEY_CRSR_DOWN
+		beq	.exit
+		cmp.b	#$4f,(a0)		;KEY_CRSR_LEFT
+		beq	.exit
+		cmp.b	#$4e,(a0)		;KEY_CRSR_RIGHT
 		beq	.exit
 
 		tst.w	$7d4da
 		bpl	.loop
 
-.exit		rts
+.exit		move.l	(sp)+,a0
+		rts
 
 ;-----------------------------------------------------------------------------
 
@@ -229,9 +253,51 @@ _patchIntro
 		PL_P	$1ec,FixPatchMain
 
 		PL_W	$170,$6016		;fix - credits can be skipped with LMB
+
+
+		PL_W	$94,$c028		;allow keyboard int
+
+	;add possibility to skip with joy button
+		PL_PSS	$188,FixIntroJoyButton,2	
+	
 		PL_W	$8,$6004		;skip cacr operation
 
 		PL_END
+
+;-----------------------------------------------------------------------------
+
+FixIntroJoyButton:
+		move.l	a0,-(sp)
+
+		btst	#6,$bfe001
+		beq.b	.exit
+
+		btst	#7,$bfe001
+		beq.b	.exit
+
+		lea	_keycode(pc),a0
+		cmp.b	#$45,(a0)		;KEY_ESC
+		beq	.exit
+
+		cmp.b	#$40,(a0)		;KEY_SPACE
+		beq	.exit
+
+		cmp.b	#$44,(a0)		;KEY_ENTER
+		beq	.exit
+
+		cmp.b	#$4c,(a0)		;KEY_CRSR_UP
+		beq	.exit
+		cmp.b	#$4d,(a0)		;KEY_CRSR_DOWN
+		beq	.exit
+		cmp.b	#$4f,(a0)		;KEY_CRSR_LEFT
+		beq	.exit
+		cmp.b	#$4e,(a0)		;KEY_CRSR_RIGHT
+
+.exit		move.b	#$ff,(a0)
+
+		move.l	(sp)+,a0
+		rts
+
 
 ;-----------------------------------------------------------------------------
 
@@ -265,7 +331,109 @@ _patchMain:
 		PL_PS	$818,Crack		;remove manual protection
 		PL_PS	$c46,PatchKbDelay	;patch keyboard
 
+
+		PL_PS	$bee,FixStoreKeyInInt
+
+		PL_NOP	$c4c,8
+
+		PL_PSS	$bb0,FixMainMouseButton,22
+
+
+		PL_P	$7a8,FixTitleWait
+
+
 		PL_END
+
+FixTitleWait
+		move.l	a0,-(sp)
+
+		btst	#6,$bfe001
+		beq.b	.press
+
+		btst	#7,$bfe001
+		beq.b	.press
+
+		lea	_keycode(pc),a0
+		cmp.b	#$45,(a0)		;KEY_ESC
+		beq	.press
+
+		cmp.b	#$40,(a0)		;KEY_SPACE
+		beq	.press
+
+		cmp.b	#$44,(a0)		;KEY_ENTER
+		beq	.press
+
+		cmp.b	#$4c,(a0)		;KEY_CRSR_UP
+		beq	.press
+		cmp.b	#$4d,(a0)		;KEY_CRSR_DOWN
+		beq	.press
+		cmp.b	#$4f,(a0)		;KEY_CRSR_LEFT
+		beq	.press
+		cmp.b	#$4e,(a0)		;KEY_CRSR_RIGHT
+		beq	.press
+
+.exit		move.l	(sp)+,a0
+		jmp	$697b2
+
+.press		move.l	(sp)+,a0
+		jmp	$697b6
+		
+
+
+
+
+		
+
+
+FixStoreKeyInInt:
+		move.b	$bfec01,d0
+		move.w	d0,-(sp)
+
+		not.b	d0
+		ror.b	#1,d0
+
+		move.l	a0,-(sp)
+		lea	_keycode(pc),a0
+		move.b	d0,(a0)
+		move.l	(sp)+,a0
+
+		move.w	(sp)+,d0
+		rts
+
+FixMainMouseButton:
+		move.l	a0,-(sp)
+
+		btst	#6,$bfe001
+		beq.b	.press
+
+		btst	#7,$bfe001
+		beq.b	.press
+
+		lea	_keycode(pc),a0
+		cmp.b	#$45,(a0)		;KEY_ESC
+		beq	.press
+
+		cmp.b	#$40,(a0)		;KEY_SPACE
+		beq	.press
+
+		cmp.b	#$44,(a0)		;KEY_ENTER
+		beq	.press
+
+		cmp.b	#$4c,(a0)		;KEY_CRSR_UP
+		beq	.press
+		cmp.b	#$4d,(a0)		;KEY_CRSR_DOWN
+		beq	.press
+		cmp.b	#$4f,(a0)		;KEY_CRSR_LEFT
+		beq	.press
+		cmp.b	#$4e,(a0)		;KEY_CRSR_RIGHT
+		beq	.press
+
+.exit		move.l	(sp)+,a0
+		rts
+
+.press		move.w	#$1,$69bdc
+		bra.b	.exit
+
 
 ;-----------------------------------------------------------------------------
 
@@ -502,7 +670,12 @@ loop2		cmp.b	$dff006,d0
 		rts
 
 ;-----------------------------------------------------------------------------
+_keycode:	dc.b	0
+	EVEN 
 
+		INCLUDE	'sources:WHDLoad/keyboard.s'  
+
+;-----------------------------------------------------------------------------
 _resload	dc.l	0
 _tags		dc.l	WHDLTAG_ATTNFLAGS_GET
 flags		dc.l	0
