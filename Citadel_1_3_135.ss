@@ -11,7 +11,7 @@
 IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220303
+VERSION: 	SET		$220330
 BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
@@ -756,7 +756,7 @@ sv_SizeNoStr:
 sv_cont1:
 		st		lc_ledChange(a6)	; re-draw debug LEDs
 		bsr		sv_SetWindowSize_pass		; change window size
-		move	lc_size(a6),d0
+		move	lc_size+2(a6),d0
 		addi	#21,d0
 		SCROLL1						; "window size X"
 		TIMESTAMP	d0
@@ -7748,7 +7748,7 @@ cc_F1_F8:		cmpi.b	#$60,d0			;F1-F5 - window size (F6,F7,F8 stretched)
 		bpl.s	cc_1_0
 		cmpi.b	#$51,d0
 		bmi.s	cc_1_0
-		btst	#0,d0
+		btst	#0,d0			; react on key release only (lsb = 1)
 		beq.s	cc_1_0
 		addi	#$9e,d0			; turn into numeric
 		ext	d0
@@ -7796,19 +7796,21 @@ cc_minus: cmpi.b	#$e9,d0			;- window size
 		beq.s	.cc_m2
 		cmpi.b	#$6b,d0
 		bne		cc_plus
-.cc_m2:	subi	#1,2(a1)
-		cmpi	#1,2(a1)
-		bne		cc_NoKey
-		move	#2,2(a1)
+.cc_m2:	move	lc_size+2(a6),d1
+		cmpi	#2,d1
+		beq		cc_NoKey
+		subi	#1,d1
+		move	d1,2(a1)
 		bra		cc_NoKey
 cc_plus: cmpi.b	#$e7,d0			;+ window size
 		beq.s	.cc_p2
 		cmpi.b	#$43,d0
 		bne		cc_space
-.cc_p2:	addi	#1,2(a1)
-		cmpi	#10,2(a1)
-		bne		cc_NoKey
-		move	#9,2(a1)
+.cc_p2:	move	lc_size+2(a6),d1
+		cmpi	#9,d1
+		beq		cc_NoKey
+		addi	#1,d1
+		move	d1,2(a1)
 		bra		cc_NoKey
 cc_SPACE: cmpi.b	#$7f,d0			;SPACE pressed - hand use or, if double tap, switch between screens 6 and 8
 		bne.s	cc_Tylda
@@ -7819,10 +7821,10 @@ cc_SPACE: cmpi.b	#$7f,d0			;SPACE pressed - hand use or, if double tap, switch b
 		cmpi.l	#25,d1				; check if space double tapped
 		bpl.s	.not2Tap
 		clr.l	lc_lastSpaceTs(a6)	; prevent another change happening too quickly
-		moveq	#6,d1
+		moveq	#6,d1				; size F5
 		cmp		lc_size+2(a6),d1	; current size
 		bne.s	.n1
-		moveq	#8,d1
+		moveq	#8,d1				; size F7
 .n1:	move	d1,2(a1)			; swap screen size between 6 and 8 in main loop
 		bra		cc_NoKey
 .not2Tap:

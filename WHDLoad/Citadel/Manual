@@ -1,0 +1,376 @@
+ 
+Citadel
+Version 1.3 "Remonstered" (March 2022)
+
+
+BACKGROUND STORY
+----------------
+
+In the 24th century the Earth lies within an intricate web of conquest, politics, and 
+economic gain. On the outermost points of this web lie the bridgeheads, which are the 
+points of strategic importance for the Earth's galactic defence and inter-planetary 
+communication systems.
+
+One of these bridgeheads was situated on a small distant planet orbiting Tau Ceti 
+about 12 light years away from Earth and marked on stellar maps as B104-GS12. 
+Once one of the "verge world" planets of the Earth's galactic empire, it had 
+originally become known for the discovery of stone structures created by a long 
+gone, primitive alien civilization. A military training and research base was built on 
+top of one of these vast, ancient underground structures. However, following rapid 
+galactic expansion, the military base situated there lost its strategic significance and 
+continued to exist for some time as a research facility into the alien culture and a re-
+fueling point for inter-stellar cargo travelling across the galaxy.
+
+That did not last long as the facility was situated too far from the main transport 
+routes. Further structures were added to the base and the site was transformed into 
+a harsh penal colony. Two years later the colony was officially closed as B104-GS12 
+was supposedly in the path of a huge meteor swarm. This was however a 
+fabrication sourced from the Military Council, who had their own plans for B104-GS12.
+
+Consequently, the base became shrouded in mystery after being taken over by 
+BioTec, a private company backed by the Earth's Central Government and the 
+Military Council. Some rumours started circulating among space cargo pilots about 
+transports of sophisticated laboratory equipment and materials presumably used to 
+modify and further expand the base, which BioTec internally referred to as the Citadel.
+
+Away from prying eyes, inmates on death-row from other penal colonies were 
+secretly transferred to the Citadel and used as additional slave labour to complete 
+the modifications to the base. A few months later a huge, secret laboratory began 
+to function there. While officially a BioTec verge world research facility, in practice it 
+was an under-cover military funded lab in which ethically dubious and officially 
+forbidden research into extreme biotechnological extensions to the human body 
+took place. Most of the former inmates became subjects for the experiments.
+
+At the start of 2305 all communication between the Citadel and the BioTec HQ on 
+Earth stopped without any apparent reason. Efforts to restore the link failed, causing 
+BioTec and the Military Council to convene and decide on sending a special 
+landing force to B104-GS12 to establish what had happened.
+
+A modern military spaceship, X16, with a crew of over 950, was dispatched to B104-
+GS12. While officially on a reconnaissance and training flight, the purpose of the 
+mission had been kept secret and the crew were only briefed when they 
+approached the destination. The orders from Earth were short and to the point: 
+"Communications and control over the Citadel must be restored at all costs. If this is 
+not possible then the Citadel must be destroyed".
+
+As the X16 approached the planet it repeatedly failed to make contact with the 
+Citadel, which remained silent on all wavelengths. With final preparations for 
+landing under way a decision was made to send a small reconnaissance unit 
+"Scout 01" to investigate the base from a closer distance. Just before its launch the 
+main ship's defence and comms system went down for an unknown reason and 
+initiated a lengthy diagnostic and reboot procedure. 
+
+You were one of the two pilots on board of the Scout. Being wary of the Citadel's 
+defence mechanism you and your co-pilot orbited the planet several times to take 
+pictures and readings. As your Scout made a sweep of the planet something went 
+drastically wrong. A rocket launched from the Citadel and headed directly for your 
+mothership, blasting the unsuspecting and still defenceless X16 into oblivion, 
+damaging the Scout and sending a horrifying shudder down your spine as you were 
+forced to make an emergency crash landing on the planet's surface.
+
+Unfortunately, your co-pilot did not survive the crash. YOU are the only survivor, 11 
+light years from home, with no one aware of your fate and no one coming to the 
+rescue any time soon. Amidst falling X16 debris you make your way towards an 
+emergency side entrance to the Citadel, leading you to the underground post-
+alien part of it. 
+
+You know that your only chance for survival and of getting home might lie 
+somewhere within the Citadel.
+
+Driven by the will to live you are ready to do anything that would ensure your survival.
+
+It's you against the Citadel and whatever evil lurks within.
+
+ 
+RUNNING THE GAME
+----------------
+
+The latest Citadel version 1.3 is currently supported only using WHDLoad (version 17 
+or newer). It will run on any Amiga with a minimum of 0.5MB Chip and 1MB other 
+(Fast or Chip) memory available for the game and meeting other WHDLoad 
+requirements.
+-	To run it from CLI, type: whdload citadel.slave
+-	To run it from Workbench, click on the citadel.slave icon
+   
+   
+MAIN MENU
+---------
+
+After the game has been loaded the main menu will appear with the following 
+options:
+
+-	START. Starts the game
+
+-	LOAD GAME. Loads a game which has been saved. Note the disc 4 is used for 
+saves. You can only save the game in between levels.
+
+-	OPTIONS. Allows to configure several in-game options:
+
+	- DIFFICULTY. Can be set to Easy or Hard and determines how powerful 
+enemies are.
+
+	- SCREEN SIZE. Can be set from 1 (smallest) to 5 (largest). And determines 
+the initial game's display size. This setting has direct impact on 
+performance and can be changed at any time while playing the 
+game.
+
+	- DETAILS. Can be set to Minimum, Medium or Maximum and determines 
+the level of details displayed in the game such as decorative elements 
+or fallen enemies. This setting has direct impact on performance and 
+can be changed at any time while playing the game.
+
+	- FLOORS. Can be set to Yes or No and determines whether textured 
+floors and ceilings are displayed in the game. This setting has direct 
+impact on performance and can be changed at any time while 
+playing the game.
+
+-	TRAINING. Allows to select one of five training levels, playing which can allow 
+to get used to the mechanics of the game as well as available weapons 
+before engaging in the main story. These levels are not part of the main 
+storyline.
+
+-	INFO. Shows some information about the game and its authors.
+
+
+PLAYING THE GAME
+----------------
+
+OBJECTIVES
+----------
+
+The main game starts after selecting START from the main menu or loading one of 
+the previously saved games.
+
+At first you find yourself at the emergency entrance to the Citadel, in the 
+underground part of it which had originally been constructed by the now extinct 
+alien race once inhabiting B104-GS12. You have nothing with you as you did not 
+expect having to leave the Scout. Your first task is to therefore find some means of 
+defence and then start exploring the Citadel in order to unravel its mysteries.
+The aim of the game is to escape from the Citadel. As you quickly realise you 
+cannot single handedly restore order in the base, therefore you must also destroy it 
+following the orders received while still on the X16. 
+
+After getting out of the alien underground maze (the Basement), which has three 
+levels, you will reach the main and human-built part of the Citadel. You then have 
+some choice of your further path throughout the building complex and need to find 
+six components required to construct a powerful bomb which you then need to 
+detonate in the central part of the Citadel to annihilate it. You can only hope that 
+you find some means of escape in the process.
+
+Each part of the bomb is in one of the six extensions built around the central part of 
+the base. Make sure you find the bomb part before leaving every extension, 
+because you will not be able to go back to it. Only when all parts are found you 
+can enter the core of the Citadel.
+ 
+ 
+SCREEN LAYOUT
+-------------
+
+The screen has been divided into several parts. 
+The main window typically shows the 3D area around the player. My pressing M it 
+can also display a map showing the already explored parts of the current location. 
+The bottom part of the screen is taken up by a control panel and shows from the 
+left:
+-	Parts of the bomb found so far.
+-	Remaining health.
+-	Graph of your heart rate, which increases when being hit or stressed. Too high 
+heart rate causes tiredness and lack of focus which in turn influence your aim 
+and reflexes.
+-	Compass showing the direction you're facing.
+-	The weapon you are currently holding, or an empty hand if no weapon is 
+available or selected.
+-	Remaining ammo for the weapon being used.
+-	Three counters showing the number of red, green, and blue keycards you 
+currently have. These keycards are used to open doors using card slots of the 
+matching colour.
+
+There is also a dialogue box at the very bottom of the screen where messages 
+appear informing you about different things happening in the game.
+
+
+MOVEMENT AND INTERACTION
+------------------------
+
+You navigate the 3D world od the Citadel by using the keyboard (see the KEYS 
+section), joystick, pad and/or mouse. For best experience it is recommended to use 
+a combination of WASD keys (or arrows) for moving forward, backward, and 
+sideways and at the same time the mouse for turning, aiming and shooting.
+You can interact with the environment by pressing the action key (see the KEYS 
+section) or the right mouse button if you are not holding any weapon. This is how 
+you find information about your surroundings, press in-game buttons or enter 
+keycards into card slots. While doing so watch for important information in the 
+dialogue box at the bottom of the screen.
+
+Some actions in the game are triggered by getting near objects, this includes doors 
+which open automatically, teleports, and objects you can collect such as weapons 
+and ammo. 
+
+Be ready to solve riddles to find hidden areas or just make progress throughout the 
+levels. These may include buttons on walls opening or closing doors, removing 
+secret walls, or making items appear. Sometimes a button on one side of the map 
+will open a door on the other so be prepared for some exploration.
+
+Your movements within each level are tracked on a map which can be brought up 
+by pressing the M key. It helps you figure out where you've been and what you may 
+have missed.
+
+
+MOVING BETWEEN LEVELS
+---------------------
+
+The Citadel is huge. It's been originally built over alien ruins and extended over the 
+years into the central core and six peripheral building complexes. Each complex 
+typically consists of 2 or 3 levels. To complete each level, you must find the exit 
+leading to the next one. Note that to finish the game you also need to find one part 
+of the bomb in each or the six peripheral complexes so, since you cannot go back 
+to the levels you completed, make sure you explore them thoroughly.
+
+
+SAVING THE GAME
+---------------
+
+After completing each level, you will be presented with achievement statistics such 
+as time taken and the number of enemies defeated. You will also be given a 
+chance to save the game. Note that you cannot save within levels, only between 
+them. 
+Also note that you need to quit WHDLoad for the game file to actually be saved to 
+the hard drive as by default WHDLoad caches disk writes until after leaving the 
+game. Therefore, if you want to keep your save games for later, press F10 once you 
+finished playing to quit the game instead of just resetting the device. This does not 
+have to be done between levels, only at the end when you actually want to stop 
+playing.
+
+
+COMBAT
+------
+
+On your way through the Citadel you will encounter numerous enemies. They differ 
+in speed, aggression, weapons, and resistance to different forms of attack. 
+Fortunately, you will also find different weapons which you can use, ranging from a 
+simple handgun, through a machine gun, to a flame thrower and rocket launcher. 
+As you enter the Citadel empty handed, search for a handgun close to the starting 
+point. The more advanced weapons can be found later in the game.
+Each weapon uses ammo which you can also find around, or salvage from enemy 
+corpses. Explore the levels and collect additional ammo as you can stack it and it 
+will surely become handy in the heat of battle. There is also a risk of your weapon 
+jamming or breaking - if this happens, you need to find a new weapon.
+You may die a lot at first, but each enemy has its weak spots which you should try to 
+discover and exploit. Some enemies are immune to some weapons, such as metal 
+robots which are unaffected by fire. Use tactical techniques such as luring enemies 
+or hiding behind doors or around corners. Moving sideways while turning to avoid 
+enemy shots while keeping them in your crosshairs is just one of several effective 
+strategies. Note that enemies do not randomly reappear - once you clear an area, 
+it stays safe.
+Look around for other useful items such medkits which replenish your health and 
+adrenaline shots which speed you up. You can also find some spirit, most likely part 
+of medical supplies used for experiments - although fun for a moment it will disrupt 
+your movements and aiming for a while, so think twice before using it.
+
+
+CONTROLS
+--------
+
+The game can be played using the keyboard, mouse, joystick, gamepad, or a 
+combination of those. Best experience is achieved using the mouse (rotation and 
+shooting) and keyboard (WASD keys and weapon selection) together.
+
+KEYS
+----
+
+W,A,S,D, up/down arrows: move forward, backward, left or right
+Q,E, left/right arrows: turn left or right
+Enter, Shift: fire selected weapon, insert selected keycard
+Space: Single press: interact with the environment e.g. operate switches. 
+	   Double press: change between window (F5) and full screen (F7) modes.
+M: toggle map
+P: toggle game pause
+F: toggle textures on floors and ceilings
+G: change level of details (low/medium/high)
+Z: toggle screen disturbance while hitting walls
+C: toggle crosshairs
+Esc: Single press: show map. Double press: quit to main game menu
+1 - 7: choose a weapon (if available)
+      1 - nothing (empty hands)
+      2 - handgun
+      3 - rifle
+      4 - machine gun
+      5 - flame thrower
+      6 - shock blaster
+      7 - rocket launcher
+8 - 0: keycard selection (if any available)
+      8 - red keycard
+      9 - green keycard
+      0 - blue keycard
+T, TAB: change to next available weapon or keycard
+R: change to previous available weapon or keycard
+F1-F8: change the game window size. Sizes 6-8 can be set only from within the 
+game (not from the main menu)
++ / - : change the game window size one step at a time
+F10: quit WHDLoad
+`: display current FPS (Frames per Second)
+
+GAMEPAD
+-------
+
+Dpad Up/Down: Move forward / backward
+Dpad Left / Right: Move sideways left / right
+Shoulder L/R: Turn left / right
+A: Fire weapons, insert keycards
+B: Single press: Interact with the environment e.g. operate switches
+   Double press: change between window and full screen modes.
+X / Y: Change to previous / next available weapon or keycard
+Menu: Single press: show map
+	  Double press: quit to main game menu
+
+
+JOYSTICK
+--------
+
+Up / down: move forward and backward
+Left / right: turn left / right
+Fire: fire weapons, insert keycards
+
+The keyboard should be used to control other game functions.
+
+MOUSE
+-----
+
+Up / down: move forward and backward
+Left / right: turn left / right
+LMB: move forward
+RMB: fire weapons, insert keycards
+
+The keyboard should be used to control other game functions.
+ 
+ACKNOWLEDGEMENTS
+----------------
+
+The original version of the Citadel was released by Virtual Design in 1995. The core 
+team as well as numerous people who contributed to its creation are listed in the 
+INFO section of the main menu.
+
+The current version 1.3 "Remonstered" has gone through a thorough refresh in 2022, 
+involving removing bugs discovered over the years, improving some aspects of the 
+gameplay such as performance (increased 4-5 times), player control, and an 
+update of the in-game graphics and level design. This was done by Pawel Matusz 
+and Artur Bardowski from the core Virtual Design team with help from Adam 
+Nowakowski with preparing the final version of the WHDLoad install.
+
+COPYRIGHT
+---------
+
+Copyright (c) 1995, 2022 Virtual Design - Pawel Matusz, Artur Bardowski. This software 
+is free to copy and use for non-commercial purposes. Virtual Design assumes no 
+responsibility for any damage or loss caused by installing or using it.
+
+WARRANTY
+--------
+
+This package comes with absolutely no warranty of any kind, either express or
+implied, statutory or otherwise. The entire risk as to use, results and
+performance of the package is assumed by you and if the package should prove
+to be defective, you assume the entire cost of all necessary servicing,
+repair or other remediation.
+Under no circumstances, can the authors be held responsible for any damage
+caused in any usual, special, or accidental way, also if the owner or a third
+party has been pointed at such possibilities of damage. 
