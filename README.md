@@ -50,8 +50,13 @@ In order to prepare an updated cyt.dat resource file for WHDLoad:
 6. Copy cyt.dat to your folder with the WHDLoad install and other files, replacing the old cyt.dat.
 7. Run the game: 'whdload citadel.slave'
 
-## Copyright, License and Final Notes
+## Copyright and License
+
 Copyright (C) 1995, 2022 Pawel Matusz, Artur Bardowski. 
 This software is free to copy and use for non-commercial purposes under the terms of the GNU GPL-3.0 license. 
-The authors accept no responsibility for any damage or loss caused by using it. 
+
+## Warranty
+
+This package comes with absolutely no warranty of any kind, either express or implied, statutory or otherwise. The entire risk as to use, results and performance of the package is assumed by you and if the package should prove to be defective, you assume the entire cost of all necessary servicing, repair or other remediation.
+Under no circumstances, can the authors be held responsible for any damage caused in any usual, special, or accidental way, also if the owner or a third party has been pointed at such possibilities of damage.
 
