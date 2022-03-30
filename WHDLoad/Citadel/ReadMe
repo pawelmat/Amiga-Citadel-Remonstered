@@ -30,6 +30,7 @@ FEATURES:
 - Unlimited Energy option built into the Install
 - Fixed running on accelerators (see notes below)
 - Improved exit option (double press ESC)
+- Improved support for MC68040/60 based accelerators
 - New icon
 - Known bugs removed
 - ... several other small improvements
@@ -47,12 +48,10 @@ BUGS:
 - None :-)
 
 NOTES:
-- On some accelerators, especially those MC68060 based, the following 
-  options may need to be added to whdload for the game to run smoothly:
+- On some accelerators, especially those MC68040/60 based, the following 
+  options may need to be added to whdload for the game to run smoothly as
+  not all caches might be initialised by default:
    branchcache=0 cache=1 dcache=1
-  Some MC68060 implementations may still cause reduced frame rates, 
-  or game crashes - mainly when changing screen size, due to no explicit 
-  MC68060 IC/DC management support in the game while using some SMC.
 - Savegames are stored on Disk.4 file. You need to exit through the game (F10) 
   to flush the change to the HD (or set whdload options to flush while running)
 

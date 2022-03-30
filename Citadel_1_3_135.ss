@@ -12,7 +12,7 @@ IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
 VERSION: 	SET		$220330
-BUILD:		SET		$01
+BUILD:		SET		$02
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -277,9 +277,9 @@ start:
 		movec	CACR,d0			; switch on and clear cache
 		lea		lc_cacr_copy(pc),a1
 		move.l	d0,(a1)
-;        tst.w   d0            	;movec does not affect carry codes
-;        bmi.s   .cic_040       	;A 68040 with enabled cache!
-		; do nto enable instruction burst as it actually slows the average speed down
+        tst.w   d0            	; check EIC as movec does not affect carry codes
+        bmi.s   .cic_040       	; EIC set = this is a 68040/60 with enabled cache. Note: cache usage is not forced on these.
+		; do not enable instruction burst as it actually slows the average speed down?
         ;ori.w   #$0009,d0		; instruction cache enable + clear
         ;ori.w   #$0909,d0		; instruction cache enable + clear, 030 data cache enable + clear
         ;ori.w   #$1909,d0		; instruction cache enable + clear, 030 data cache enable + clear, 030 burst enable
@@ -287,9 +287,9 @@ start:
         ;ori.l   #$40003909,d0		; instruction cache enable + clear, 030 data cache enable + clear, 030 burst and writethrough enable, sync
         ori.w   #$0909,d0		; instruction cache enable + clear, 030 data cache enable + clear
 		movec	d0,CACR
-;		bra.s   .cic_exit
-;.cic_040: dc.w    $f4b8         ;CPUSHA (IC)
-;.cic_exit:
+		bra.s   .cic_exit
+.cic_040: dc.w    $f4b8         ;CPUSHA (IC) to clear/flush instruction cache to maintain coherency after SMC
+.cic_exit:
 		bra.s	.InitStruct
 
 .NoCache:	; this is a plain 68000 so no cache etc.
@@ -6059,8 +6059,12 @@ clearCPUCache:
 		move	lc_variables+lc_isCache(pc),d0
 		beq.s	.noCache
 		movec	CACR,d0
+        tst.w   d0            	; check EIC as movec does not affect carry codes
+        bmi.s   .cic_040       	; EIC set = this is a 68040/60 with enabled cache. Note: cache usage is not forced on these.
         ori.w   #$0808,d0		; clear data and instruction cache
 		movec	d0,CACR
+		bra.s   .noCache
+.cic_040: dc.w    $f4b8         ;CPUSHA (IC) to clear/flush instruction cache to maintain coherency after SMC
 .noCache:
 		move.l	(sp)+,d0
 		rts
