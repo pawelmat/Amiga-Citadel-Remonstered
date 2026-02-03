@@ -3,7 +3,7 @@
 ## Introduction
 
 This is a 2022 update of the original Citadel from 1995. 
-- The 3D rendering engine has been optimised as much as possible within the current game architecture, resulting in a 4-5x + performance increase
+- The 3D rendering engine has been optimised as much as possible within the current game architecture, resulting in a 4-6x + performance increase
 - Gameplay has been improved by implementing additional usability features such as WASD+mouse simultaneous control, auto-weapon change etc.
 - Level graphics has been significantly updated including textures and enemies
 - Level maps have been corrected or re-designed for better playing experience, fast-paths added in huge levels etc.
@@ -24,9 +24,15 @@ Suggested configuration: Amiga 1200 with 68020/14MHz or faster with minimum 0.5M
 
 A system with minimum 1MB chip and 4 MB Fast memory is required. Can be a real Amiga or emulator-based.
 
-The game can be assembled using AsmOne (v1.20 or newer). On starting it allocate a minimum of 600kb of Public or Fast memory for your workspace. The main file to start the game is Citadel_1_3_135.ss and the entry point is labeled 's'. 
+
+Note that:
+- Since this project is not a standalone game, but an update and drop-in replacement for the main game engine, it requires many other parts of the game and assets to work correctly. Hence, although it would be possible to modify it to run as an executable, it currently doesn't. This means it needs to be assembled and run using the AsmOne assembler on a real Amiga or an emulator. Alternatively it can be assmbled to a Cyt.dat file and run with the rest of the game using WhdLoad - this is how the release version works.  
+- Unfortunately the game uses several fixed Chip memory locations instead of allocating memory. Allocation for the extention chunk is done in the loader, which is not part of the update, therefore the right memory regions need to be defined in the code as explained below. I have partially worked through removing fixed addresses but there are still some left and I had no incentive to complete this task as the other parts of the game also use fixed addressing, so changing it for the engine alone does not really solve anything.
+
 
 ### Running the game from AsmOne
+
+The game can be assembled using AsmOne (v1.20 or newer). On starting it allocate a minimum of 600kb of Public or Fast memory for your workspace. The main file to start the game is Citadel_1_3_135.ss and the entry point is labeled 's'. 
 
 In order to run the game from assembler:
 1. Navigate to the directory where you cloned this project and where the main files (Citadel_1_3_135.ss etc.) reside - this will be the working directory.
@@ -59,4 +65,5 @@ This software is free to copy and use for non-commercial purposes under the term
 
 This package comes with absolutely no warranty of any kind, either express or implied, statutory or otherwise. The entire risk as to use, results and performance of the package is assumed by you and if the package should prove to be defective, you assume the entire cost of all necessary servicing, repair or other remediation.
 Under no circumstances, can the authors be held responsible for any damage caused in any usual, special, or accidental way, also if the owner or a third party has been pointed at such possibilities of damage.
+
 
