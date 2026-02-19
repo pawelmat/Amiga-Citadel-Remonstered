@@ -8,11 +8,11 @@
 ;After assembling this code is relocable although it uses some fixed addresses in CHIP
 
 ; for development set to 0. For deployment set to 1
-IS_EXE:		equ		0
+IS_EXE:		equ		1
 
 ; release version, set to date+build for each deployed version
-VERSION: 	SET		$220330
-BUILD:		SET		$02
+VERSION: 	SET		$260219
+BUILD:		SET		$01
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -207,10 +207,11 @@ s:
 		move	#-2,46(a1)		; rocket launcher ammo
 		move	#0,48(a1)		; last byte of guns
 		move	#0,50(a1)		;difficulty (0=hard by default, 1=easy). 8 bytes free after this. Also 100-124 is free and initialised to 0
-		move.b	#0,STR_DISTURBANCES(a1)		; ofs 52. Off by default (0). Note that this is enforced on below
+		move.b	#0,STR_DISTURBANCES(a1)		; ofs 52. On by default (0). Note that "off"" is enforced on below
 		move.b	#0,STR_GODMODE(a1)			; ofs 53. Off by default (0)
 		move.b	#0,STR_CROSSHAIRS(a1)		; ofs 54. On by default (0)
 		move.b	#0,STR_USERSCRSIZE(a1)		; ofs 55. No stretch by default (0)
+		move.b	#0,STR_MOUSEINVERT(a1)		; ofs 56. Mouse invert by default (0)
 		; 52-58 free
 		; 60-98 used by server (level progress data etc.)
 		move	#1,60(a1)		; 60 - complex nr (1,2,...). 1 = dungeons
@@ -700,17 +701,33 @@ ml2:
 		; this is (I think) to detect release of RMB before reacting to another press otherwise all the time RMB etc is held, the press routines would be called
 		tst		8(a1)			; rf2 flag? used ONLY here
 		beq.s	.nl_4
+
+		move.l	lc_Structure(pc),a3
+		tst.b	STR_MOUSEINVERT(a3)  ; check mouse inversion
+		beq		.checkRMB1		; not inverted
+		btst.b	#6,$bfe001
+		beq.s	.nl_5
+		bra		.rmb1
+.checkRMB1:
 		btst.b	#2,$16(a0)		; right mouse/joy buttons
 		beq.s	.nl_5
-		btst.b	#7,$bfe001
+.rmb1:	btst.b	#7,$bfe001
 		beq.s	.nl_5
 		tst		lc_moveTab+12(a6)	; enter / fire from keyboard
 		bne.s	.nl_5
 		move	#0,8(a1)		; rf2 flag (right joystick fire? / keyboard fire)
 		bra.s	.nl_5
-.nl_4:	btst.b	#2,$16(a0)		; RMB pressed?
+.nl_4:
+		move.l	lc_Structure(pc),a3
+		tst.b	STR_MOUSEINVERT(a3)  ; check mouse inversion
+		beq		.checkRMB2		; not inverted
+		btst.b	#6,$bfe001
 		beq.s	.nl_6
-		tst		lc_moveTab+12(a6)	; ENTER etc. pressed?
+		bra		.rmb2
+.checkRMB2:
+		btst.b	#2,$16(a0)		; RMB pressed?
+		beq.s	.nl_6
+.rmb2:	tst		lc_moveTab+12(a6)	; ENTER etc. pressed?
 		bne.s	.nl_6
 		btst.b	#7,$bfe001
 		bne.s	.nl_5
@@ -6348,6 +6365,8 @@ txt_cache_off:			dc.b	"CPU CACHE: OFF",0
 txt_c2p_cpu:			dc.b	"C2P: CPU",0
 txt_c2p_blitter:		dc.b	"C2P: BLITTER",0
 txt_exit_tap:			dc.b	"TAP TWICE TO EXIT TO MENU",0
+txt_mouse_inv:			dc.b	"MOUSE: INVERTED",0
+txt_mouse_norm:			dc.b	"MOUSE: NORMAL",0
 txt_version:			dc.b	"V1.30 BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48,0
 EVEN
 
@@ -7422,9 +7441,17 @@ sv_CheckMouse:
 sv_MouseMove:	
 		move	sv_mouseDxy,d0		; x (left/right)
 		moveq	#0,d3
+
+		move.l	lc_Structure(pc),a3
+		tst.b	STR_MOUSEINVERT(a3)  ; check mouse inversion
+		beq		.checkLMB		; not inverted
+		btst.b  #2,$16(a0)      ; POTGOR test bit 10 (RMB) - move forward
+		bne.s	sv_RollMouse
+		bra		.lmb
+.checkLMB:
 		btst.b	#6,$bfe001		;LMB - move forward
 		bne.s	sv_RollMouse
-		move	sv_WalkSpeed,d1		; y (forward)
+.lmb:	move	sv_WalkSpeed,d1		; y (forward)
 		bra.s	sv_Mou3
 
 sv_RollMouse:	
@@ -7713,13 +7740,24 @@ cc_pmode: tst	sv_PAUSE		;don't check if paused
 
 cc_z:
 		cmpi.b	#$9d,d0			;z - zaklocenia on/off
-		bne.s	cc_c
+		bne.s	cc_i
 		move.l	lc_Structure(pc),a2
 		eori.b	#1,STR_DISTURBANCES(a2)
 		beq.s	.cc_z2
 		SCROLL	91
 		bra	cc_NoKey
 .cc_z2:	SCROLL	90
+		bra	cc_NoKey
+
+cc_i:
+		cmpi.b	#$d1,d0			;i - mouse button inverted, inversion on/off
+		bne.s	cc_c
+		move.l	lc_Structure(pc),a2
+		eori.b	#1,STR_MOUSEINVERT(a2)
+		beq.s	.cc_i2
+		SCROLL2	txt_mouse_inv
+		bra	cc_NoKey
+.cc_i2: SCROLL2	txt_mouse_norm
 		bra	cc_NoKey
 
 cc_c:
@@ -12168,6 +12206,7 @@ STR_DISTURBANCES:	equ		52				; byte, on-creen disturbaces, 0=on, 1=off
 STR_GODMODE:		equ		53				; byte, god mode 0=off, 1=on (hex $35 in Structure)
 STR_CROSSHAIRS:		equ		54				; 0=on, 1=off
 STR_USERSCRSIZE:	equ		55
+STR_MOUSEINVERT:	equ		56				; 0=LMB move/RMB shoot, 1=inverted
 
 ; --------- FAST 1 offsets -------------
 RSRESET
