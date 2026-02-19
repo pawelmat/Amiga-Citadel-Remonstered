@@ -1,6 +1,6 @@
  
 Citadel
-Version 1.3 "Remonstered" (March 2022)
+Version 1.31 "Remonstered" (March 2022/February 2026)
 
 
 BACKGROUND STORY
@@ -288,6 +288,7 @@ F: toggle textures on floors and ceilings
 G: change level of details (low/medium/high)
 Z: toggle screen disturbance while hitting walls
 C: toggle crosshairs
+I: invert LMB and RMB operation
 Esc: Single press: show map. Double press: quit to main game menu
 1 - 7: choose a weapon (if available)
       1 - nothing (empty hands)
@@ -306,8 +307,8 @@ R: change to previous available weapon or keycard
 F1-F8: change the game window size. Sizes 6-8 can be set only from within the 
 game (not from the main menu)
 + / - : change the game window size one step at a time
-F10: quit WHDLoad
 `: display current FPS (Frames per Second)
+F10: quit WHDLoad
 
 GAMEPAD
 -------

@@ -1,4 +1,4 @@
-Short : Installer for Citadel 1.3 "Remonstered" edition
+Short : Installer for Citadel 1.31 "Remonstered" edition
 Type : Game
 Author : Asman, Kane, Bored Seal, Psygore, Jean-Francois Fabre, Wepl
 
@@ -8,7 +8,7 @@ Slave needs ROM image "DEVS:Kickstarts/kick34005.A500".
 You need an additional 4.5 MB of memory for the preload option.
 
 SUPPORTED VERSION:
-- English version 1.3 only, bundled with the install
+- English version 1.31 only, bundled with the install
 
 FEATURES:
 - Significantly improved performance (4-5x +)
@@ -33,6 +33,7 @@ FEATURES:
 - Improved support for MC68040/60 based accelerators
 - New icon
 - Known bugs removed
+- Option to invert LMB and RMB operation 
 - ... several other small improvements
 
 HISTORY:
@@ -40,6 +41,7 @@ V1.0 (25-May-2001) - first release
 V1.1 (17-Oct-2002) - poland version support added
 V1.2 (08-Nov-2012) - fixed to work with WHDLoad v17+
 V1.3 (03-Mar-2022) - "Remonstered" update (support for all other versions removed)
+V1.31 (19-Feb-2026) - Option to invert LMB and RMB operation added
 
 CHEAT CODES:
 - Seriously?

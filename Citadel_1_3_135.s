@@ -1,18 +1,21 @@
 ;	*****************************************************
-;	*		CITADEL - main game code (v1.3)   			*
-;	*	Copyrigt (C) Pawel Matusz (Kane) 1995,2022		*
-;	* 	Version 1.0 coded 11.02.1994-xx.04.1995 		*
-;	* 	Version 1.3 coded 08.01.2022-20.01.2022			*
+;	*		CITADEL - main game code (v1.3x)   			*
+;	*	Copyrigt (C) Pawel Matusz (Kane) 1995,2022-2026	*
+;	* 	Version 1.0  coded 11.02.1994-xx.04.1995 		*
+;	* 	Version 1.3  coded 08.01.2022-20.01.2022		*
+;	* 	Version 1.31 coded 19.02.2026					*
 ;	*****************************************************
 ;Assembled using ASM-ONE 1.20+. Use "wb cyt.dat",s,end to create a deployment version
 ;After assembling this code is relocable although it uses some fixed addresses in CHIP
 
 ; for development set to 0. For deployment set to 1
-IS_EXE:		equ		1
+IS_EXE:		equ		0
 
 ; release version, set to date+build for each deployed version
+REL_MAJ:	SET		$1
+REL_MIN:	SET		$31
 VERSION: 	SET		$260219
-BUILD:		SET		$01
+BUILD:		SET		$02
 
 ; CPU: 0 - 68000, 1 - 68020+
 CPU:		equ		1
@@ -219,7 +222,7 @@ s:
 		ENDC
 
 		bra.s	.s2
-		dc.b	0,"V1.30 BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48, 0
+		dc.b	0,"V", REL_MAJ&$f+48, ".", REL_MIN>>4&$f+48, REL_MIN&$f+48, " BUILD ", VERSION>>20&$f+48, VERSION>>16&$f+48, ".", VERSION>>12&$f+48, VERSION>>8&$f+48, ".", VERSION>>4&$f+48, VERSION&$f+48, ".", BUILD>>4&$f+48, BUILD&$f+48, 0
 		even
 .s2:	lea		lc_FastMem1(pc),a2
 		move.l	MEMORY,(a2)
