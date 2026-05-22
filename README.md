@@ -58,8 +58,8 @@ In order to prepare an updated cyt.dat resource file for WHDLoad:
 
 ## Copyright and License
 
-Copyright (C) 1995, 2022-2026 Pawel Matusz, Artur Bardowski. 
-This software is free to copy and use for non-commercial purposes under the terms of the GNU GPL-3.0 license. 
+Copyright (C) 1995, 2022-2026 Pawel Matusz, Artur Bardowski.
+This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.
 
 ## Warranty
 
